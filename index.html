@@ -547,11 +547,15 @@ async function loadSalgadas() {
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
-        <div class="pizza-size">${p.preco_familia ? `Grande R$ ${p.preco_grande.toFixed(2).replace('.',',')} | Família R$ ${p.preco_familia.toFixed(2).replace('.',',')}` : `A partir de R$ ${p.preco_grande.toFixed(2).replace('.',',')}`}</div>
+        ${p.preco_familia ? `
+        <div class="size-selector">
+          <button class="size-btn active" onclick="selectSize(this,${p.id},'Grande',${p.preco_grande})">Grande<br><span>R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span></button>
+          <button class="size-btn" onclick="selectSize(this,${p.id},'Família',${p.preco_familia})">Família<br><span>R$ ${p.preco_familia.toFixed(2).replace('.',',')}</span></button>
+        </div>` : `<div class="pizza-size">A partir de R$ ${p.preco_grande.toFixed(2).replace('.',',')}</div>`}
         <div class="pizza-bottom">
-          <span class="pizza-price">R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span>
+          <span class="pizza-price" id="price-${p.id}">R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span>
           <button class="btn-meio" onclick="openMeio('${p.nome}',${p.preco_grande})">½+½</button>
-          <button class="btn-add" onclick="addItem('${p.nome} (G)',${p.preco_grande})">+Add</button>
+          <button class="btn-add" id="btn-${p.id}" data-nome="${p.nome}" onclick="addItem('${p.nome} (Grande)',${p.preco_grande})">+ Adicionar</button>
         </div>
       </div>
     </div>`).join('');
@@ -880,18 +884,17 @@ async function enviarContato() {
 }
 
 // SELETOR DE TAMANHO
-function selectSize(id, tamanho, preco, nome, outroPreco) {
-  // Atualiza botões
-  const btns = document.querySelectorAll(`#size-${id} .size-btn`);
-  btns.forEach(b => b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  
-  // Atualiza preço exibido
-  document.getElementById(`price-${id}`).textContent = `R$ ${preco.toFixed(2).replace('.',',')}`;
-  
+function selectSize(el, id, tamanho, preco) {
+  // Atualiza botões ativos
+  const parent = el.closest('.size-selector');
+  parent.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  // Atualiza preço
+  document.getElementById('price-'+id).textContent = 'R$ ' + preco.toFixed(2).replace('.',',');
   // Atualiza botão adicionar
-  const btnAdd = document.getElementById(`btn-${id}`);
-  btnAdd.onclick = () => addItem(`${nome} (${tamanho === 'G' ? 'Grande' : 'Família'})`, preco);
+  const btnAdd = document.getElementById('btn-'+id);
+  const nomePizza = btnAdd.getAttribute('data-nome') || '';
+  btnAdd.onclick = () => addItem(nomePizza + ' (' + tamanho + ')', preco);
 }
 function toast(msg) {
   const t=document.createElement('div'); t.textContent=msg;
