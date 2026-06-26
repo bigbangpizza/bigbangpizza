@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Big Bang Pizza</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--red:#CC1100;--orange:#FF6B00;--gold:#E8A800;--black:#0a0a0a;--cream:#F5F0E8;--cream-dark:#EDE6D6;--gray:#666;--green2:#25D366;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:#111;color:white;min-height:100vh;}
+
+/* LOGIN */
+#login{position:fixed;inset:0;background:#0a0a0a;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:999;}
+#login img{width:120px;margin-bottom:4px;}
+#login h2{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:var(--orange);}
+#login p{color:rgba(255,255,255,0.35);font-size:13px;}
+.login-box{background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:24px;width:min(320px,90vw);display:flex;flex-direction:column;gap:11px;}
+.login-box input{width:100%;padding:11px;background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:7px;color:white;font-size:14px;outline:none;font-family:'Inter',sans-serif;}
+.login-box input:focus{border-color:var(--orange);}
+.btn-login{background:var(--red);color:white;border:none;padding:12px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;}
+.login-error{color:#ff5555;font-size:12px;text-align:center;display:none;}
+
+/* APP */
+#app{display:none;}
+.sidebar{position:fixed;top:0;left:0;width:210px;height:100vh;background:#0a0a0a;border-right:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;}
+.sb-logo{padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,0.07);}
+.sb-logo img{width:90px;}
+.sb-nav{padding:12px 0;flex:1;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:10px 18px;font-size:13px;font-weight:500;color:rgba(255,255,255,0.45);cursor:pointer;transition:all 0.2s;border-left:3px solid transparent;}
+.nav-item:hover{color:white;background:rgba(255,255,255,0.03);}
+.nav-item.active{color:white;border-left-color:var(--orange);background:rgba(255,107,0,0.07);}
+.nav-item .ic{font-size:17px;width:22px;text-align:center;}
+.sb-footer{padding:14px 18px;border-top:1px solid rgba(255,255,255,0.07);}
+.btn-site{display:block;background:var(--green2);color:white;text-decoration:none;text-align:center;padding:9px;border-radius:7px;font-size:12px;font-weight:600;}
+
+.main{margin-left:210px;padding:24px;min-height:100vh;}
+.page-title{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:1px;margin-bottom:3px;}
+.page-sub{color:rgba(255,255,255,0.35);font-size:12px;margin-bottom:20px;}
+.hidden{display:none;}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+.stat{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:16px;}
+.stat-n{font-family:'Bebas Neue',sans-serif;font-size:34px;color:var(--orange);}
+.stat-l{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px;}
+
+/* TABLE */
+.tw{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:9px;overflow:hidden;}
+.tw-head{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.07);}
+.tw-head h3{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;}
+table{width:100%;border-collapse:collapse;}
+th{padding:10px 14px;text-align:left;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,0.25);background:#111;}
+td{padding:10px 14px;font-size:12px;border-top:1px solid rgba(255,255,255,0.04);vertical-align:middle;}
+td img{width:40px;height:40px;object-fit:cover;border-radius:5px;background:#333;}
+.bon{background:rgba(74,222,128,0.12);color:#4ade80;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;}
+.boff{background:rgba(255,68,68,0.12);color:#ff5555;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;}
+.acts{display:flex;gap:5px;}
+.be{background:rgba(255,107,0,0.12);color:var(--orange);border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
+.bt{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
+.bd{background:rgba(255,68,68,0.1);color:#ff6666;border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
+.btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
+
+/* MODAL */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
+.mo.open{display:flex;}
+.md{background:#1a1a1a;border:1px solid rgba(255,255,255,0.09);border-radius:11px;width:min(480px,100%);max-height:88vh;overflow-y:auto;padding:22px;}
+.md h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:18px;}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
+.fg label{font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);letter-spacing:0.5px;text-transform:uppercase;}
+.fg input,.fg textarea,.fg select{width:100%;padding:9px 11px;background:#111;border:1.5px solid rgba(255,255,255,0.09);border-radius:7px;color:white;font-size:13px;font-family:'Inter',sans-serif;outline:none;}
+.fg input:focus,.fg textarea:focus{border-color:var(--orange);}
+.fg textarea{resize:vertical;min-height:60px;}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+.ma{display:flex;gap:9px;margin-top:18px;}
+.bs{flex:1;background:var(--red);color:white;border:none;padding:11px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:17px;cursor:pointer;}
+.bc{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:none;padding:11px 16px;border-radius:7px;font-size:14px;cursor:pointer;}
+
+/* BAIRROS */
+.bg{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px;}
+.bc2{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:9px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:9px;}
+.bn{flex:1;}
+.bn-nome{font-weight:600;font-size:13px;}
+.bn-frete{font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px;}
+.ts{position:relative;width:42px;height:22px;flex-shrink:0;}
+.ts input{opacity:0;width:0;height:0;}
+.sl{position:absolute;inset:0;background:#333;border-radius:22px;cursor:pointer;transition:.3s;}
+.sl::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:white;border-radius:50%;transition:.3s;}
+input:checked+.sl{background:var(--green2);}
+input:checked+.sl::before{transform:translateX(20px);}
+.loading{text-align:center;padding:36px;color:rgba(255,255,255,0.25);font-size:13px;}
+
+@media(max-width:768px){
+  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;padding:8px;overflow-x:auto;}
+  .sb-logo,.sb-footer{display:none;}
+  .sb-nav{display:flex;flex-direction:row;padding:0;gap:3px;}
+  .nav-item{padding:7px 10px;border-left:none;border-bottom:3px solid transparent;font-size:11px;flex-direction:column;gap:1px;min-width:55px;text-align:center;}
+  .nav-item.active{border-left-color:transparent;border-bottom-color:var(--orange);}
+  .main{margin-left:0;padding:14px;}
+}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <img src="logo-header.png" alt="Big Bang Pizza">
+  <h2>PAINEL ADMIN</h2>
+  <p>Acesso restrito</p>
+  <div class="login-box">
+    <input type="password" id="lp" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn-login" onclick="doLogin()">ENTRAR</button>
+    <div class="login-error" id="lerr">Senha incorreta!</div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="sidebar">
+    <div class="sb-logo"><img src="logo-header.png" alt="Big Bang Pizza"></div>
+    <div class="sb-nav">
+      <div class="nav-item active" onclick="show('dashboard')" id="nav-dashboard"><span class="ic">📊</span> Dashboard</div>
+      <div class="nav-item" onclick="show('combos')" id="nav-combos"><span class="ic">🔥</span> Combos</div>
+      <div class="nav-item" onclick="show('salgadas')" id="nav-salgadas"><span class="ic">🍕</span> Salgadas</div>
+      <div class="nav-item" onclick="show('doces')" id="nav-doces"><span class="ic">🍫</span> Doces</div>
+      <div class="nav-item" onclick="show('bebidas')" id="nav-bebidas"><span class="ic">🥤</span> Bebidas</div>
+      <div class="nav-item" onclick="show('bairros')" id="nav-bairros"><span class="ic">🛵</span> Bairros</div>
+      <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
+      <div class="nav-item" onclick="show('contatos')" id="nav-contatos"><span class="ic">💬</span> Contatos</div>
+    </div>
+    <div class="sb-footer"><a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a></div>
+  </div>
+
+  <div class="main">
+    <div id="pg-dashboard">
+      <div class="page-title">DASHBOARD</div>
+      <div class="page-sub">Visão geral da Big Bang Pizza</div>
+      <div class="stats" id="stats"><div class="loading">Carregando...</div></div>
+    </div>
+
+    <div id="pg-combos" class="hidden">
+      <div class="page-title">COMBOS</div>
+      <div class="page-sub">Gerencie os combos em destaque</div>
+      <div class="tw"><div class="tw-head"><h3>Combos</h3><button class="btn-new" onclick="openMod('combos')">+ Novo</button></div><div id="t-combos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-salgadas" class="hidden">
+      <div class="page-title">PIZZAS SALGADAS</div>
+      <div class="page-sub">Gerencie as pizzas salgadas</div>
+      <div class="tw"><div class="tw-head"><h3>Salgadas</h3><button class="btn-new" onclick="openMod('salgadas')">+ Nova</button></div><div id="t-salgadas"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-doces" class="hidden">
+      <div class="page-title">PIZZAS DOCES</div>
+      <div class="page-sub">Gerencie as pizzas doces</div>
+      <div class="tw"><div class="tw-head"><h3>Doces</h3><button class="btn-new" onclick="openMod('doces')">+ Nova</button></div><div id="t-doces"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-bebidas" class="hidden">
+      <div class="page-title">BEBIDAS</div>
+      <div class="page-sub">Gerencie as bebidas</div>
+      <div class="tw"><div class="tw-head"><h3>Bebidas</h3><button class="btn-new" onclick="openMod('bebidas')">+ Nova</button></div><div id="t-bebidas"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-avaliacoes" class="hidden">
+      <div class="page-title">AVALIAÇÕES</div>
+      <div class="page-sub">Avaliações recebidas dos clientes</div>
+      <div class="tw"><div class="tw-head"><h3>Avaliações</h3></div><div id="t-avaliacoes"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-contatos" class="hidden">
+      <div class="page-title">CONTATOS</div>
+      <div class="page-sub">Dúvidas, sugestões e reclamações recebidas</div>
+      <div class="tw"><div class="tw-head"><h3>Mensagens</h3></div><div id="t-contatos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-bairros" class="hidden">
+      <div class="page-title">BAIRROS</div>
+      <div class="page-sub">Ative bairros quando contratar motoboy 🛵</div>
+      <div id="t-bairros"><div class="loading">Carregando...</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="modal">
+  <div class="md">
+    <h3 id="mod-title">Item</h3>
+    <div id="mod-body"></div>
+    <div class="ma">
+      <button class="bc" onclick="closeMod()">Cancelar</button>
+      <button class="bs" onclick="saveItem()">SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SB='https://alvvkpuedwrxbmkkayff.supabase.co', SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33', PASS='M@rcelo1234';
+let curTable='', editId=null;
+
+function doLogin(){
+  if(document.getElementById('lp').value===PASS){
+    document.getElementById('login').style.display='none';
+    document.getElementById('app').style.display='block';
+    loadDash();
+  } else { document.getElementById('lerr').style.display='block'; }
+}
+
+async function api(table,q='',orderBy='id.asc'){
+  const hasOrdem = ['combos','pizzas_salgadas','pizzas_doces','bebidas'].includes(table);
+  const order = hasOrdem ? 'ordem.asc,id.asc' : orderBy;
+  const r=await fetch(`${SB}/rest/v1/${table}?${q}&order=${order}`,{headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
+  if(!r.ok){ console.error('API error',table,r.status); return []; }
+  return r.json();
+}
+async function ins(table,data){
+  const r=await fetch(`${SB}/rest/v1/${table}`,{method:'POST',headers:{'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(data)});
+  return r.ok;
+}
+async function upd(table,id,data){
+  const r=await fetch(`${SB}/rest/v1/${table}?id=eq.${id}`,{method:'PATCH',headers:{'apikey':SK,'Authorization':'Bearer '+SK,'Content-Type':'application/json'},body:JSON.stringify(data)});
+  return r.ok;
+}
+async function del(table,id){
+  const r=await fetch(`${SB}/rest/v1/${table}?id=eq.${id}`,{method:'DELETE',headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
+  return r.ok;
+}
+
+function show(page){
+  document.querySelectorAll('.main>div').forEach(d=>d.classList.add('hidden'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('pg-'+page).classList.remove('hidden');
+  document.getElementById('nav-'+page).classList.add('active');
+  if(page==='dashboard') loadDash();
+  else if(page==='bairros') loadBairros();
+  else if(page==='avaliacoes') loadAvaliacoes();
+  else if(page==='contatos') loadContatos();
+  else loadTable(page);
+}
+
+async function loadDash(){
+  const [c,s,d,b,br]=await Promise.all([
+    api('combos'),api('pizzas_salgadas'),api('pizzas_doces'),
+    api('bebidas'),api('bairros','','id.asc')
+  ]);
+  document.getElementById('stats').innerHTML=`
+    <div class="stat"><div class="stat-n">${c.length}</div><div class="stat-l">Combos</div></div>
+    <div class="stat"><div class="stat-n">${s.filter(x=>x.ativo).length}</div><div class="stat-l">Salgadas Ativas</div></div>
+    <div class="stat"><div class="stat-n">${d.filter(x=>x.ativo).length}</div><div class="stat-l">Doces Ativas</div></div>
+    <div class="stat"><div class="stat-n">${b.filter(x=>x.ativo).length}</div><div class="stat-l">Bebidas Ativas</div></div>
+    <div class="stat"><div class="stat-n">${br.filter(x=>x.ativo).length}</div><div class="stat-l">Bairros Ativos</div></div>
+    <div class="stat"><div class="stat-n">${br.filter(x=>!x.ativo).length}</div><div class="stat-l">Aguardando Motoboy</div></div>`;
+  // load contatos count
+  try {
+    const av = await api('avaliacoes');
+    const ct = await api('contatos');
+    document.getElementById('stats').innerHTML += `
+      <div class="stat"><div class="stat-n">${av.length}</div><div class="stat-l">Avaliações</div></div>
+      <div class="stat"><div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">Mensagens Novas</div></div>`;
+  } catch(e) {}
+}
+
+async function loadTable(type){
+  const tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
+  const el='t-'+type, data=await api(tbl);
+  const rows=data.map(item=>{
+    const pr=item.preco_grande!==undefined?(item.preco_familia?`R$ ${item.preco_grande.toFixed(2)} / Fam R$ ${item.preco_familia.toFixed(2)}`:`R$ ${item.preco_grande.toFixed(2)}`): `R$ ${(item.preco||0).toFixed(2)}`;
+    return `<tr>
+      <td>${item.foto_url?`<img src="${item.foto_url}" alt="">`:'—'}</td>
+      <td><strong>${item.nome}</strong></td>
+      <td>${pr}</td>
+      <td><span class="${item.ativo?'bon':'boff'}">${item.ativo?'Ativo':'Inativo'}</span></td>
+      <td><div class="acts">
+        <button class="be" onclick="openMod('${type}',${item.id})">✏️ Editar</button>
+        <button class="bt" onclick="tog('${tbl}',${item.id},${item.ativo},'${type}')">${item.ativo?'⏸':'▶'}</button>
+        <button class="bd" onclick="rem('${tbl}',${item.id},'${type}')">🗑️</button>
+      </div></td></tr>`;
+  }).join('');
+  document.getElementById(el).innerHTML=`<table><thead><tr><th>Foto</th><th>Nome</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function tog(tbl,id,cur,type){await upd(tbl,id,{ativo:!cur});loadTable(type);}
+async function rem(tbl,id,type){if(confirm('Deletar este item?')){await del(tbl,id);loadTable(type);}}
+
+async function openMod(type,id=null){
+  curTable=type; editId=id;
+  const tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
+  let item={};
+  if(id){const d=await api(tbl,`id=eq.${id}`);item=d[0]||{};}
+  const titles={combos:'Combo',salgadas:'Pizza Salgada',doces:'Pizza Doce',bebidas:'Bebida'};
+  document.getElementById('mod-title').textContent=(id?'Editar ':'Novo ')+titles[type];
+  let body='';
+  if(type==='salgadas'){
+    body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
+    <div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
+    <div class="fr">
+      <div class="fg"><label>Preço Grande (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco_grande||''}"></div>
+      <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${item.preco_familia||''}" placeholder="Opcional"></div>
+    </div>
+    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>
+    <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
+  } else if(type==='bebidas'){
+    body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
+    <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
+    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>`;
+  } else {
+    body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
+    <div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
+    <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
+    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>
+    <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
+  }
+  document.getElementById('mod-body').innerHTML=body;
+  document.getElementById('modal').classList.add('open');
+}
+function closeMod(){document.getElementById('modal').classList.remove('open');}
+
+async function saveItem(){
+  const type=curTable, tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
+  let data={nome:document.getElementById('fn').value.trim(),foto_url:document.getElementById('ff')?.value.trim()||null,ativo:true};
+  if(type==='salgadas'){
+    data.preco_grande=parseFloat(document.getElementById('fp').value);
+    data.preco_familia=document.getElementById('fpf').value?parseFloat(document.getElementById('fpf').value):null;
+    data.descricao=document.getElementById('fd').value.trim();
+    data.ordem=parseInt(document.getElementById('fo').value||0);
+  } else if(type==='bebidas'){
+    data.preco=parseFloat(document.getElementById('fp').value);
+  } else {
+    data.preco=parseFloat(document.getElementById('fp').value);
+    data.descricao=document.getElementById('fd')?.value.trim()||'';
+    data.ordem=parseInt(document.getElementById('fo')?.value||0);
+  }
+  if(!data.nome){alert('Digite o nome!');return;}
+  const ok=editId?await upd(tbl,editId,data):await ins(tbl,data);
+  if(ok){closeMod();loadTable(type);}else{alert('Erro ao salvar!');}
+}
+
+async function loadBairros(){
+  const data=await api('bairros');
+  const groups={'0':'🟢 Frete Grátis — Lauro de Freitas','4.99':'🟡 Frete R$ 4,99 — Salvador','5.99':'🟠 Frete R$ 5,99','7.99':'🔴 Frete R$ 7,99','9.99':'🔴 Frete R$ 9,99'};
+  let html='';
+  for(const [fr,lb] of Object.entries(groups)){
+    const list=data.filter(b=>b.frete==fr);
+    if(!list.length) continue;
+    html+=`<h3 style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);margin:18px 0 9px;letter-spacing:1px;">${lb}</h3><div class="bg">`;
+    list.forEach(b=>{
+      html+=`<div class="bc2"><div class="bn"><div class="bn-nome">${b.nome}</div><div class="bn-frete">${b.frete===0?'Grátis':'R$ '+b.frete.toFixed(2)}</div></div>
+      <label class="ts"><input type="checkbox" ${b.ativo?'checked':''} onchange="togBairro(${b.id},this.checked)"><span class="sl"></span></label></div>`;
+    });
+    html+='</div>';
+  }
+  document.getElementById('t-bairros').innerHTML=html;
+}
+async function togBairro(id,ativo){await upd('bairros',id,{ativo});}
+
+async function loadAvaliacoes(){
+  const data = await api('avaliacoes');
+  const tipos = {5:'⭐⭐⭐⭐⭐',4:'⭐⭐⭐⭐',3:'⭐⭐⭐',2:'⭐⭐',1:'⭐'};
+  const rows = data.map(a => `<tr>
+    <td><strong>${a.nome}</strong></td>
+    <td>${tipos[a.estrelas]||''}</td>
+    <td style="max-width:300px;color:rgba(255,255,255,0.6);font-size:12px;">${a.texto}</td>
+    <td style="color:rgba(255,255,255,0.3);font-size:11px;">${a.data||''}</td>
+    <td><div class="acts">
+      <button class="bd" onclick="rem('avaliacoes',${a.id},'avaliacoes')">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+  document.getElementById('t-avaliacoes').innerHTML = `<table>
+    <thead><tr><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th><th>Ação</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+async function loadContatos(){
+  const data = await api('contatos');
+  const tipos = {duvida:'❓ Dúvida',sugestao:'💡 Sugestão',elogio:'❤️ Elogio',reclamacao:'⚠️ Reclamação'};
+  const rows = data.map(c => `<tr>
+    <td><strong>${c.nome}</strong>${c.telefone?`<br><span style="font-size:11px;color:rgba(255,255,255,0.3)">${c.telefone}</span>`:''}</td>
+    <td>${tipos[c.tipo]||c.tipo}</td>
+    <td style="max-width:300px;color:rgba(255,255,255,0.6);font-size:12px;">${c.mensagem}</td>
+    <td style="color:rgba(255,255,255,0.3);font-size:11px;">${c.data||''}</td>
+    <td><div class="acts">
+      ${!c.lido?`<button class="be" onclick="marcarLido(${c.id})">✅ Lido</button>`:'<span style="color:#4ade80;font-size:11px;">✅ Lido</span>'}
+      <button class="bd" onclick="rem('contatos',${c.id},'contatos')">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+  document.getElementById('t-contatos').innerHTML = `<table>
+    <thead><tr><th>Cliente</th><th>Tipo</th><th>Mensagem</th><th>Data</th><th>Ações</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
+</script>
+</body>
+</html>

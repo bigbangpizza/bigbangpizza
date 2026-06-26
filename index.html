@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
+<meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta a domingo das 18h às 00h.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍕</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--red:#CC1100;--red-dark:#880000;--orange:#FF6B00;--gold:#E8A800;--black:#0a0a0a;--cream:#F5F0E8;--cream-dark:#EDE6D6;--gray:#666;--green:#1a7a3c;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--black);overflow-x:hidden;}
+h1,h2,h3{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
+
+/* SPLASH */
+#splash{position:fixed;inset:0;background:#0a0a0a;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;transition:opacity 0.5s;}
+#splash img{width:min(300px,75vw);animation:pop 0.7s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;}
+#splash .sub{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:6px;color:var(--gold);opacity:0;animation:fadeup 0.5s ease 0.9s forwards;}
+#splash .dots{display:flex;gap:8px;opacity:0;animation:fadeup 0.5s ease 1.3s forwards;}
+#splash .dots span{width:8px;height:8px;background:var(--orange);border-radius:50%;animation:pulse 0.6s ease infinite alternate;}
+#splash .dots span:nth-child(2){animation-delay:.15s;background:var(--gold);}
+#splash .dots span:nth-child(3){animation-delay:.3s;}
+@keyframes pop{from{opacity:0;transform:scale(0.5);}to{opacity:1;transform:scale(1);}}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{from{transform:scale(0.8);}to{transform:scale(1.3);}}
+
+/* STATUS */
+#status-banner{text-align:center;padding:10px;font-size:14px;font-weight:600;}
+#status-banner.open{background:#1a7a3c;color:white;}
+#status-banner.closed{background:var(--red);color:white;}
+
+/* HEADER */
+header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(0,0,0,0.5);}
+.logo-area img{height:50px;width:auto;}
+.btn-pedido{background:var(--red);color:white;border:none;padding:10px 18px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;border-radius:6px;cursor:pointer;}
+.btn-pedido:hover{background:var(--red-dark);}
+
+/* HERO */
+.hero{background:#0a0a0a;text-align:center;padding:48px 20px 40px;position:relative;overflow:hidden;}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);}
+.hero-eyebrow{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--orange);margin-bottom:14px;position:relative;}
+.hero img{width:min(340px,80vw);margin:0 auto 12px;display:block;filter:drop-shadow(0 6px 24px rgba(255,107,0,0.4));position:relative;}
+.hero-sub{font-size:14px;color:rgba(255,255,255,0.6);margin:12px 0 20px;line-height:1.6;position:relative;}
+.hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:22px;position:relative;}
+.badge{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);color:rgba(255,255,255,0.8);padding:5px 12px;border-radius:20px;font-size:12px;}
+.hero-cta{display:inline-block;background:var(--red);color:white;padding:13px 32px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;border-radius:8px;text-decoration:none;position:relative;}
+.hero-cta:hover{background:var(--red-dark);}
+
+/* SECTIONS */
+.sw{max-width:1100px;margin:0 auto;padding:44px 20px;}
+.section-title{font-size:clamp(28px,6vw,48px);margin-bottom:6px;}
+.section-title span{color:var(--red);}
+.divider{width:44px;height:4px;background:var(--red);margin:8px 0 20px;border-radius:2px;}
+.section-sub{color:var(--gray);font-size:13px;margin-bottom:22px;}
+.loading{text-align:center;padding:40px;color:var(--gray);font-size:14px;}
+
+/* COMBOS */
+.combos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:14px;}
+.combo-card{background:#0a0a0a;color:white;border-radius:12px;overflow:hidden;transition:transform 0.2s;}
+.combo-card:hover{transform:translateY(-3px);}
+.combo-card img{width:100%;height:175px;object-fit:cover;}
+.combo-no-img{height:175px;background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:48px;}
+.combo-body{padding:15px;}
+.combo-tag{display:inline-block;background:var(--red);color:white;font-size:10px;font-weight:700;letter-spacing:2px;padding:3px 8px;border-radius:3px;margin-bottom:7px;}
+.combo-name{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px;margin-bottom:4px;}
+.combo-desc{font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:12px;line-height:1.4;}
+.combo-bottom{display:flex;align-items:center;justify-content:space-between;}
+.combo-price{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);}
+
+/* PIZZA CARDS */
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+.pizza-card{background:white;border-radius:10px;overflow:hidden;border:1px solid var(--cream-dark);transition:box-shadow 0.2s,transform 0.2s;display:flex;flex-direction:column;}
+.pizza-card:hover{box-shadow:0 4px 18px rgba(0,0,0,0.1);transform:translateY(-2px);}
+.pizza-card img{width:100%;height:145px;object-fit:cover;}
+.pizza-no-img{height:145px;background:var(--cream-dark);display:flex;align-items:center;justify-content:center;font-size:44px;}
+.pizza-body{padding:13px;display:flex;flex-direction:column;gap:4px;flex:1;}
+.pizza-name{font-family:'Bebas Neue',sans-serif;font-size:18px;}
+.pizza-desc{font-size:11px;color:var(--gray);line-height:1.4;flex:1;}
+.pizza-size{font-size:11px;color:var(--orange);font-weight:600;}
+.pizza-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:5px;flex-wrap:wrap;}
+.pizza-price{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);}
+
+/* BEBIDAS */
+.bebidas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;}
+.bebida-card{background:white;border-radius:10px;border:1px solid var(--cream-dark);display:flex;align-items:center;gap:10px;padding:13px;}
+.bebida-card img{width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;}
+.bebida-emoji{font-size:32px;}
+.bebida-info{flex:1;}
+.bebida-name{font-weight:600;font-size:13px;}
+.bebida-price{font-family:'Bebas Neue',sans-serif;font-size:19px;color:var(--red);}
+
+/* BUTTONS */
+.btn-add{background:var(--red);color:white;border:none;padding:7px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-add:hover{background:var(--red-dark);}
+.btn-meio{background:transparent;border:1.5px solid var(--orange);color:var(--orange);padding:5px 8px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-meio:hover{background:var(--orange);color:white;}
+
+/* ENTREGA */
+.entrega-bg{background:#0a0a0a;padding:44px 0;}
+.entrega-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
+.entrega-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;}
+.entrega-bloco{background:rgba(255,255,255,0.05);border-radius:10px;padding:18px;border:1px solid rgba(255,255,255,0.08);}
+.entrega-bloco h3{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:7px;}
+.entrega-bloco ul{list-style:none;display:flex;flex-direction:column;gap:5px;}
+.entrega-bloco ul li{font-size:13px;color:rgba(255,255,255,0.65);display:flex;align-items:center;gap:5px;}
+.entrega-bloco ul li::before{content:'•';color:var(--orange);}
+.entrega-nota{margin-top:18px;text-align:center;color:rgba(255,255,255,0.45);font-size:13px;}
+.btn-wpp{display:inline-block;background:#25D366;color:white;padding:9px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;margin-top:8px;}
+
+/* FOOTER */
+footer{background:#050505;color:rgba(255,255,255,0.45);padding:32px 20px;text-align:center;}
+footer img{width:130px;margin-bottom:8px;}
+.footer-slogan{color:var(--orange);font-size:13px;margin-bottom:14px;}
+.footer-links{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-bottom:10px;}
+.footer-links a{color:rgba(255,255,255,0.55);text-decoration:none;font-size:13px;}
+.footer-links a:hover{color:white;}
+.footer-copy{font-size:11px;margin-top:10px;}
+
+/* FAB */
+.cart-fab{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
+.wpp-fab{width:50px;height:50px;background:#25D366;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,0.3);}
+.cart-btn{width:54px;height:54px;background:var(--red);border:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;box-shadow:0 4px 18px rgba(204,0,0,0.4);position:relative;}
+.cart-count{position:absolute;top:-3px;right:-3px;background:var(--orange);color:white;width:19px;height:19px;border-radius:50%;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;}
+
+/* CART PANEL */
+.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;display:none;}
+.cart-overlay.open{display:block;}
+.cart-panel{position:fixed;top:0;right:-420px;width:min(420px,100vw);height:100vh;background:white;z-index:301;display:flex;flex-direction:column;transition:right 0.3s ease;}
+.cart-panel.open{right:0;}
+.cart-header{background:#0a0a0a;color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+.cart-header h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;}
+.cart-close{background:none;border:none;color:white;font-size:20px;cursor:pointer;}
+.cart-body{flex:1;overflow-y:auto;padding:14px;}
+.cart-empty{text-align:center;padding:44px 20px;color:var(--gray);}
+.cart-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--cream-dark);}
+.cart-item-info{flex:1;}
+.cart-item-name{font-weight:600;font-size:13px;line-height:1.3;}
+.cart-item-obs{font-size:11px;color:var(--gray);margin-top:2px;}
+.cart-item-price{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--red);white-space:nowrap;}
+.cart-item-qty{display:flex;align-items:center;gap:7px;margin-top:5px;}
+.qty-btn{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.qty-btn:hover{border-color:var(--red);color:var(--red);}
+.qty-num{font-weight:700;font-size:13px;min-width:18px;text-align:center;}
+.checkout-form{padding:14px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:9px;background:var(--cream);}
+.checkout-form input,.checkout-form select{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;background:white;outline:none;}
+.checkout-form input:focus,.checkout-form select:focus{border-color:var(--red);}
+.frete-info{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
+.total-row{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:20px;padding:7px 0;border-top:2px solid var(--cream-dark);}
+.btn-finalizar{background:#25D366;color:white;border:none;padding:13px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;}
+.btn-finalizar:hover{background:#1da851;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:400;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.open{display:flex;}
+.modal{background:white;border-radius:12px;width:min(440px,100%);max-height:82vh;overflow-y:auto;padding:22px;}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:5px;}
+.modal-sub{font-size:12px;color:var(--gray);margin-bottom:14px;}
+.modal-label{font-weight:700;font-size:12px;color:var(--red);margin-bottom:5px;}
+.modal select{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;background:white;outline:none;margin-bottom:13px;}
+.modal-actions{display:flex;gap:9px;margin-top:4px;}
+.btn-modal-ok{flex:1;background:var(--red);color:white;border:none;padding:11px;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;}
+.btn-modal-cancel{background:white;color:var(--gray);border:1.5px solid var(--cream-dark);padding:11px 16px;border-radius:6px;font-size:14px;cursor:pointer;}
+
+
+/* MAPA INFO WINDOW */
+.map-info {{ padding:8px 12px; font-family:'Inter',sans-serif; }}
+.map-info strong {{ font-size:14px; display:block; margin-bottom:2px; }}
+.map-info span {{ font-size:12px; color:#666; }}
+
+/* AVALIACOES */
+.aval-bg{background:var(--black);padding:44px 0;}
+.aval-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
+.stars{color:var(--gold);font-size:20px;margin-bottom:6px;}
+.aval-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:6px;}
+.aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:18px;}
+.aval-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.aval-avatar{width:40px;height:40px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
+.aval-nome{font-weight:600;font-size:14px;color:white;}
+.aval-data{font-size:11px;color:rgba(255,255,255,0.3);margin-top:1px;}
+.aval-texto{font-size:13px;color:rgba(255,255,255,0.65);line-height:1.5;}
+.aval-resumo{display:flex;align-items:center;gap:20px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:20px;margin-bottom:24px;}
+.aval-nota{text-align:center;}
+.aval-nota-num{font-family:'Bebas Neue',sans-serif;font-size:52px;color:var(--gold);line-height:1;}
+.aval-nota-label{font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px;}
+.aval-divider{width:1px;height:60px;background:rgba(255,255,255,0.08);}
+.aval-barras{flex:1;}
+.aval-barra-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.aval-barra-label{font-size:12px;color:rgba(255,255,255,0.4);width:14px;text-align:right;}
+.aval-barra-bg{flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;}
+.aval-barra-fill{height:100%;background:var(--gold);border-radius:3px;transition:width 1s ease;}
+.btn-aval{background:var(--red);color:white;border:none;padding:12px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;margin-top:20px;display:inline-block;}
+.btn-aval:hover{background:var(--red-dark);}
+.modal-aval{background:white;border-radius:12px;width:min(440px,100%);padding:24px;}
+.modal-aval h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:4px;color:var(--black);}
+.modal-aval p{font-size:12px;color:var(--gray);margin-bottom:16px;}
+.star-select{display:flex;gap:6px;margin-bottom:16px;}
+.star-select span{font-size:32px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;}
+.star-select span.on{opacity:1;}
+.modal-aval input,.modal-aval textarea{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:10px;color:var(--black);}
+.modal-aval textarea{resize:vertical;min-height:80px;}
+.modal-aval input:focus,.modal-aval textarea:focus{border-color:var(--red);}
+
+/* CONTATO */
+.contato-bg{background:var(--cream-dark);padding:44px 0;}
+.contato-inner{max-width:700px;margin:0 auto;padding:0 20px;}
+.contato-form{background:white;border-radius:12px;padding:28px;border:1px solid var(--cream-dark);}
+.contato-tipos{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+.tipo-btn{padding:8px 16px;border-radius:20px;border:1.5px solid var(--cream-dark);background:white;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;color:var(--gray);}
+.tipo-btn.active{background:var(--red);border-color:var(--red);color:white;}
+.contato-form input,.contato-form textarea{width:100%;padding:10px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:10px;color:var(--black);}
+.contato-form input:focus,.contato-form textarea:focus{border-color:var(--red);}
+.contato-form textarea{resize:vertical;min-height:100px;}
+.btn-contato{background:var(--red);color:white;border:none;padding:12px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;width:100%;}
+.btn-contato:hover{background:var(--red-dark);}
+
+/* TELA DE OBRIGADO */
+#tela-obrigado{position:fixed;inset:0;background:#0a0a0a;z-index:600;display:none;align-items:center;justify-content:center;flex-direction:column;gap:0;padding:20px;text-align:center;}
+#tela-obrigado.open{display:flex;}
+.obg-icon{font-size:72px;animation:pop 0.6s cubic-bezier(0.34,1.56,0.64,1) both;}
+.obg-title{font-family:'Bebas Neue',sans-serif;font-size:36px;color:white;margin:12px 0 4px;letter-spacing:1px;}
+.obg-sub{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:20px;}
+.obg-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:22px 28px;margin-bottom:20px;width:min(340px,100%);}
+.obg-tempo{font-family:'Bebas Neue',sans-serif;font-size:48px;color:var(--orange);line-height:1;}
+.obg-tempo-label{font-size:13px;color:rgba(255,255,255,0.4);margin-top:2px;}
+.obg-alerta{background:rgba(37,211,102,0.1);border:1px solid rgba(37,211,102,0.2);border-radius:8px;padding:10px 14px;font-size:13px;color:#4ade80;margin-top:12px;}
+.obg-pedido{background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-top:12px;text-align:left;}
+.obg-pedido-title{font-size:11px;font-weight:700;color:rgba(255,255,255,0.3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.obg-pedido-item{font-size:13px;color:rgba(255,255,255,0.65);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+.obg-pedido-item:last-child{border:none;}
+.obg-total{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:20px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);}
+.btn-obg-novo{background:var(--red);color:white;border:none;padding:13px 32px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;cursor:pointer;margin-top:4px;}
+.btn-obg-wpp{background:#25D366;color:white;border:none;padding:10px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;margin-top:8px;}
+/* RESPONSIVE */
+@media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
+@media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <img src="logo-hero.png" alt="Big Bang Pizza">
+  <div class="sub">Explosão de Sabor</div>
+  <div class="dots"><span></span><span></span><span></span></div>
+</div>
+
+<div id="status-banner"></div>
+
+<header>
+  <div class="logo-area"><img src="logo-header.png" alt="Big Bang Pizza"></div>
+  <button class="btn-pedido" onclick="openCart()">🛒 Fazer Pedido</button>
+</header>
+
+<div class="hero">
+  <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
+  <img src="logo-hero.png" alt="Big Bang Pizza">
+  <p class="hero-sub">Pizzas artesanais direto na sua porta.<br>Quinta a domingo, das 18h às meia-noite.</p>
+  <div class="hero-badges">
+    <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
+    <span class="badge">⏱️ Entrega Rápida</span>
+    <span class="badge">🔥 Quentinho e Delicioso</span>
+  </div>
+  <a href="#combos" class="hero-cta">Ver Cardápio</a>
+</div>
+
+<div id="combos" style="background:#0a0a0a;padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;">
+    <h2 class="section-title" style="color:white;">COMBOS <span>EM DESTAQUE</span></h2>
+    <div class="divider"></div>
+    <div class="combos-grid" id="combos-grid"><div class="loading">Carregando...</div></div>
+  </div>
+</div>
+
+<div id="salgadas" style="background:var(--cream-dark);padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;">
+    <h2 class="section-title">PIZZAS <span>SALGADAS</span></h2>
+    <div class="divider"></div>
+    <p class="section-sub">Todas disponíveis meio a meio 🍕</p>
+    <div class="menu-grid" id="salgadas-grid"><div class="loading">Carregando...</div></div>
+  </div>
+</div>
+
+<div id="doces" style="padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;">
+    <h2 class="section-title">PIZZAS <span>DOCES</span></h2>
+    <div class="divider"></div>
+    <div class="menu-grid" id="doces-grid"><div class="loading">Carregando...</div></div>
+  </div>
+</div>
+
+<div id="bebidas" style="background:var(--cream-dark);padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;">
+    <h2 class="section-title">BEBIDAS</h2>
+    <div class="divider"></div>
+    <div class="bebidas-grid" id="bebidas-grid"><div class="loading">Carregando...</div></div>
+  </div>
+</div>
+
+<div class="aval-bg" id="avaliacoes">
+  <div class="aval-inner">
+    <h2 class="section-title" style="color:white;">O QUE NOSSOS <span>CLIENTES</span> DIZEM</h2>
+    <div class="divider"></div>
+
+    <div class="aval-resumo">
+      <div class="aval-nota">
+        <div class="aval-nota-num" id="nota-geral">5.0</div>
+        <div class="stars">★★★★★</div>
+        <div class="aval-nota-label" id="total-aval">0 avaliações</div>
+      </div>
+      <div class="aval-divider"></div>
+      <div class="aval-barras" id="barras-estrelas">
+        <div class="aval-barra-row"><span class="aval-barra-label">5</span><div class="aval-barra-bg"><div class="aval-barra-fill" style="width:100%"></div></div></div>
+        <div class="aval-barra-row"><span class="aval-barra-label">4</span><div class="aval-barra-bg"><div class="aval-barra-fill" style="width:0%"></div></div></div>
+        <div class="aval-barra-row"><span class="aval-barra-label">3</span><div class="aval-barra-bg"><div class="aval-barra-fill" style="width:0%"></div></div></div>
+        <div class="aval-barra-row"><span class="aval-barra-label">2</span><div class="aval-barra-bg"><div class="aval-barra-fill" style="width:0%"></div></div></div>
+        <div class="aval-barra-row"><span class="aval-barra-label">1</span><div class="aval-barra-bg"><div class="aval-barra-fill" style="width:0%"></div></div></div>
+      </div>
+    </div>
+
+    <div class="aval-grid" id="aval-grid">
+      <div class="loading" style="color:rgba(255,255,255,0.3);">Carregando avaliações...</div>
+    </div>
+
+    <div style="text-align:center;">
+      <button class="btn-aval" onclick="openAval()">⭐ Deixar minha avaliação</button>
+    </div>
+  </div>
+</div>
+
+<div class="entrega-bg" id="entrega">
+  <div class="entrega-inner">
+    <h2 class="section-title" style="color:white;">ÁREA DE <span style="color:var(--orange);">ENTREGA</span></h2>
+    <div class="divider"></div>
+    <p style="color:rgba(255,255,255,0.4);font-size:13px;margin-bottom:20px;">Confira se seu bairro está na nossa área de atendimento</p>
+
+    <!-- MAPA -->
+    <div id="mapa" style="width:100%;height:380px;border-radius:12px;overflow:hidden;margin-bottom:24px;border:2px solid rgba(255,255,255,0.08);"></div>
+
+    <!-- LEGENDA -->
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;background:#4ade80;border-radius:3px;"></div><span style="color:rgba(255,255,255,0.7);font-size:13px;">Frete Grátis</span></div>
+      <div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;background:#facc15;border-radius:3px;"></div><span style="color:rgba(255,255,255,0.7);font-size:13px;">Frete R$ 4,99</span></div>
+    </div>
+
+    <div class="entrega-grid">
+      <div class="entrega-bloco">
+        <h3><span style="color:#4ade80;">●</span><span style="color:white;">Frete Grátis</span></h3>
+        <ul id="bairros-gratis"></ul>
+      </div>
+      <div class="entrega-bloco">
+        <h3><span style="color:#facc15;">●</span><span style="color:white;">Frete R$ 4,99</span></h3>
+        <ul id="bairros-pago"></ul>
+      </div>
+    </div>
+    <div class="entrega-nota">
+      Não encontrou seu bairro? Fale com a gente!<br>
+      <a class="btn-wpp" href="https://wa.me/5571993738823" target="_blank">📱 Chamar no WhatsApp</a>
+    </div>
+  </div>
+</div>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCfFbckWc7fVyOHtOSvMHbMbn5mjZns29M&callback=initMap&loading=async" async></script>
+
+
+<div class="contato-bg" id="contato">
+  <div class="contato-inner">
+    <h2 class="section-title">FALE <span>CONOSCO</span></h2>
+    <div class="divider"></div>
+    <p class="section-sub">Dúvidas, sugestões ou elogios? Manda para a gente! 💬</p>
+    <div class="contato-form">
+      <div class="contato-tipos">
+        <button class="tipo-btn active" onclick="setTipo('duvida',this)">❓ Dúvida</button>
+        <button class="tipo-btn" onclick="setTipo('sugestao',this)">💡 Sugestão</button>
+        <button class="tipo-btn" onclick="setTipo('elogio',this)">❤️ Elogio</button>
+        <button class="tipo-btn" onclick="setTipo('reclamacao',this)">⚠️ Reclamação</button>
+      </div>
+      <input type="text" id="c-nome" placeholder="Seu nome *">
+      <input type="tel" id="c-telefone" placeholder="WhatsApp (opcional)">
+      <textarea id="c-mensagem" placeholder="Sua mensagem *"></textarea>
+      <button class="btn-contato" onclick="enviarContato()">📨 ENVIAR MENSAGEM</button>
+    </div>
+  </div>
+</div>
+<footer>
+  <img src="logo-header.png" alt="Big Bang Pizza">
+  <div class="footer-slogan">Explosão de Sabor 🍕🔥💥</div>
+  <div class="footer-links">
+    <a href="https://wa.me/5571993738823" target="_blank">📱 (71) 99373-8823</a>
+    <a href="mailto:bigbangpz@outlook.com">✉️ bigbangpz@outlook.com</a>
+    <a href="https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9" target="_blank">🛵 iFood</a>
+  </div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.3);">Quinta a Domingo | 18h às 00h</div>
+  <div class="footer-copy">© 2025 Big Bang Pizza — Todos os direitos reservados</div>
+</footer>
+
+<div class="cart-fab">
+  <a class="wpp-fab" href="https://wa.me/5571993738823" target="_blank">💬</a>
+  <button class="cart-btn" onclick="openCart()">🛒<span class="cart-count" id="cart-count"></span></button>
+</div>
+
+<div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+<div class="cart-panel" id="cart-panel">
+  <div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close" onclick="closeCart()">✕</button></div>
+  <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
+  <div class="checkout-form" id="checkout-form" style="display:none;">
+    <input type="text" id="f-nome" placeholder="Nome completo *">
+    <input type="text" id="f-endereco" placeholder="Rua e número *">
+    <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
+    <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
+    <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
+    <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
+    <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
+    <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
+    <button class="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>🍕 Pizza Meio a Meio</h3>
+    <p class="modal-sub">Escolha os dois sabores</p>
+    <div class="modal-label">1ª Metade</div><select id="meio1"></select>
+    <div class="modal-label">2ª Metade</div><select id="meio2"></select>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-modal-ok" onclick="confirmMeio()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SB = 'https://alvvkpuedwrxbmkkayff.supabase.co';
+const SK = 'sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
+let cart = [], bairrosData = [];
+
+async function api(table, q='') {
+  const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=ordem.asc,id.asc`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
+  return r.json();
+}
+
+// STATUS + COUNTDOWN
+function updateStatus() {
+  const now = new Date();
+  const day = now.getDay(); // 0=dom,1=seg,2=ter,3=qua,4=qui,5=sex,6=sab
+  const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+  const diasAbertos = [0,4,5,6]; // dom, qui, sex, sab
+  const open = diasAbertos.includes(day) && h >= 18 && h < 24;
+  const b = document.getElementById('status-banner');
+
+  if (open) {
+    // Calcula quanto tempo falta para fechar (meia-noite)
+    const totalSecs = (23 - h) * 3600 + (59 - m) * 60 + (59 - s);
+    const hh = Math.floor(totalSecs / 3600);
+    const mm = Math.floor((totalSecs % 3600) / 60);
+    const ss = totalSecs % 60;
+    b.className = 'open';
+    b.textContent = `🟢 Aberto agora! Fechamos em ${hh}h ${mm}m ${ss}s`;
+  } else {
+    // Calcula próxima abertura
+    let daysUntil = 0;
+    let d = day;
+    while (true) {
+      d = (d + 1) % 7;
+      daysUntil++;
+      if (diasAbertos.includes(d)) break;
+      if (daysUntil > 7) break;
+    }
+    // Se hoje é dia de abrir mas ainda não são 18h
+    if (diasAbertos.includes(day) && h < 18) {
+      daysUntil = 0;
+      d = day;
+    }
+    const nomesDias = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+    let horasAte, minutosAte, segundosAte;
+    if (daysUntil === 0) {
+      // Abre hoje às 18h
+      const secsAte = (18 - h - 1) * 3600 + (59 - m) * 60 + (59 - s);
+      horasAte = Math.floor(secsAte / 3600);
+      minutosAte = Math.floor((secsAte % 3600) / 60);
+      segundosAte = secsAte % 60;
+      b.className = 'closed';
+      b.textContent = `🔴 Fechado — Abrimos hoje às 18h (em ${horasAte}h ${minutosAte}m ${segundosAte}s)`;
+    } else {
+      const secsAte = daysUntil * 86400 - h * 3600 - m * 60 - s + 18 * 3600;
+      const dias = Math.floor(secsAte / 86400);
+      horasAte = Math.floor((secsAte % 86400) / 3600);
+      minutosAte = Math.floor((secsAte % 3600) / 60);
+      segundosAte = secsAte % 60;
+      const nomeDia = nomesDias[d];
+      b.className = 'closed';
+      if (dias > 0) {
+        b.textContent = `🔴 Fechado — Voltamos ${nomeDia} às 18h (em ${dias}d ${horasAte}h ${minutosAte}m)`;
+      } else {
+        b.textContent = `🔴 Fechado — Voltamos ${nomeDia} às 18h (em ${horasAte}h ${minutosAte}m ${segundosAte}s)`;
+      }
+    }
+  }
+}
+updateStatus();
+setInterval(updateStatus, 1000);
+
+// SPLASH + SCROLL LOCK
+document.body.style.overflow = 'hidden';
+window.scrollTo(0, 0);
+setTimeout(() => {
+  const s = document.getElementById('splash');
+  s.style.opacity = '0';
+  setTimeout(() => {
+    s.style.display = 'none';
+    document.body.style.overflow = '';
+    window.scrollTo(0, 0);
+  }, 500);
+}, 2500);
+
+// LOAD DATA
+async function loadCombos() {
+  const data = await api('combos', 'ativo=eq.true');
+  document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
+    <div class="combo-card">
+      ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy">` : '<div class="combo-no-img">🍕</div>'}
+      <div class="combo-body">
+        <span class="combo-tag">PROMOÇÃO</span>
+        <div class="combo-name">${c.nome}</div>
+        <div class="combo-desc">${c.descricao||''}</div>
+        <div class="combo-bottom">
+          <span class="combo-price">R$ ${c.preco.toFixed(2).replace('.',',')}</span>
+          <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">+ Adicionar</button>
+        </div>
+      </div>
+    </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+}
+
+async function loadSalgadas() {
+  const data = await api('pizzas_salgadas', 'ativo=eq.true');
+  const m1 = document.getElementById('meio1'), m2 = document.getElementById('meio2');
+  m1.innerHTML = m2.innerHTML = '';
+  document.getElementById('salgadas-grid').innerHTML = data.map(p => `
+    <div class="pizza-card">
+      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy">` : '<div class="pizza-no-img">🍕</div>'}
+      <div class="pizza-body">
+        <div class="pizza-name">${p.nome}</div>
+        <div class="pizza-desc">${p.descricao||''}</div>
+        <div class="pizza-size">${p.preco_familia ? `Grande R$ ${p.preco_grande.toFixed(2).replace('.',',')} | Família R$ ${p.preco_familia.toFixed(2).replace('.',',')}` : `A partir de R$ ${p.preco_grande.toFixed(2).replace('.',',')}`}</div>
+        <div class="pizza-bottom">
+          <span class="pizza-price">R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span>
+          <button class="btn-meio" onclick="openMeio('${p.nome}',${p.preco_grande})">½+½</button>
+          <button class="btn-add" onclick="addItem('${p.nome} (G)',${p.preco_grande})">+Add</button>
+        </div>
+      </div>
+    </div>`).join('');
+  data.forEach(p => {
+    const o1 = new Option(`${p.nome} — R$ ${p.preco_grande.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_grande}`);
+    const o2 = new Option(`${p.nome} — R$ ${p.preco_grande.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_grande}`);
+    m1.appendChild(o1); m2.appendChild(o2);
+  });
+}
+
+async function loadDoces() {
+  const data = await api('pizzas_doces', 'ativo=eq.true');
+  document.getElementById('doces-grid').innerHTML = data.map(p => `
+    <div class="pizza-card">
+      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy">` : '<div class="pizza-no-img">🍫</div>'}
+      <div class="pizza-body">
+        <div class="pizza-name">${p.nome}</div>
+        <div class="pizza-desc">${p.descricao||''}</div>
+        <div class="pizza-size">Tamanho: 25cm</div>
+        <div class="pizza-bottom">
+          <span class="pizza-price">R$ ${p.preco.toFixed(2).replace('.',',')}</span>
+          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">+Add</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function loadBebidas() {
+  const data = await api('bebidas', 'ativo=eq.true');
+  document.getElementById('bebidas-grid').innerHTML = data.map(b => `
+    <div class="bebida-card">
+      ${b.foto_url ? `<img src="${b.foto_url}" alt="${b.nome}" loading="lazy">` : '<div class="bebida-emoji">🥤</div>'}
+      <div class="bebida-info"><div class="bebida-name">${b.nome}</div><div class="bebida-price">R$ ${b.preco.toFixed(2).replace('.',',')}</div></div>
+      <button class="btn-add" onclick="addItem('${b.nome}',${b.preco})">+</button>
+    </div>`).join('');
+}
+
+async function loadBairros() {
+  const data = await api('bairros', 'ativo=eq.true');
+  bairrosData = data;
+  const gratis = data.filter(b => b.frete === 0);
+  const pago = data.filter(b => b.frete === 4.99);
+  document.getElementById('bairros-gratis').innerHTML = gratis.map(b => `<li>${b.nome}</li>`).join('');
+  document.getElementById('bairros-pago').innerHTML = pago.map(b => `<li>${b.nome}</li>`).join('');
+  const sel = document.getElementById('f-bairro');
+  if (gratis.length) {
+    const g = document.createElement('optgroup'); g.label = '✅ Frete Grátis';
+    gratis.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(g);
+  }
+  if (pago.length) {
+    const p = document.createElement('optgroup'); p.label = '🟡 Frete R$ 4,99';
+    pago.forEach(b => p.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(p);
+  }
+}
+
+loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
+
+// CART
+function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); }
+function closeCart() { document.getElementById('cart-overlay').classList.remove('open'); document.getElementById('cart-panel').classList.remove('open'); }
+function addItem(name, price, obs='') {
+  const ex = cart.find(i => i.name===name && i.obs===obs);
+  if (ex) ex.qty++; else cart.push({name,price,obs,qty:1});
+  updateCount(); toast('Adicionado! 🍕');
+}
+function openMeio(sabor, preco) {
+  const s = document.getElementById('meio1');
+  for (let o of s.options) { if (o.value.startsWith(sabor)) { o.selected=true; break; } }
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function confirmMeio() {
+  const m1 = document.getElementById('meio1').value.split('|');
+  const m2 = document.getElementById('meio2').value.split('|');
+  addItem(`Pizza ½ ${m1[0]} + ½ ${m2[0]}`, Math.max(parseFloat(m1[1]), parseFloat(m2[1])));
+  closeModal();
+}
+function updateCount() {
+  const t = cart.reduce((s,i)=>s+i.qty,0);
+  const el = document.getElementById('cart-count');
+  el.textContent = t; el.style.display = t>0?'flex':'none';
+}
+function renderCart() {
+  const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form');
+  if (!cart.length) { body.innerHTML='<div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!</p></div>'; form.style.display='none'; return; }
+  form.style.display='flex';
+  body.innerHTML = cart.map((item,i) => `
+    <div class="cart-item">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${item.name}</div>
+        ${item.obs?`<div class="cart-item-obs">${item.obs}</div>`:''}
+        <div class="cart-item-qty">
+          <button class="qty-btn" onclick="chQty(${i},-1)">−</button>
+          <span class="qty-num">${item.qty}</span>
+          <button class="qty-btn" onclick="chQty(${i},1)">+</button>
+        </div>
+      </div>
+      <div class="cart-item-price">R$ ${(item.price*item.qty).toFixed(2).replace('.',',')}</div>
+    </div>`).join('');
+  updateTotals();
+}
+function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); updateCount(); renderCart(); }
+function calcFrete() { updateTotals(); }
+function getFrete() { const v=document.getElementById('f-bairro').value; return v?parseFloat(v.split('|')[1]):null; }
+function updateTotals() {
+  const sub = cart.reduce((s,i)=>s+i.price*i.qty,0), fr=getFrete(), tot=sub+(fr||0);
+  document.getElementById('subtotal-val').textContent=`R$ ${sub.toFixed(2).replace('.',',')}`;
+  document.getElementById('frete-val').textContent=fr===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
+  document.getElementById('total-val').textContent=`R$ ${tot.toFixed(2).replace('.',',')}`;
+}
+function finalizarPedido() {
+  const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
+  const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
+  const pag=document.getElementById('f-pagamento').value;
+  if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); return; }
+  const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'', fr=getFrete();
+  const sub=cart.reduce((s,i)=>s+i.price*i.qty,0), tot=sub+(fr||0);
+  const itens=cart.map(i=>`• ${i.qty}x ${i.name}${i.obs?' ('+i.obs+')':''} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}`).join('\n');
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${tot.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
+  // Bloquear se fechado
+  const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
+  const estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24;
+  if (!estaAberto) {
+    alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta a domingo das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
+    return;
+  }
+
+  window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`,'_blank');
+  
+  setTimeout(() => {
+  const listaEl = document.getElementById('obg-pedido-lista');
+  listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
+    cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.name} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}</div>`).join('');
+  document.getElementById('obg-total-val').textContent = 'R$ ' + total.toFixed(2).replace('.',',');
+  document.getElementById('tela-obrigado').classList.add('open');
+  closeCart();
+  }, 300);
+}
+
+function novosPedido() {
+  cart = [];
+  updateCount();
+  document.getElementById('tela-obrigado').classList.remove('open');
+  window.scrollTo(0,0);
+}
+
+// MAPA
+function initMap() {
+  // Preserve scroll position
+  const scrollY = window.scrollY;
+  setTimeout(() => window.scrollTo(0, scrollY), 50);
+
+  const center = {lat: -12.5900, lng: -38.3050}; // Lauro de Freitas centro real
+
+  const map = new google.maps.Map(document.getElementById('mapa'), {
+    zoom: 13,
+    center: center,
+    styles: [
+      {elementType:'geometry',stylers:[{color:'#1a1a1a'}]},
+      {elementType:'labels.text.fill',stylers:[{color:'#aaa'}]},
+      {elementType:'labels.text.stroke',stylers:[{color:'#111'}]},
+      {featureType:'road',elementType:'geometry',stylers:[{color:'#2a2a2a'}]},
+      {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#111'}]},
+      {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#333'}]},
+      {featureType:'water',elementType:'geometry',stylers:[{color:'#0a0a2e'}]},
+      {featureType:'poi',stylers:[{visibility:'off'}]},
+      {featureType:'transit',stylers:[{visibility:'off'}]}
+    ],
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: true
+  });
+
+  // Coordenadas reais de Lauro de Freitas e Salvador orla norte
+  const bairrosGratis = [
+    {nome:'Pitangueiras', lat:-12.5780, lng:-38.3120, frete:'Grátis'},
+    {nome:'Vilas do Atlântico', lat:-12.5700, lng:-38.3000, frete:'Grátis'},
+    {nome:'Morada do Sol', lat:-12.5850, lng:-38.3200, frete:'Grátis'},
+    {nome:'Buraquinho', lat:-12.5950, lng:-38.3150, frete:'Grátis'},
+    {nome:'Vila Praiana', lat:-12.5650, lng:-38.2980, frete:'Grátis'},
+    {nome:'Ipitanga', lat:-12.6050, lng:-38.3300, frete:'Grátis'},
+    {nome:'Residencial Buena Vista', lat:-12.5900, lng:-38.3250, frete:'Grátis'},
+    {nome:'Portão do Sol', lat:-12.5820, lng:-38.3180, frete:'Grátis'},
+    {nome:'Loteamento Miragem', lat:-12.5750, lng:-38.3080, frete:'Grátis'},
+    {nome:'Parque Jockey Clube', lat:-12.6000, lng:-38.3100, frete:'Grátis'},
+  ];
+
+  const bairrosPago = [
+    {nome:'Stella Maris', lat:-12.5200, lng:-38.2650, frete:'R$ 4,99'},
+    {nome:'Praia do Flamengo', lat:-12.5380, lng:-38.2750, frete:'R$ 4,99'},
+    {nome:'Praia de Itapinga', lat:-12.5550, lng:-38.2900, frete:'R$ 4,99'},
+  ];
+
+  const infoWindow = new google.maps.InfoWindow();
+
+  function addMarker(b, color) {
+    const marker = new google.maps.Marker({
+      position: {lat: b.lat, lng: b.lng},
+      map: map,
+      title: b.nome,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 10,
+        fillColor: color,
+        fillOpacity: 0.9,
+        strokeColor: '#fff',
+        strokeWeight: 2
+      }
+    });
+    marker.addListener('click', () => {
+      infoWindow.setContent(`<div class="map-info"><strong>${b.nome}</strong><span>Frete: ${b.frete}</span></div>`);
+      infoWindow.open(map, marker);
+    });
+  }
+
+  bairrosGratis.forEach(b => addMarker(b, '#4ade80'));
+  bairrosPago.forEach(b => addMarker(b, '#facc15'));
+}
+
+// AVALIACOES
+let avalSelecionada = 0;
+
+function openAval() {
+  document.getElementById('modal-aval-overlay').classList.add('open');
+}
+function closeAval() {
+  document.getElementById('modal-aval-overlay').classList.remove('open');
+  avalSelecionada = 0;
+  document.querySelectorAll('.star-select span').forEach(s => s.classList.remove('on'));
+  document.getElementById('aval-nome-input').value = '';
+  document.getElementById('aval-texto-input').value = '';
+}
+function selectStar(n) {
+  avalSelecionada = n;
+  document.querySelectorAll('.star-select span').forEach((s, i) => {
+    s.classList.toggle('on', i < n);
+  });
+}
+
+async function enviarAval() {
+  const nome = document.getElementById('aval-nome-input').value.trim();
+  const texto = document.getElementById('aval-texto-input').value.trim();
+  if (!nome || !texto || !avalSelecionada) { alert('Preencha todos os campos e selecione as estrelas!'); return; }
+  const data = { nome, texto, estrelas: avalSelecionada, data: new Date().toLocaleDateString('pt-BR') };
+  const r = await fetch(`${SB}/rest/v1/avaliacoes`, {
+    method: 'POST',
+    headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+    body: JSON.stringify(data)
+  });
+  if (r.ok) { closeAval(); loadAvaliacoes(); toast('Obrigado pela avaliação! ⭐'); }
+  else { alert('Erro ao enviar. Tente novamente.'); }
+}
+
+async function loadAvaliacoes() {
+  try {
+    const data = await api('avaliacoes', 'order=id.desc&limit=6');
+    if (!data || !data.length) {
+      document.getElementById('aval-grid').innerHTML = '<p style="color:rgba(255,255,255,0.3);font-size:13px;">Seja o primeiro a avaliar! 🍕</p>';
+      return;
+    }
+    const total = data.length;
+    const media = data.reduce((s, a) => s + a.estrelas, 0) / total;
+    document.getElementById('nota-geral').textContent = media.toFixed(1);
+    document.getElementById('total-aval').textContent = total + (total === 1 ? ' avaliação' : ' avaliações');
+
+    // Barras
+    for (let i = 5; i >= 1; i--) {
+      const count = data.filter(a => a.estrelas === i).length;
+      const pct = total > 0 ? (count / total * 100) : 0;
+      const fills = document.querySelectorAll('.aval-barra-fill');
+      fills[5 - i].style.width = pct + '%';
+    }
+
+    document.getElementById('aval-grid').innerHTML = data.map(a => `
+      <div class="aval-card">
+        <div class="aval-header">
+          <div class="aval-avatar">${a.nome.charAt(0).toUpperCase()}</div>
+          <div>
+            <div class="aval-nome">${a.nome}</div>
+            <div class="aval-data">${a.data || ''}</div>
+          </div>
+        </div>
+        <div class="stars">${'★'.repeat(a.estrelas)}${'☆'.repeat(5 - a.estrelas)}</div>
+        <div class="aval-texto">${a.texto}</div>
+      </div>`).join('');
+  } catch(e) { console.log('Avaliacoes nao carregadas:', e); }
+}
+loadAvaliacoes();
+
+// CONTATO
+let tipoContato = 'duvida';
+function setTipo(tipo, el) {
+  tipoContato = tipo;
+  document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+async function enviarContato() {
+  const nome = document.getElementById('c-nome').value.trim();
+  const telefone = document.getElementById('c-telefone').value.trim();
+  const mensagem = document.getElementById('c-mensagem').value.trim();
+  if (!nome || !mensagem) { alert('Preencha nome e mensagem!'); return; }
+  const data = { nome, telefone, mensagem, tipo: tipoContato, data: new Date().toLocaleDateString('pt-BR') };
+  const r = await fetch(`${SB}/rest/v1/contatos`, {
+    method: 'POST',
+    headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+    body: JSON.stringify(data)
+  });
+  if (r.ok) {
+    document.getElementById('c-nome').value = '';
+    document.getElementById('c-telefone').value = '';
+    document.getElementById('c-mensagem').value = '';
+    toast('Mensagem enviada! Obrigado 💬');
+  } else { alert('Erro ao enviar. Tente novamente.'); }
+}
+function toast(msg) {
+  const t=document.createElement('div'); t.textContent=msg;
+  Object.assign(t.style,{position:'fixed',bottom:'88px',left:'50%',transform:'translateX(-50%)',background:'#111',color:'white',padding:'9px 18px',borderRadius:'20px',fontSize:'13px',fontWeight:'600',zIndex:'999',whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(0,0,0,0.3)'});
+  document.body.appendChild(t); setTimeout(()=>t.remove(),2000);
+}
+</script>
+
+<div class="modal-overlay" id="modal-aval-overlay" style="z-index:450;">
+  <div class="modal-aval">
+    <h3>⭐ Sua Avaliação</h3>
+    <p>Conta como foi sua experiência com a Big Bang Pizza!</p>
+    <div class="star-select">
+      <span onclick="selectStar(1)">★</span>
+      <span onclick="selectStar(2)">★</span>
+      <span onclick="selectStar(3)">★</span>
+      <span onclick="selectStar(4)">★</span>
+      <span onclick="selectStar(5)">★</span>
+    </div>
+    <input type="text" id="aval-nome-input" placeholder="Seu nome *">
+    <textarea id="aval-texto-input" placeholder="Conte sua experiência... *"></textarea>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeAval()">Cancelar</button>
+      <button class="btn-modal-ok" onclick="enviarAval()">ENVIAR ⭐</button>
+    </div>
+  </div>
+</div>
+
+<div id="tela-obrigado">
+  <div class="obg-icon">🍕</div>
+  <div class="obg-title">PEDIDO ENVIADO!</div>
+  <div class="obg-sub">Sua mensagem foi aberta no WhatsApp.<br>Aguarde a confirmação da Big Bang Pizza!</div>
+
+  <div class="obg-card">
+    <div class="obg-tempo" id="obg-tempo">35–60</div>
+    <div class="obg-tempo-label">minutos para entrega</div>
+    <div class="obg-alerta">⚡ Pode chegar antes! Fique de olho no WhatsApp.</div>
+    <div class="obg-pedido" id="obg-pedido-lista"></div>
+    <div class="obg-total"><span>TOTAL</span><span id="obg-total-val"></span></div>
+  </div>
+
+  <button class="btn-obg-novo" onclick="novosPedido()">🍕 FAZER NOVO PEDIDO</button>
+  <br>
+  <button class="btn-obg-wpp" onclick="window.open('https://wa.me/5571993738823','_blank')">💬 Abrir WhatsApp</button>
+</div>
+</body>
+</html>
