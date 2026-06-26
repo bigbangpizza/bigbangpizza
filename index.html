@@ -413,6 +413,7 @@ footer img{width:130px;margin-bottom:8px;}
     <input type="text" id="f-nome" placeholder="Nome completo *">
     <input type="text" id="f-endereco" placeholder="Rua e número *">
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
+    <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
@@ -692,6 +693,7 @@ function finalizarPedido() {
     body: JSON.stringify({
       nome, endereco: end + (comp?', '+comp:''), bairro: bNome,
       complemento: comp, pagamento: pag,
+      whatsapp: document.getElementById('f-whatsapp').value.trim() || null,
       itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
       subtotal: sub, frete: fr||0, total
     })

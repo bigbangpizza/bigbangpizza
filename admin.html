@@ -402,7 +402,10 @@ async function loadPedidos(status='novo') {
     const data_fmt = dt.toLocaleDateString('pt-BR');
     return `<tr>
       <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">#${p.id}</td>
-      <td><strong>${p.nome}</strong><br><span style="font-size:11px;color:rgba(255,255,255,0.35);">${p.bairro||''}</span></td>
+      <td><strong>${p.nome}</strong><br>
+        <span style="font-size:11px;color:rgba(255,255,255,0.35);">${p.bairro||''}</span><br>
+        ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:11px;color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="font-size:11px;color:rgba(255,255,255,0.2);">Sem WhatsApp</span>'}
+      </td>
       <td style="font-size:12px;color:rgba(255,255,255,0.55);max-width:200px;">${p.itens}</td>
       <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${(p.total||0).toFixed(2).replace('.',',')}</td>
       <td style="font-size:11px;color:rgba(255,255,255,0.35);">${hora}<br>${data_fmt}</td>
