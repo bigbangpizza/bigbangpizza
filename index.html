@@ -437,8 +437,7 @@ footer img{width:130px;margin-bottom:8px;}
 </div>
 
 <script>
-const SB = 'https://alvvkpuedwrxbmkkayff.supabase.co';
-const SK = 'sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
+const SB=atob('aHR0cHM6Ly9hbHZ2a3B1ZWR3cnhibWtrYXlmZi5zdXBhYmFzZS5jbw=='), SK=atob('c2JfcHVibGlzaGFibGVfU3FrZFp6MnBreHNOSUl1ZGhGSHg3UV95SDVfZVUzMw==');
 let cart = [], bairrosData = [];
 
 async function api(table, q='') {
@@ -578,7 +577,7 @@ async function loadDoces() {
         <div class="pizza-size">Tamanho: 25cm</div>
         <div class="pizza-bottom">
           <span class="pizza-price">R$ ${p.preco.toFixed(2).replace('.',',')}</span>
-          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">+Add</button>
+          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">+ Adicionar</button>
         </div>
       </div>
     </div>`).join('');
