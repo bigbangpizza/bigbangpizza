@@ -232,6 +232,13 @@ footer img{width:130px;margin-bottom:8px;}
 .obg-total{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:20px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);}
 .btn-obg-novo{background:var(--red);color:white;border:none;padding:13px 32px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;cursor:pointer;margin-top:4px;}
 .btn-obg-wpp{background:#25D366;color:white;border:none;padding:10px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;margin-top:8px;}
+
+/* SIZE SELECTOR */
+.size-selector{display:flex;gap:6px;margin:6px 0;}
+.size-btn{flex:1;padding:6px 4px;border-radius:7px;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:11px;font-weight:600;color:var(--gray);text-align:center;transition:all 0.2s;line-height:1.4;}
+.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--red);}
+.size-btn.active{background:var(--red);border-color:var(--red);color:white;}
+.size-btn.active span{color:white;}
 /* RESPONSIVE */
 @media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
 @media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
@@ -870,6 +877,21 @@ async function enviarContato() {
     document.getElementById('c-mensagem').value = '';
     toast('Mensagem enviada! Obrigado 💬');
   } else { alert('Erro ao enviar. Tente novamente.'); }
+}
+
+// SELETOR DE TAMANHO
+function selectSize(id, tamanho, preco, nome, outroPreco) {
+  // Atualiza botões
+  const btns = document.querySelectorAll(`#size-${id} .size-btn`);
+  btns.forEach(b => b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  
+  // Atualiza preço exibido
+  document.getElementById(`price-${id}`).textContent = `R$ ${preco.toFixed(2).replace('.',',')}`;
+  
+  // Atualiza botão adicionar
+  const btnAdd = document.getElementById(`btn-${id}`);
+  btnAdd.onclick = () => addItem(`${nome} (${tamanho === 'G' ? 'Grande' : 'Família'})`, preco);
 }
 function toast(msg) {
   const t=document.createElement('div'); t.textContent=msg;
