@@ -123,6 +123,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('doces')" id="nav-doces"><span class="ic">🍫</span> Doces</div>
       <div class="nav-item" onclick="show('bebidas')" id="nav-bebidas"><span class="ic">🥤</span> Bebidas</div>
       <div class="nav-item" onclick="show('bairros')" id="nav-bairros"><span class="ic">🛵</span> Bairros</div>
+      <div class="nav-item" onclick="show('pedidos')" id="nav-pedidos"><span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('contatos')" id="nav-contatos"><span class="ic">💬</span> Contatos</div>
     </div>
@@ -158,6 +159,19 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="page-title">BEBIDAS</div>
       <div class="page-sub">Gerencie as bebidas</div>
       <div class="tw"><div class="tw-head"><h3>Bebidas</h3><button class="btn-new" onclick="openMod('bebidas')">+ Nova</button></div><div id="t-bebidas"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-pedidos" class="hidden">
+      <div class="page-title">PEDIDOS</div>
+      <div class="page-sub">Pedidos recebidos em tempo real 🍕</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;" id="pedidos-filtros">
+        <button class="be" onclick="filtrarPedidos('novo')" id="f-novo">🔴 Novos</button>
+        <button class="bt" onclick="filtrarPedidos('preparando')" id="f-preparando">🟡 Preparando</button>
+        <button class="bt" onclick="filtrarPedidos('saiu')" id="f-saiu">🛵 Saiu p/ Entrega</button>
+        <button class="bt" onclick="filtrarPedidos('entregue')" id="f-entregue">✅ Entregues</button>
+        <button class="bt" onclick="filtrarPedidos('todos')" id="f-todos">📋 Todos</button>
+      </div>
+      <div class="tw"><div id="t-pedidos"><div class="loading">Carregando...</div></div></div>
     </div>
 
     <div id="pg-avaliacoes" class="hidden">
@@ -230,6 +244,7 @@ function show(page){
   document.getElementById('nav-'+page).classList.add('active');
   if(page==='dashboard') loadDash();
   else if(page==='bairros') loadBairros();
+  else if(page==='pedidos') loadPedidos('novo');
   else if(page==='avaliacoes') loadAvaliacoes();
   else if(page==='contatos') loadContatos();
   else loadTable(page);
@@ -251,7 +266,9 @@ async function loadDash(){
   try {
     const av = await api('avaliacoes');
     const ct = await api('contatos');
+    const pd = await api('pedidos','status=eq.novo','created_at.desc');
     document.getElementById('stats').innerHTML += `
+      <div class="stat"><div class="stat-n" style="color:#ff4444">${pd.length}</div><div class="stat-l">Pedidos Novos</div></div>
       <div class="stat"><div class="stat-n">${av.length}</div><div class="stat-l">Avaliações</div></div>
       <div class="stat"><div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">Mensagens Novas</div></div>`;
   } catch(e) {}
@@ -277,7 +294,15 @@ async function loadTable(type){
 }
 
 async function tog(tbl,id,cur,type){await upd(tbl,id,{ativo:!cur});loadTable(type);}
-async function rem(tbl,id,type){if(confirm('Deletar este item?')){await del(tbl,id);loadTable(type);}}
+async function rem(tbl,id,type){
+  if(confirm('Deletar este item?')){
+    await del(tbl,id);
+    if(type==='pedidos') loadPedidos(pedidoFiltroAtual);
+    else if(type==='avaliacoes') loadAvaliacoes();
+    else if(type==='contatos') loadContatos();
+    else loadTable(type);
+  }
+}
 
 async function openMod(type,id=null){
   curTable=type; editId=id;
@@ -349,6 +374,63 @@ async function loadBairros(){
   document.getElementById('t-bairros').innerHTML=html;
 }
 async function togBairro(id,ativo){await upd('bairros',id,{ativo});}
+
+let pedidoFiltroAtual = 'novo';
+
+async function filtrarPedidos(status) {
+  pedidoFiltroAtual = status;
+  document.querySelectorAll('#pedidos-filtros button').forEach(b => b.className = 'bt');
+  const el = document.getElementById('f-' + status);
+  if (el) el.className = 'be';
+  loadPedidos(status);
+}
+
+async function loadPedidos(status='novo') {
+  const q = status === 'todos' ? '' : `status=eq.${status}`;
+  const data = await api('pedidos', q, 'created_at.desc');
+  const statusLabels = {novo:'🔴 Novo', preparando:'🟡 Preparando', saiu:'🛵 Saiu', entregue:'✅ Entregue'};
+  const statusColors = {novo:'#ff4444', preparando:'#facc15', saiu:'#60a5fa', entregue:'#4ade80'};
+  
+  if (!data.length) {
+    document.getElementById('t-pedidos').innerHTML = '<div class="loading">Nenhum pedido encontrado.</div>';
+    return;
+  }
+
+  const rows = data.map(p => {
+    const dt = new Date(p.created_at);
+    const hora = dt.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const data_fmt = dt.toLocaleDateString('pt-BR');
+    return `<tr>
+      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">#${p.id}</td>
+      <td><strong>${p.nome}</strong><br><span style="font-size:11px;color:rgba(255,255,255,0.35);">${p.bairro||''}</span></td>
+      <td style="font-size:12px;color:rgba(255,255,255,0.55);max-width:200px;">${p.itens}</td>
+      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${(p.total||0).toFixed(2).replace('.',',')}</td>
+      <td style="font-size:11px;color:rgba(255,255,255,0.35);">${hora}<br>${data_fmt}</td>
+      <td>
+        <select onchange="atualizarStatus(${p.id},this.value)" style="background:#111;color:white;border:1px solid rgba(255,255,255,0.1);padding:5px;border-radius:5px;font-size:12px;">
+          <option value="novo" ${p.status==='novo'?'selected':''}>🔴 Novo</option>
+          <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
+          <option value="saiu" ${p.status==='saiu'?'selected':''}>🛵 Saiu</option>
+          <option value="entregue" ${p.status==='entregue'?'selected':''}>✅ Entregue</option>
+        </select>
+      </td>
+      <td><button class="bd" onclick="rem('pedidos',${p.id},'pedidos')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('t-pedidos').innerHTML = `
+    <table>
+      <thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Horário</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  
+  // Auto-refresh a cada 30 segundos
+  setTimeout(() => { if(pedidoFiltroAtual === status) loadPedidos(status); }, 30000);
+}
+
+async function atualizarStatus(id, status) {
+  await upd('pedidos', id, {status});
+}
 
 async function loadAvaliacoes(){
   const data = await api('avaliacoes');

@@ -674,6 +674,18 @@ function finalizarPedido() {
 
   window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`,'_blank');
   
+  // Registrar pedido no Supabase
+  fetch(`${SB}/rest/v1/pedidos`, {
+    method: 'POST',
+    headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+    body: JSON.stringify({
+      nome, endereco: end + (comp?', '+comp:''), bairro: bNome,
+      complemento: comp, pagamento: pag,
+      itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
+      subtotal: sub, frete: fr||0, total
+    })
+  }).catch(e => console.log('Erro ao registrar pedido:', e));
+
   setTimeout(() => {
   const listaEl = document.getElementById('obg-pedido-lista');
   listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
