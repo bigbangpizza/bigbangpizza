@@ -1164,7 +1164,7 @@ async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContato
 async function remContato(id){ if(confirm('Remover?')){ await del('contatos',id); loadContatos(); } }
 
 async function loadClientes() {
-  const data = await apiGet('pedidos', 'order=created_at.desc');
+  const data = await api('pedidos','','created_at.desc');
   
   // Deduplicate by whatsapp or nome
   const vistos = new Set();
@@ -1210,11 +1210,10 @@ async function loadClientes() {
       </tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum cliente ainda</td></tr>'}</tbody>
     </table>`;
-} 
-
+}
 
 async function exportarClientesCSV() {
-  const data = await apiGet('pedidos', 'order=created_at.desc');
+  const data = await api('pedidos','','created_at.desc');
   const vistos = new Set();
   const clientes = [];
   for (const p of data) {
