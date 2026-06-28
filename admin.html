@@ -406,37 +406,65 @@ async function loadPedidos(status='novo') {
     return;
   }
 
-  const rows = data.map(p => {
+  // Cards de cozinha em vez de tabela
+  const cardsHtml = data.map(p => {
     const dt = new Date(p.created_at);
     const hora = dt.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
-    const data_fmt = dt.toLocaleDateString('pt-BR');
-    return `<tr>
-      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">#${p.id}</td>
-      <td><strong>${p.nome}</strong><br>
-        <span style="font-size:11px;color:rgba(255,255,255,0.35);">${p.bairro||''}</span><br>
-        ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:11px;color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="font-size:11px;color:rgba(255,255,255,0.2);">Sem WhatsApp</span>'}
-      </td>
-      <td style="font-size:12px;color:rgba(255,255,255,0.55);max-width:200px;">${p.itens}</td>
-      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${(p.total||0).toFixed(2).replace('.',',')}</td>
-      <td style="font-size:11px;color:rgba(255,255,255,0.35);">${hora}<br>${data_fmt}</td>
-      <td>
-        <select onchange="atualizarStatus(${p.id},this.value)" style="background:#111;color:white;border:1px solid rgba(255,255,255,0.1);padding:5px;border-radius:5px;font-size:12px;">
-          <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
+    const itensFormatados = p.itens ? p.itens.split(' | ').map(i => `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:15px;font-weight:600;color:white;">🍕 ${i}</div>`).join('') : '';
+    const statusCores = {aguardando:'#ff4444',aceito:'#a78bfa',preparando:'#facc15',saiu:'#60a5fa',entregue:'#4ade80'};
+    const cor = statusCores[p.status] || '#fff';
+    return `
+    <div style="background:#1a1a1a;border:2px solid ${cor};border-radius:12px;padding:18px;margin-bottom:14px;">
+      
+      <!-- HEADER DO PEDIDO -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
+          <div>
+            <div style="font-weight:700;font-size:15px;color:white;">${p.nome}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.4);">${hora} • ${p.bairro||''}</div>
+            ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/[^0-9]/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : ''}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--orange);">R$ ${(p.total||0).toFixed(2).replace('.',',')}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.4);">${p.pagamento||''}</div>
+        </div>
+      </div>
+
+      <!-- ITENS -->
+      <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 Pedido</div>
+        ${itensFormatados}
+      </div>
+
+      <!-- OBSERVAÇÃO -->
+      ${p.observacao ? `
+      <div style="background:rgba(255,200,0,0.1);border:1px solid rgba(255,200,0,0.3);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="font-size:11px;font-weight:700;color:#facc15;letter-spacing:1px;margin-bottom:4px;">⚠️ OBSERVAÇÃO DO CLIENTE</div>
+        <div style="font-size:14px;color:white;font-weight:600;">${p.observacao}</div>
+      </div>` : ''}
+
+      <!-- ENDEREÇO -->
+      <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:12px;">
+        📍 ${p.endereco||''} ${p.complemento?'— '+p.complemento:''}
+      </div>
+
+      <!-- STATUS -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <select onchange="atualizarStatus(${p.id},this.value)" style="flex:1;background:#111;color:white;border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
+          <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando confirmação</option>
           <option value="aceito" ${p.status==='aceito'?'selected':''}>✅ Aceito</option>
           <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
-          <option value="saiu" ${p.status==='saiu'?'selected':''}>🛵 Saiu</option>
+          <option value="saiu" ${p.status==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
           <option value="entregue" ${p.status==='entregue'?'selected':''}>🏁 Entregue</option>
         </select>
-      </td>
-      <td><button class="bd" onclick="rem('pedidos',${p.id},'pedidos')">🗑️</button></td>
-    </tr>`;
+        <button class="bd" onclick="rem('pedidos',${p.id},'pedidos')" style="padding:8px 12px;">🗑️</button>
+      </div>
+    </div>`;
   }).join('');
 
-  document.getElementById('t-pedidos').innerHTML = `
-    <table>
-      <thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Horário</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  document.getElementById('t-pedidos').innerHTML = cardsHtml || '<div class="loading">Nenhum pedido encontrado.</div>';
   
   // Auto-refresh a cada 30 segundos
   setTimeout(() => { if(pedidoFiltroAtual === status) loadPedidos(status); }, 30000);
