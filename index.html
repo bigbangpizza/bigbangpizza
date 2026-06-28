@@ -234,11 +234,12 @@ footer img{width:130px;margin-bottom:8px;}
 .btn-obg-wpp{background:#25D366;color:white;border:none;padding:10px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;margin-top:8px;}
 
 /* SIZE SELECTOR */
-.size-selector{display:flex;gap:6px;margin:6px 0;}
-.size-btn{flex:1;padding:6px 4px;border-radius:7px;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:11px;font-weight:600;color:var(--gray);text-align:center;transition:all 0.2s;line-height:1.4;}
-.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--red);}
+.size-selector{display:flex;gap:8px;margin:8px 0;}
+.size-btn{flex:1;padding:10px 6px;border-radius:8px;border:2px solid var(--cream-dark);background:white;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray);text-align:center;transition:all 0.2s;line-height:1.4;}
+.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--red);margin-top:2px;}
 .size-btn.active{background:var(--red);border-color:var(--red);color:white;}
 .size-btn.active span{color:white;}
+.size-btn:hover{border-color:var(--red);}
 
 /* BUSCA */
 .search-wrap{max-width:1100px;margin:0 auto;padding:0 20px 20px;}
@@ -246,6 +247,23 @@ footer img{width:130px;margin-bottom:8px;}
 .search-input:focus{border-color:var(--red);}
 .search-box{position:relative;}
 .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
+
+/* CUPOM */
+.cupom-banner{background:linear-gradient(135deg,var(--red),#ff4422);color:white;text-align:center;padding:14px 20px;position:relative;overflow:hidden;}
+.cupom-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 10px);}
+.cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;position:relative;}
+.cupom-banner p{font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
+.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:4px;padding:6px 20px;border-radius:6px;margin:8px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;}
+.cupom-restantes{font-size:12px;color:rgba(255,255,255,0.7);position:relative;}
+
+/* CAMPO CUPOM NO CHECKOUT */
+.cupom-input-wrap{display:flex;gap:8px;}
+.cupom-input-wrap input{flex:1;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;}
+.cupom-input-wrap input:focus{border-color:var(--red);}
+.btn-cupom{background:var(--black);color:white;border:none;padding:9px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.cupom-ok{color:#1a7a3c;font-size:12px;font-weight:600;margin-top:4px;display:none;}
+.cupom-erro{color:var(--red);font-size:12px;font-weight:600;margin-top:4px;display:none;}
+.desconto-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:#1a7a3c;font-weight:600;}
 /* RESPONSIVE */
 @media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
 @media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
@@ -276,6 +294,14 @@ footer img{width:130px;margin-bottom:8px;}
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
   <a href="#combos" class="hero-cta">Ver Cardápio</a>
+</div>
+
+<!-- BANNER CUPOM -->
+<div class="cupom-banner" id="cupom-banner">
+  <h3>🎉 OFERTA DE LANÇAMENTO — USE O CUPOM E GANHE 15% OFF!</h3>
+  <p>Válido para os primeiros 50 pedidos pelo site</p>
+  <div class="cupom-code">BIGBANG15</div>
+  <div class="cupom-restantes" id="cupom-restantes">Carregando vagas...</div>
 </div>
 
 <div id="combos" style="background:#0a0a0a;padding:44px 0;">
@@ -433,8 +459,17 @@ footer img{width:130px;margin-bottom:8px;}
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
+    <div>
+      <div class="cupom-input-wrap">
+        <input type="text" id="f-cupom" placeholder="Cupom de desconto (opcional)" style="text-transform:uppercase;">
+        <button class="btn-cupom" onclick="aplicarCupom()">Aplicar</button>
+      </div>
+      <div class="cupom-ok" id="cupom-ok">✅ Cupom aplicado! 15% de desconto</div>
+      <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
+    </div>
     <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..." style="width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical;min-height:60px;"></textarea>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
+    <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto (15%):</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
     <button class="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
@@ -723,7 +758,9 @@ async function finalizarPedido() {
   const sub=cart.reduce((s,i)=>s+i.price*i.qty,0), tot=sub+(fr||0);
   const itens=cart.map(i=>`• ${i.qty}x ${i.name}${i.obs?' ('+i.obs+')':''} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
-  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${tot.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
+  const desconto = cupomAtivo ? sub * CUPOM_DESCONTO : 0;
+  const totalFinal = tot - desconto;
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${cupomAtivo?'\n\n🎟️ Cupom: BIGBANG15 (-15%)':''}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n🎟️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
   let estaAberto;
@@ -758,6 +795,7 @@ async function finalizarPedido() {
         whatsapp: wpp || null,
         observacao: obs || null,
         status: 'aguardando',
+        cupom: cupomAtivo ? 'BIGBANG15' : null,
         itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
         subtotal: sub,
         frete: fr||0,
@@ -987,6 +1025,50 @@ function filtrarPizzas(termo) {
     card.style.display = (!t || nome.includes(t) || desc.includes(t)) ? '' : 'none';
   });
 }
+
+// CUPOM
+const CUPOM_CODIGO = 'BIGBANG15';
+const CUPOM_DESCONTO = 0.15;
+const CUPOM_LIMITE = 50;
+let cupomAtivo = false;
+
+async function loadCupomRestantes() {
+  try {
+    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&select=id`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    const usados = Array.isArray(data) ? data.length : 0;
+    const restantes = CUPOM_LIMITE - usados;
+    const el = document.getElementById('cupom-restantes');
+    const banner = document.getElementById('cupom-banner');
+    if (restantes <= 0) {
+      if (banner) banner.style.display = 'none';
+    } else {
+      if (el) el.textContent = `⚡ Restam apenas ${restantes} vagas!`;
+    }
+  } catch(e) {}
+}
+loadCupomRestantes();
+
+function aplicarCupom() {
+  const codigo = document.getElementById('f-cupom').value.trim().toUpperCase();
+  const ok = document.getElementById('cupom-ok');
+  const erro = document.getElementById('cupom-erro');
+  ok.style.display = 'none';
+  erro.style.display = 'none';
+  
+  if (codigo === CUPOM_CODIGO) {
+    cupomAtivo = true;
+    ok.style.display = 'block';
+    updateTotals();
+  } else {
+    cupomAtivo = false;
+    erro.style.display = 'block';
+    updateTotals();
+  }
+}
+
 function toast(msg) {
   const t=document.createElement('div'); t.textContent=msg;
   Object.assign(t.style,{position:'fixed',bottom:'88px',left:'50%',transform:'translateX(-50%)',background:'#111',color:'white',padding:'9px 18px',borderRadius:'20px',fontSize:'13px',fontWeight:'600',zIndex:'999',whiteSpace:'nowrap',boxShadow:'0 4px 14px rgba(0,0,0,0.3)'});
