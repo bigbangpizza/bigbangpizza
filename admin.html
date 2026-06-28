@@ -329,9 +329,7 @@ function startBlockTimer() {
 // ═══════════════════════════════════════════════════════
 // AUTH — Supabase Auth com fallback btoa
 // ═══════════════════════════════════════════════════════
-// NOTA: Login primário via Supabase Auth (JWT).
-// Se o email ainda não foi confirmado, fallback para btoa temporariamente.
-const PASS_B64 = 'TUByY2VsbzEyMzQ='; // TEMPORÁRIO — remover após confirmar email
+// Login exclusivo via Supabase Auth (JWT). Senha btoa removida.
 
 function getToken() {
   const expires = parseInt(sessionStorage.getItem('bb_expires') || '0');
@@ -379,15 +377,6 @@ async function doLogin() {
       return;
     }
 
-    // Tentativa 2: fallback btoa (temporário até email ser confirmado)
-    if (btoa(senha) === PASS_B64) {
-      resetAttempts();
-      sessionStorage.setItem('bb_auth_type', 'btoa');
-      // Sem token JWT — usa chave anônima (limitado pelo RLS)
-      entrarApp('local');
-      return;
-    }
-
     // Falhou — registrar tentativa
     const attempts = recordAttempt();
     const errEl = document.getElementById('lerr');
@@ -415,9 +404,7 @@ function entrarApp(tipo) {
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   const sub = document.getElementById('pg-dash-sub');
-  if (sub) sub.textContent = tipo === 'JWT'
-    ? `✅ Autenticado via Supabase Auth — sessão segura com JWT`
-    : `⚠️ Sessão local (email não confirmado) — confirme o email para segurança total`;
+  if (sub) sub.textContent = `✅ Autenticado via Supabase Auth — sessão segura com JWT`;
   loadDash();
   loadModoLoja();
 }
@@ -426,9 +413,6 @@ function checkAuth() {
   // Verificar sessão JWT existente
   const token = getToken();
   if (token) { entrarApp('JWT'); return; }
-  // Verificar se estava em sessão btoa
-  const authType = sessionStorage.getItem('bb_auth_type');
-  if (authType === 'btoa') { entrarApp('local'); return; }
   // Verificar bloqueio
   if (isBlocked()) startBlockTimer();
 }
