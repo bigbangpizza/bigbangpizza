@@ -126,6 +126,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('bairros')"   id="nav-bairros">  <span class="ic">🛵</span> Bairros</div>
       <div class="nav-item" onclick="show('pedidos')"   id="nav-pedidos">  <span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
+      <div class="nav-item" onclick="show('clientes')" id="nav-clientes"><span class="ic">👥</span> Clientes</div>
       <div class="nav-item" onclick="show('contatos')"  id="nav-contatos"> <span class="ic">💬</span> Contatos</div>
       <div class="nav-item" onclick="show('estoque')"   id="nav-estoque">  <span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('cmv')"       id="nav-cmv">      <span class="ic">🧮</span> CMV</div>
@@ -188,6 +189,16 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="page-title">AVALIAÇÕES</div><div class="page-sub">Avaliações recebidas dos clientes</div>
       <div id="av-stats"></div>
       <div class="tw"><div class="tw-head"><h3>Todas as Avaliações</h3></div><div id="t-avaliacoes"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <!-- CLIENTES -->
+    <div id="pg-clientes" class="hidden">
+      <div class="page-title">CLIENTES</div>
+      <div class="page-sub">Base de clientes para CRM — coletados via pedidos</div>
+      <div style="margin-bottom:16px;">
+        <button onclick="exportarClientesCSV()" style="background:var(--red);color:white;border:none;padding:9px 18px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;cursor:pointer;letter-spacing:1px;">📊 Exportar CSV</button>
+      </div>
+      <div class="tw"><div id="t-clientes"><div style="text-align:center;padding:36px;color:rgba(255,255,255,0.25);">Carregando...</div></div></div>
     </div>
 
     <!-- CONTATOS -->
@@ -519,6 +530,7 @@ function show(page) {
     relatorio: () => { const b = document.querySelector('#pg-relatorio .be.filtro-btn'); setRelFiltro(b, 'hoje'); },
     avaliacoes: loadAvaliacoes,
     contatos: loadContatos,
+    clientes: loadClientes,
   };
   (map[page] || (() => loadTable(page)))();
 }
@@ -1150,6 +1162,76 @@ async function loadContatos(){
 }
 async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
 async function remContato(id){ if(confirm('Remover?')){ await del('contatos',id); loadContatos(); } }
+
+async function loadClientes() {
+  const data = await apiGet('pedidos', 'order=created_at.desc');
+  
+  // Deduplicate by whatsapp or nome
+  const vistos = new Set();
+  const clientes = [];
+  for (const p of data) {
+    const key = p.whatsapp || p.nome;
+    if (!vistos.has(key)) {
+      vistos.add(key);
+      clientes.push(p);
+    }
+  }
+
+  const rows = clientes.map(p => {
+    const dt = new Date(p.created_at);
+    const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp === p.whatsapp) || (!x.whatsapp && x.nome === p.nome));
+    const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
+    return `<tr>
+      <td><strong>${p.nome}</strong></td>
+      <td>${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
+      <td style="color:rgba(255,255,255,0.5);font-size:12px;">${p.bairro||'—'}</td>
+      <td style="text-align:center;">${pedidosCliente.length}</td>
+      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
+      <td style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>
+      <td>
+        ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}?text=Oi%20${encodeURIComponent(p.nome)}!%20Temos%20novidades%20na%20Big%20Bang%20Pizza%20🍕" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;">📨 Contatar</a>` : '—'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('t-clientes').innerHTML = `
+    <div style="font-size:13px;color:rgba(255,255,255,0.3);margin-bottom:12px;">
+      ${clientes.length} clientes únicos • ${data.length} pedidos total
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Nome</th>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">WhatsApp</th>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Bairro</th>
+        <th style="padding:10px;text-align:center;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Pedidos</th>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Total Gasto</th>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">1º Pedido</th>
+        <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Ação</th>
+      </tr></thead>
+      <tbody>${rows||'<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum cliente ainda</td></tr>'}</tbody>
+    </table>`;
+}
+
+async function exportarClientesCSV() {
+  const data = await apiGet('pedidos', 'order=created_at.desc');
+  const vistos = new Set();
+  const clientes = [];
+  for (const p of data) {
+    const key = p.whatsapp || p.nome;
+    if (!vistos.has(key)) { vistos.add(key); clientes.push(p); }
+  }
+  const headers = ['Nome','WhatsApp','Bairro','Endereço','Total Pedidos','Data 1º Pedido'];
+  const rows = clientes.map(p => {
+    const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp===p.whatsapp)||(!x.whatsapp&&x.nome===p.nome));
+    return [p.nome, p.whatsapp||'', p.bairro||'', p.endereco||'', pedidosCliente.length, new Date(p.created_at).toLocaleDateString('pt-BR')];
+  });
+  const csv = [headers,...rows].map(r=>r.join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`clientes_bigbang_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
 </script>
 </body>
 </html>

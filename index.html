@@ -1053,40 +1053,63 @@ const CUPOM_LIMITE = 50;
 let cupomAtivo = false;
 
 async function loadCupomRestantes() {
+  // Só esconde o banner se cupom esgotado - não mostra quantidade para cliente
   try {
-    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&select=id`, {
+    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&select=id&status=eq.entregue`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
     const usados = Array.isArray(data) ? data.length : 0;
     const restantes = CUPOM_LIMITE - usados;
-    const el = document.getElementById('cupom-restantes');
     const banner = document.getElementById('cupom-banner');
+    const el = document.getElementById('cupom-restantes');
     if (restantes <= 0) {
       if (banner) banner.style.display = 'none';
     } else {
-      if (el) el.textContent = `⚡ Restam apenas ${restantes} vagas!`;
+      // Só mostra urgência quando restam poucos
+      if (el) el.textContent = restantes <= 10 ? `⚡ Últimas ${restantes} vagas!` : '⚡ Válido para os primeiros 50 pedidos!';
     }
-  } catch(e) {}
+  } catch(e) {
+    const el = document.getElementById('cupom-restantes');
+    if (el) el.textContent = '⚡ Válido para os primeiros 50 pedidos!';
+  }
 }
 loadCupomRestantes();
 
-function aplicarCupom() {
+async function aplicarCupom() {
   const codigo = document.getElementById('f-cupom').value.trim().toUpperCase();
   const ok = document.getElementById('cupom-ok');
   const erro = document.getElementById('cupom-erro');
   ok.style.display = 'none';
   erro.style.display = 'none';
   
-  if (codigo === CUPOM_CODIGO) {
-    cupomAtivo = true;
-    ok.style.display = 'block';
-    updateTotals();
-  } else {
+  if (codigo !== CUPOM_CODIGO) {
     cupomAtivo = false;
+    erro.textContent = '❌ Cupom inválido';
     erro.style.display = 'block';
     updateTotals();
+    return;
   }
+
+  // Verificar se ainda há vagas (conta só pedidos entregues)
+  try {
+    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&status=eq.entregue&select=id`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    const usados = Array.isArray(data) ? data.length : 0;
+    if (usados >= CUPOM_LIMITE) {
+      cupomAtivo = false;
+      erro.textContent = '❌ Cupom esgotado! Todas as vagas foram utilizadas.';
+      erro.style.display = 'block';
+      updateTotals();
+      return;
+    }
+  } catch(e) {}
+
+  cupomAtivo = true;
+  ok.style.display = 'block';
+  updateTotals();
 }
 
 function toast(msg) {
