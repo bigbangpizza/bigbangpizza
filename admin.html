@@ -1210,7 +1210,8 @@ async function loadClientes() {
       </tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum cliente ainda</td></tr>'}</tbody>
     </table>`;
-}
+} 
+
 
 async function exportarClientesCSV() {
   const data = await apiGet('pedidos', 'order=created_at.desc');
