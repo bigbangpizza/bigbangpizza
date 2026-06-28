@@ -699,7 +699,11 @@ function updateTotals() {
   document.getElementById('frete-val').textContent=fr===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
   document.getElementById('total-val').textContent=`R$ ${tot.toFixed(2).replace('.',',')}`;
 }
+let enviandoPedido = false;
 async function finalizarPedido() {
+  if (enviandoPedido) return;
+  enviandoPedido = true;
+  setTimeout(() => enviandoPedido = false, 5000);
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
@@ -870,6 +874,7 @@ function selectStar(n) {
 }
 
 async function enviarAval() {
+  if (sessionStorage.getItem('avaliou')) { alert('Você já enviou uma avaliação nesta sessão. Obrigado! 🍕'); closeAval(); return; }
   const nome = document.getElementById('aval-nome-input').value.trim();
   const texto = document.getElementById('aval-texto-input').value.trim();
   if (!nome || !texto || !avalSelecionada) { alert('Preencha todos os campos e selecione as estrelas!'); return; }
@@ -879,7 +884,7 @@ async function enviarAval() {
     headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
     body: JSON.stringify(data)
   });
-  if (r.ok) { closeAval(); loadAvaliacoes(); toast('Obrigado pela avaliação! ⭐'); }
+  if (r.ok) { sessionStorage.setItem('avaliou', '1'); closeAval(); loadAvaliacoes(); toast('Obrigado pela avaliação! ⭐'); }
   else { alert('Erro ao enviar. Tente novamente.'); }
 }
 
@@ -927,6 +932,7 @@ function setTipo(tipo, el) {
   el.classList.add('active');
 }
 async function enviarContato() {
+  if (sessionStorage.getItem('contatou')) { alert('Você já enviou uma mensagem nesta sessão! 💬'); return; }
   const nome = document.getElementById('c-nome').value.trim();
   const telefone = document.getElementById('c-telefone').value.trim();
   const mensagem = document.getElementById('c-mensagem').value.trim();
@@ -941,6 +947,7 @@ async function enviarContato() {
     document.getElementById('c-nome').value = '';
     document.getElementById('c-telefone').value = '';
     document.getElementById('c-mensagem').value = '';
+    sessionStorage.setItem('contatou', '1');
     toast('Mensagem enviada! Obrigado 💬');
   } else { alert('Erro ao enviar. Tente novamente.'); }
 }
