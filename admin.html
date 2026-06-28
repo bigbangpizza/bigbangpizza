@@ -138,6 +138,20 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-dashboard">
       <div class="page-title">DASHBOARD</div>
       <div class="page-sub">Visão geral da Big Bang Pizza</div>
+      
+      <!-- TOGGLE LOJA -->
+      <div id="loja-status-card" style="background:#1a1a1a;border-radius:12px;padding:20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;" id="loja-status-texto">Carregando...</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px;">Horário automático: Quinta a Domingo 18h-00h</div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="setModoLoja('aberta')" id="btn-abrir" class="bt" style="padding:10px 20px;font-size:14px;font-weight:700;">🟢 Forçar Aberta</button>
+          <button onclick="setModoLoja('fechada')" id="btn-fechar" class="bt" style="padding:10px 20px;font-size:14px;font-weight:700;">🔴 Forçar Fechada</button>
+          <button onclick="setModoLoja('automatico')" id="btn-auto" class="be" style="padding:10px 20px;font-size:14px;font-weight:700;">⚙️ Automático</button>
+        </div>
+      </div>
+
       <div class="stats" id="stats"><div class="loading">Carregando...</div></div>
     </div>
 
@@ -303,7 +317,7 @@ function show(page){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('pg-'+page).classList.remove('hidden');
   document.getElementById('nav-'+page).classList.add('active');
-  if(page==='dashboard') loadDash();
+  if(page==='dashboard') { loadDash(); loadModoLoja(); }
   else if(page==='bairros') loadBairros();
   else if(page==='pedidos') loadPedidos('aguardando');
   else if(page==='estoque') loadEstoque();
@@ -313,6 +327,52 @@ function show(page){
   else if(page==='avaliacoes') loadAvaliacoes();
   else if(page==='contatos') loadContatos();
   else loadTable(page);
+}
+
+// ── CONTROLE DA LOJA ──────────────────────────────────
+async function loadModoLoja() {
+  try {
+    const data = await api('configuracoes', 'chave=eq.modo_loja');
+    const modo = data[0]?.valor || 'automatico';
+    updateLojaUI(modo);
+  } catch(e) { console.log('Erro loja:', e); }
+}
+
+function updateLojaUI(modo) {
+  const texto = document.getElementById('loja-status-texto');
+  const card = document.getElementById('loja-status-card');
+  const btnAbrir = document.getElementById('btn-abrir');
+  const btnFechar = document.getElementById('btn-fechar');
+  const btnAuto = document.getElementById('btn-auto');
+  
+  btnAbrir.className = 'bt'; btnFechar.className = 'bt'; btnAuto.className = 'bt';
+  
+  if (modo === 'aberta') {
+    texto.innerHTML = '🟢 <span style="color:#4ade80;">LOJA FORÇADA ABERTA</span>';
+    card.style.borderLeft = '4px solid #4ade80';
+    btnAbrir.className = 'be';
+  } else if (modo === 'fechada') {
+    texto.innerHTML = '🔴 <span style="color:#ff4444;">LOJA FORÇADA FECHADA</span>';
+    card.style.borderLeft = '4px solid #ff4444';
+    btnFechar.className = 'be';
+  } else {
+    texto.innerHTML = '⚙️ <span style="color:rgba(255,255,255,0.6);">Modo Automático — segue horário</span>';
+    card.style.borderLeft = '4px solid rgba(255,255,255,0.1)';
+    btnAuto.className = 'be';
+  }
+}
+
+async function setModoLoja(modo) {
+  try {
+    // Try update first
+    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja`, {
+      method: 'PATCH',
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
+      body: JSON.stringify({valor: modo})
+    });
+    updateLojaUI(modo);
+    showToastAdmin(modo === 'aberta' ? '🟢 Loja forçada ABERTA!' : modo === 'fechada' ? '🔴 Loja forçada FECHADA!' : '⚙️ Modo automático ativado!');
+  } catch(e) { console.error(e); }
 }
 
 async function loadDash(){

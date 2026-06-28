@@ -454,12 +454,31 @@ async function api(table, q='') {
 }
 
 // STATUS + COUNTDOWN
+let modoLojaOverride = null;
+
+async function checkModoLoja() {
+  try {
+    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    modoLojaOverride = data[0]?.valor || 'automatico';
+  } catch(e) { modoLojaOverride = 'automatico'; }
+  updateStatus();
+}
+checkModoLoja();
+setInterval(checkModoLoja, 60000); // Verifica a cada minuto
+
 function updateStatus() {
   const now = new Date();
-  const day = now.getDay(); // 0=dom,1=seg,2=ter,3=qua,4=qui,5=sex,6=sab
+  const day = now.getDay();
   const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
-  const diasAbertos = [0,4,5,6]; // dom, qui, sex, sab
-  const open = diasAbertos.includes(day) && h >= 18 && h < 24;
+  const diasAbertos = [0,4,5,6];
+  
+  let open;
+  if (modoLojaOverride === 'aberta') { open = true; }
+  else if (modoLojaOverride === 'fechada') { open = false; }
+  else { open = diasAbertos.includes(day) && h >= 18 && h < 24; }
   const b = document.getElementById('status-banner');
 
   if (open) {
@@ -692,7 +711,11 @@ async function finalizarPedido() {
   const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${tot.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
-  const estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24;
+  let estaAberto;
+  if (modoLojaOverride === 'aberta') { estaAberto = true; }
+  else if (modoLojaOverride === 'fechada') { estaAberto = false; }
+  else { estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24; }
+  
   if (!estaAberto) {
     alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta a domingo das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
     return;
