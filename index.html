@@ -360,6 +360,12 @@ footer img{width:130px;margin-bottom:8px;}
         <ul id="bairros-pago"></ul>
       </div>
     </div>
+    <div style="margin-top:14px;">
+      <div class="entrega-bloco">
+        <h3><span style="color:#fb923c;">●</span><span style="color:white;">Frete R$ 6,99</span></h3>
+        <ul id="bairros-pago699"></ul>
+      </div>
+    </div>
     <div class="entrega-nota">
       Não encontrou seu bairro? Fale com a gente!<br>
       <a class="btn-wpp" href="https://wa.me/5571993738823" target="_blank">📱 Chamar no WhatsApp</a>
@@ -599,17 +605,23 @@ async function loadBairros() {
   const data = await api('bairros', 'ativo=eq.true');
   bairrosData = data;
   const gratis = data.filter(b => b.frete === 0);
-  const pago = data.filter(b => b.frete === 4.99);
+  const pago499 = data.filter(b => b.frete === 4.99);
+  const pago699 = data.filter(b => b.frete === 6.99);
   document.getElementById('bairros-gratis').innerHTML = gratis.map(b => `<li>${b.nome}</li>`).join('');
-  document.getElementById('bairros-pago').innerHTML = pago.map(b => `<li>${b.nome}</li>`).join('');
+  document.getElementById('bairros-pago').innerHTML = pago499.map(b => `<li>${b.nome}</li>`).join('');
+  if(document.getElementById('bairros-pago699')) document.getElementById('bairros-pago699').innerHTML = pago699.map(b => `<li>${b.nome}</li>`).join('');
   const sel = document.getElementById('f-bairro');
   if (gratis.length) {
     const g = document.createElement('optgroup'); g.label = '✅ Frete Grátis';
     gratis.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(g);
   }
-  if (pago.length) {
+  if (pago499.length) {
     const p = document.createElement('optgroup'); p.label = '🟡 Frete R$ 4,99';
-    pago.forEach(b => p.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(p);
+    pago499.forEach(b => p.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(p);
+  }
+  if (pago699.length) {
+    const p2 = document.createElement('optgroup'); p2.label = '🟠 Frete R$ 6,99';
+    pago699.forEach(b => p2.appendChild(new Option(b.nome, `${b.id}|${b.frete}`))); sel.appendChild(p2);
   }
 }
 
@@ -785,6 +797,7 @@ function initMap() {
     {nome:'Stella Maris', lat:-12.8400, lng:-38.2700, frete:'R$ 4,99'},
     {nome:'Praia do Flamengo', lat:-12.8550, lng:-38.2800, frete:'R$ 4,99'},
     {nome:'Praia de Itapinga', lat:-12.8650, lng:-38.2900, frete:'R$ 4,99'},
+    {nome:'Alphaville de Abrantes', lat:-12.8300, lng:-38.3400, frete:'R$ 6,99'},
   ];
 
   const infoWindow = new google.maps.InfoWindow();

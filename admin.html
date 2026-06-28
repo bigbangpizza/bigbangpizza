@@ -127,6 +127,8 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('contatos')" id="nav-contatos"><span class="ic">💬</span> Contatos</div>
       <div class="nav-item" onclick="show('estoque')" id="nav-estoque"><span class="ic">📦</span> Estoque</div>
+      <div class="nav-item" onclick="show('cmv')" id="nav-cmv"><span class="ic">🧮</span> CMV</div>
+      <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
       <div class="nav-item" onclick="show('financeiro')" id="nav-financeiro"><span class="ic">💰</span> Financeiro</div>
     </div>
     <div class="sb-footer"><a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a></div>
@@ -188,6 +190,43 @@ input:checked+.sl::before{transform:translateX(20px);}
         </div>
         <div id="t-estoque"><div class="loading">Carregando...</div></div>
       </div>
+    </div>
+
+    <div id="pg-cmv" class="hidden">
+      <div class="page-title">CMV — CUSTO DA MERCADORIA</div>
+      <div class="page-sub">Gerencie ingredientes e receitas para calcular o custo de cada pizza</div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+        <!-- INGREDIENTES -->
+        <div class="tw">
+          <div class="tw-head">
+            <h3>Ingredientes</h3>
+            <button class="btn-new" onclick="openModIngrediente()">+ Novo</button>
+          </div>
+          <div id="t-ingredientes"><div class="loading">Carregando...</div></div>
+        </div>
+
+        <!-- RECEITAS -->
+        <div class="tw">
+          <div class="tw-head">
+            <h3>CMV por Pizza</h3>
+            <button class="btn-new" onclick="openModReceita()">+ Nova Receita</button>
+          </div>
+          <div id="t-receitas"><div class="loading">Carregando...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pg-relatorio" class="hidden">
+      <div class="page-title">RELATÓRIO DE VENDAS</div>
+      <div class="page-sub">Faturamento bruto, CMV e lucro líquido por período</div>
+      <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+        <button class="be" onclick="loadRelatorio('hoje')">Hoje</button>
+        <button class="bt" onclick="loadRelatorio('semana')">7 dias</button>
+        <button class="bt" onclick="loadRelatorio('mes')">Este mês</button>
+        <button class="bt" onclick="loadRelatorio('tudo')">Tudo</button>
+      </div>
+      <div id="rel-content"><div class="loading">Carregando...</div></div>
     </div>
 
     <div id="pg-financeiro" class="hidden">
@@ -268,6 +307,8 @@ function show(page){
   else if(page==='bairros') loadBairros();
   else if(page==='pedidos') loadPedidos('aguardando');
   else if(page==='estoque') loadEstoque();
+  else if(page==='cmv') { loadIngredientes(); loadReceitas(); }
+  else if(page==='relatorio') loadRelatorio('mes');
   else if(page==='financeiro') loadFinanceiro();
   else if(page==='avaliacoes') loadAvaliacoes();
   else if(page==='contatos') loadContatos();
@@ -371,16 +412,19 @@ async function openMod(type,id=null){
       <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${item.preco_familia||''}" placeholder="Opcional"></div>
     </div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>
+    <div class="fg"><label>🏷️ Tag (ex: 🔥 Mais Pedido, ⭐ Novidade)</label><input id="ftag" value="${item.tag||''}" placeholder="Opcional"></div>
     <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
   } else if(type==='bebidas'){
     body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
     <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
-    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>`;
+    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>
+    <div class="fg"><label>🏷️ Tag (ex: 🔥 Promoção)</label><input id="ftag" value="${item.tag||''}" placeholder="Opcional"></div>`;
   } else {
     body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
     <div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
     <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}" placeholder="https://..."></div>
+    <div class="fg"><label>🏷️ Tag (ex: 🔥 Mais Pedido, ⭐ Novidade)</label><input id="ftag" value="${item.tag||''}" placeholder="Opcional"></div>
     <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
   }
   document.getElementById('mod-body').innerHTML=body;
@@ -391,6 +435,8 @@ function closeMod(){document.getElementById('modal').classList.remove('open');}
 async function saveItem(){
   const type=curTable, tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
   let data={nome:document.getElementById('fn').value.trim(),foto_url:document.getElementById('ff')?.value.trim()||null,ativo:true};
+  const tagEl = document.getElementById('ftag');
+  if(tagEl) data.tag = tagEl.value.trim() || null;
   if(type==='salgadas'){
     data.preco_grande=parseFloat(document.getElementById('fp').value);
     data.preco_familia=document.getElementById('fpf').value?parseFloat(document.getElementById('fpf').value):null;
@@ -774,6 +820,202 @@ async function delEstoque(id) {
     await del('estoque', id);
     loadEstoque();
   }
+}
+
+// ── CMV ───────────────────────────────────────────────
+let editIngId = null, editRecId = null;
+
+async function loadIngredientes() {
+  const data = await api('ingredientes', 'ativo=eq.true');
+  const rows = data.map(i => `<tr>
+    <td><strong>${i.nome}</strong></td>
+    <td style="color:var(--orange);font-family:'Bebas Neue',sans-serif;font-size:18px;">R$ ${i.custo_kg.toFixed(2).replace('.',',')}/${i.unidade}</td>
+    <td><div class="acts">
+      <button class="be" onclick="openModIngrediente(${i.id})">✏️</button>
+      <button class="bd" onclick="delIng(${i.id})">🗑️</button>
+    </div></td>
+  </tr>`).join('');
+  document.getElementById('t-ingredientes').innerHTML = `
+    <table><thead><tr><th>Ingrediente</th><th>Custo</th><th>Ações</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum ingrediente</td></tr>'}</tbody></table>`;
+}
+
+async function loadReceitas() {
+  const receitas = await api('receitas', 'ativo=eq.true');
+  const ings = await api('ingredientes', 'ativo=eq.true');
+  
+  // Agrupar por produto
+  const grupos = {};
+  for (const r of receitas) {
+    const key = `${r.produto_nome}|${r.tamanho||''}`;
+    if (!grupos[key]) grupos[key] = {nome: r.produto_nome, tamanho: r.tamanho, itens: [], embalagem: r.embalagem||0};
+    const ing = ings.find(i => i.id === r.ingrediente_id);
+    if (ing) {
+      const custo = (r.quantidade_g / 1000) * ing.custo_kg;
+      grupos[key].itens.push({nome: ing.nome, qtd: r.quantidade_g, custo});
+    }
+  }
+
+  const cards = Object.values(grupos).map(g => {
+    const cmvTotal = g.itens.reduce((s,i) => s+i.custo, 0) + (g.embalagem||0);
+    return `<tr>
+      <td><strong>${g.nome}</strong>${g.tamanho?` <span style="font-size:11px;color:rgba(255,255,255,0.4);">(${g.tamanho})</span>`:''}</td>
+      <td style="font-size:11px;color:rgba(255,255,255,0.5);">${g.itens.map(i=>`${i.nome}: ${i.qtd}g`).join('<br>')}</td>
+      <td style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:#ff6666;">R$ ${cmvTotal.toFixed(2).replace('.',',')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('t-receitas').innerHTML = `
+    <table><thead><tr><th>Pizza</th><th>Ingredientes</th><th>CMV</th></tr></thead>
+    <tbody>${cards||'<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhuma receita cadastrada</td></tr>'}</tbody></table>`;
+}
+
+async function openModIngrediente(id=null) {
+  editIngId = id;
+  let item = {};
+  if (id) { const d = await api('ingredientes', `id=eq.${id}`); item = d[0]||{}; }
+  document.getElementById('mod-title').textContent = id ? 'Editar Ingrediente' : 'Novo Ingrediente';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>
+    <div class="fr">
+      <div class="fg"><label>Custo por kg/un (R$)</label><input id="fp" type="number" step="0.01" value="${item.custo_kg||''}"></div>
+      <div class="fg"><label>Unidade (kg, un, L)</label><input id="ff" value="${item.unidade||'kg'}"></div>
+    </div>`;
+  document.querySelector('.bs').onclick = saveIngrediente;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function saveIngrediente() {
+  const nome = document.getElementById('fn').value.trim();
+  const custo_kg = parseFloat(document.getElementById('fp').value);
+  const unidade = document.getElementById('ff').value.trim() || 'kg';
+  if (!nome || !custo_kg) { alert('Preencha todos os campos!'); return; }
+  const ok = editIngId
+    ? await upd('ingredientes', editIngId, {nome, custo_kg, unidade})
+    : await ins('ingredientes', {nome, custo_kg, unidade, ativo: true});
+  if (ok) { closeMod(); loadIngredientes(); }
+}
+
+async function delIng(id) {
+  if (confirm('Deletar ingrediente?')) { await del('ingredientes', id); loadIngredientes(); }
+}
+
+async function openModReceita(id=null) {
+  const ings = await api('ingredientes', 'ativo=eq.true');
+  editRecId = id;
+  document.getElementById('mod-title').textContent = 'Adicionar Ingrediente à Receita';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg"><label>Nome do Produto (ex: Calabresa)</label><input id="fn" value=""></div>
+    <div class="fg"><label>Tamanho (ex: Grande, Família, Doce)</label><input id="ff" value="Grande"></div>
+    <div class="fg"><label>Ingrediente</label>
+      <select id="fp" style="width:100%;padding:9px;background:#111;border:1.5px solid rgba(255,255,255,0.1);border-radius:7px;color:white;font-size:13px;">
+        ${ings.map(i=>`<option value="${i.id}">${i.nome} (R$ ${i.custo_kg.toFixed(2)}/${i.unidade})</option>`).join('')}
+      </select>
+    </div>
+    <div class="fr">
+      <div class="fg"><label>Quantidade (g ou un)</label><input id="fpf" type="number" value="200"></div>
+      <div class="fg"><label>Custo Embalagem (R$)</label><input id="fo" type="number" step="0.01" value="2.50"></div>
+    </div>`;
+  document.querySelector('.bs').onclick = saveReceita;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function saveReceita() {
+  const produto_nome = document.getElementById('fn').value.trim();
+  const tamanho = document.getElementById('ff').value.trim();
+  const ingrediente_id = parseInt(document.getElementById('fp').value);
+  const quantidade_g = parseFloat(document.getElementById('fpf').value);
+  const embalagem = parseFloat(document.getElementById('fo').value) || 0;
+  if (!produto_nome || !ingrediente_id || !quantidade_g) { alert('Preencha todos os campos!'); return; }
+  const ok = await ins('receitas', {produto_nome, tamanho, ingrediente_id, quantidade_g, embalagem, ativo: true});
+  if (ok) { closeMod(); loadReceitas(); }
+}
+
+// ── RELATÓRIO ─────────────────────────────────────────
+async function loadRelatorio(periodo='mes') {
+  document.querySelectorAll('#pg-relatorio button').forEach(b => b.className = 'bt');
+  event?.currentTarget?.classList?.add('be');
+
+  const todos = await api('pedidos', 'status=eq.entregue', 'created_at.desc');
+  const receitas = await api('receitas', 'ativo=eq.true');
+  const ings = await api('ingredientes', 'ativo=eq.true');
+
+  // Filtrar por período
+  const agora = new Date();
+  const filtrar = (p) => {
+    const dt = new Date(p.created_at);
+    if (periodo === 'hoje') return dt.toDateString() === agora.toDateString();
+    if (periodo === 'semana') return dt >= new Date(Date.now() - 7*86400000);
+    if (periodo === 'mes') return dt.getMonth() === agora.getMonth() && dt.getFullYear() === agora.getFullYear();
+    return true;
+  };
+  const pedidos = todos.filter(filtrar);
+
+  const bruto = pedidos.reduce((s,p) => s+(p.total||0), 0);
+  const frete_total = pedidos.reduce((s,p) => s+(p.frete||0), 0);
+
+  // Calcular CMV dos pedidos
+  let cmv_total = 0;
+  const vendas_por_item = {};
+
+  for (const p of pedidos) {
+    const itens = (p.itens||'').split(' | ');
+    for (const item of itens) {
+      const match = item.match(/^(\d+)x (.+)$/);
+      if (!match) continue;
+      const qtd = parseInt(match[1]);
+      const nome = match[2].replace(/ \((Grande|Família|G|F)\)$/,'').trim();
+      const tamanho = item.includes('Família') ? 'Família' : 'Grande';
+
+      // Acumular vendas
+      const key = nome;
+      if (!vendas_por_item[key]) vendas_por_item[key] = {qtd:0, receita:0};
+      vendas_por_item[key].qtd += qtd;
+
+      // Calcular CMV desta receita
+      const rec = receitas.filter(r => r.produto_nome.toLowerCase() === nome.toLowerCase() && (r.tamanho === tamanho || !r.tamanho));
+      for (const r of rec) {
+        const ing = ings.find(i => i.id === r.ingrediente_id);
+        if (ing) {
+          const custo = (r.quantidade_g / 1000) * ing.custo_kg * qtd;
+          cmv_total += custo;
+          vendas_por_item[key].receita += custo;
+        }
+      }
+    }
+  }
+
+  const lucro = bruto - cmv_total;
+  const margem = bruto > 0 ? (lucro/bruto*100) : 0;
+  const fmt = v => `R$ ${v.toFixed(2).replace('.',',')}`;
+
+  const topItens = Object.entries(vendas_por_item)
+    .sort((a,b) => b[1].qtd - a[1].qtd)
+    .slice(0,10);
+
+  document.getElementById('rel-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+      <div class="stat"><div class="stat-n" style="color:#4ade80;">${fmt(bruto)}</div><div class="stat-l">💰 Faturamento Bruto</div></div>
+      <div class="stat"><div class="stat-n" style="color:#facc15;">${fmt(frete_total)}</div><div class="stat-l">🚚 Total Fretes</div></div>
+      <div class="stat"><div class="stat-n" style="color:#ff6666;">${fmt(cmv_total)}</div><div class="stat-l">📦 CMV Total</div></div>
+      <div class="stat"><div class="stat-n" style="color:#60a5fa;">${fmt(lucro)}</div><div class="stat-l">✨ Lucro Estimado</div></div>
+      <div class="stat"><div class="stat-n" style="color:${margem>50?'#4ade80':'#facc15'};">${margem.toFixed(1)}%</div><div class="stat-l">📊 Margem</div></div>
+      <div class="stat"><div class="stat-n">${pedidos.length}</div><div class="stat-l">🍕 Pedidos Entregues</div></div>
+    </div>
+
+    <div class="tw">
+      <div class="tw-head"><h3>🏆 Mais Vendidos</h3></div>
+      <table>
+        <thead><tr><th>Item</th><th>Qtd Vendida</th><th>CMV Total</th></tr></thead>
+        <tbody>
+          ${topItens.map(([nome,v]) => `<tr>
+            <td><strong>${nome}</strong></td>
+            <td style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--orange);">${v.qtd}x</td>
+            <td style="color:#ff6666;">${fmt(v.receita)}</td>
+          </tr>`).join('') || '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum dado ainda</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
 }
 async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
 </script>
