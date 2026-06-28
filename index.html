@@ -239,6 +239,13 @@ footer img{width:130px;margin-bottom:8px;}
 .size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:14px;color:var(--red);}
 .size-btn.active{background:var(--red);border-color:var(--red);color:white;}
 .size-btn.active span{color:white;}
+
+/* BUSCA */
+.search-wrap{max-width:1100px;margin:0 auto;padding:0 20px 20px;}
+.search-input{width:100%;padding:12px 16px 12px 42px;border:1.5px solid var(--cream-dark);border-radius:10px;font-size:14px;font-family:'Inter',sans-serif;outline:none;background:white;position:relative;}
+.search-input:focus{border-color:var(--red);}
+.search-box{position:relative;}
+.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
 /* RESPONSIVE */
 @media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
 @media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
@@ -283,6 +290,10 @@ footer img{width:130px;margin-bottom:8px;}
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title">PIZZAS <span>SALGADAS</span></h2>
     <div class="divider"></div>
+    <div class="search-box" style="margin-bottom:16px;">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="busca-pizza" type="text" placeholder="Buscar pizza... ex: frango, atum, calabresa" oninput="filtrarPizzas(this.value)">
+    </div>
     <p class="section-sub">Todas disponíveis meio a meio 🍕</p>
     <div class="menu-grid" id="salgadas-grid"><div class="loading">Carregando...</div></div>
   </div>
@@ -964,6 +975,17 @@ function selectSize(el, id, tamanho, preco) {
   const btnAdd = document.getElementById('btn-'+id);
   const nomePizza = btnAdd.getAttribute('data-nome') || '';
   btnAdd.onclick = () => addItem(nomePizza + ' (' + tamanho + ')', preco);
+}
+
+// BUSCA NO CARDÁPIO
+function filtrarPizzas(termo) {
+  const cards = document.querySelectorAll('#salgadas-grid .pizza-card');
+  const t = termo.toLowerCase().trim();
+  cards.forEach(card => {
+    const nome = card.querySelector('.pizza-name')?.textContent?.toLowerCase() || '';
+    const desc = card.querySelector('.pizza-desc')?.textContent?.toLowerCase() || '';
+    card.style.display = (!t || nome.includes(t) || desc.includes(t)) ? '' : 'none';
+  });
 }
 function toast(msg) {
   const t=document.createElement('div'); t.textContent=msg;

@@ -238,27 +238,20 @@ input:checked+.sl::before{transform:translateX(20px);}
 </div>
 
 <script>
-const SB='https://alvvkpuedwrxbmkkayff.supabase.co', SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33', PASS_HASH='74842f4c21cbaef73b298757866c48b9bfb39e1ad3485abc006446580387a907';
+const SB='https://alvvkpuedwrxbmkkayff.supabase.co', SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33', PASS_B64='TUByY2VsbzEyMzQ=';
 let curTable='', editId=null;
 
 // ── UTILITÁRIO DE FORMATAÇÃO ──────────────────────────
 function brl(v){ return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
 
-async function doLogin(){
+function doLogin(){
   const senha = document.getElementById('lp').value;
-  const encoder = new TextEncoder();
-  const data = encoder.encode(senha);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
-  if(hashHex === PASS_HASH){
+  if(btoa(unescape(encodeURIComponent(senha))) === PASS_B64){
     document.getElementById('login').style.display='none';
     document.getElementById('app').style.display='block';
     loadDash(); loadModoLoja();
   } else {
     document.getElementById('lerr').style.display='block';
-    await new Promise(r => setTimeout(r, 1500));
-    document.getElementById('lerr').style.display='none';
   }
 }
 
@@ -852,6 +845,31 @@ async function loadRelatorio(period = 'mes') {
 // ── AVALIAÇÕES E CONTATOS ─────────────────────────────
 async function loadAvaliacoes(){
   const data = await api('avaliacoes');
+  // Calcular nota média
+  if (data.length) {
+    const media = data.reduce((s,a) => s+a.estrelas, 0) / data.length;
+    const total = data.length;
+    const dist = [5,4,3,2,1].map(n => ({n, qtd: data.filter(a=>a.estrelas===n).length}));
+    const statsHtml = `
+      <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:16px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+        <div style="text-align:center;">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:52px;color:var(--gold);line-height:1;">${media.toFixed(1)}</div>
+          <div style="color:#facc15;font-size:18px;">${'★'.repeat(Math.round(media))}${'☆'.repeat(5-Math.round(media))}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.3);margin-top:4px;">${total} avaliações</div>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          ${dist.map(d => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-size:12px;color:rgba(255,255,255,0.4);width:14px;">${d.n}</span>
+              <div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
+                <div style="width:${total>0?(d.qtd/total*100):0}%;height:100%;background:#facc15;border-radius:3px;"></div>
+              </div>
+              <span style="font-size:12px;color:rgba(255,255,255,0.4);width:20px;">${d.qtd}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    document.getElementById('t-avaliacoes').innerHTML = statsHtml + '<div id="aval-rows"></div>';
+  }
   const tipos = {5:'⭐⭐⭐⭐⭐',4:'⭐⭐⭐⭐',3:'⭐⭐⭐',2:'⭐⭐',1:'⭐'};
   const rows = data.map(a => `<tr>
     <td><strong>${a.nome}</strong></td>
@@ -882,6 +900,59 @@ async function loadContatos(){
     <thead><tr><th>Cliente</th><th>Tipo</th><th>Mensagem</th><th>Data</th><th>Ações</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,0.3)">Nenhum contato.</td></tr>'}</tbody></table>`;
 }
+function imprimirPedido(id) {
+  // Encontrar o card do pedido
+  const cards = document.querySelectorAll('#t-pedidos > div');
+  let conteudo = '';
+  cards.forEach(card => {
+    if (card.innerHTML.includes(`#${id}`)) {
+      conteudo = card.innerHTML;
+    }
+  });
+  if (!conteudo) { alert('Pedido não encontrado!'); return; }
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Pedido #${id} — Big Bang Pizza</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:20px;color:#000;max-width:400px;}
+      h2{text-align:center;border-bottom:2px solid #000;padding-bottom:8px;}
+      .section{margin:12px 0;padding:10px;border:1px solid #ccc;border-radius:4px;}
+      .item{padding:4px 0;border-bottom:1px solid #eee;}
+      .obs{background:#fff3cd;padding:8px;border-radius:4px;font-weight:bold;}
+      .total{font-size:18px;font-weight:bold;text-align:right;margin-top:12px;}
+      @media print{button{display:none}}
+    </style>
+    </head><body>
+    <h2>🍕 Big Bang Pizza</h2>
+    <p style="text-align:center;">Pedido #${id} — ${new Date().toLocaleString('pt-BR')}</p>
+    <div>${conteudo.replace(/<select[^>]*>.*?<\/select>/gs,'').replace(/<button[^>]*>.*?<\/button>/gs,'').replace(/style="[^"]*color:[^"]*"/g,'')}</div>
+    <script>window.print();setTimeout(()=>window.close(),1000);<\/script>
+    </body></html>`);
+  win.document.close();
+}
+
+async function exportarCSV() {
+  const data = await api('pedidos', '', 'created_at.desc');
+  if (!data.length) { alert('Nenhum pedido para exportar!'); return; }
+  const headers = ['ID','Nome','Bairro','Endereço','Pagamento','WhatsApp','Itens','Subtotal','Frete','Total','Status','Data'];
+  const rows = data.map(p => [
+    p.id, p.nome, p.bairro, p.endereco, p.pagamento, p.whatsapp||'',
+    `"${(p.itens||'').replace(/"/g,'""')}"`,
+    p.subtotal, p.frete, p.total, p.status,
+    new Date(p.created_at).toLocaleString('pt-BR')
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pedidos_bigbang_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
 
 // ── TOAST ─────────────────────────────────────────────
