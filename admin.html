@@ -126,6 +126,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('pedidos')" id="nav-pedidos"><span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('contatos')" id="nav-contatos"><span class="ic">💬</span> Contatos</div>
+      <div class="nav-item" onclick="show('financeiro')" id="nav-financeiro"><span class="ic">💰</span> Financeiro</div>
     </div>
     <div class="sb-footer"><a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a></div>
   </div>
@@ -165,13 +166,20 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="page-title">PEDIDOS</div>
       <div class="page-sub">Pedidos recebidos em tempo real 🍕</div>
       <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;" id="pedidos-filtros">
-        <button class="be" onclick="filtrarPedidos('novo')" id="f-novo">🔴 Novos</button>
+        <button class="be" onclick="filtrarPedidos('aguardando')" id="f-aguardando">⏳ Aguardando</button>
+        <button class="bt" onclick="filtrarPedidos('aceito')" id="f-aceito">✅ Aceito</button>
         <button class="bt" onclick="filtrarPedidos('preparando')" id="f-preparando">🟡 Preparando</button>
-        <button class="bt" onclick="filtrarPedidos('saiu')" id="f-saiu">🛵 Saiu p/ Entrega</button>
-        <button class="bt" onclick="filtrarPedidos('entregue')" id="f-entregue">✅ Entregues</button>
+        <button class="bt" onclick="filtrarPedidos('saiu')" id="f-saiu">🛵 Saiu</button>
+        <button class="bt" onclick="filtrarPedidos('entregue')" id="f-entregue">🏁 Entregue</button>
         <button class="bt" onclick="filtrarPedidos('todos')" id="f-todos">📋 Todos</button>
       </div>
       <div class="tw"><div id="t-pedidos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-financeiro" class="hidden">
+      <div class="page-title">FINANCEIRO</div>
+      <div class="page-sub">Resumo financeiro dos pedidos entregues</div>
+      <div id="fin-content"><div class="loading">Carregando...</div></div>
     </div>
 
     <div id="pg-avaliacoes" class="hidden">
@@ -245,7 +253,8 @@ function show(page){
   document.getElementById('nav-'+page).classList.add('active');
   if(page==='dashboard') loadDash();
   else if(page==='bairros') loadBairros();
-  else if(page==='pedidos') loadPedidos('novo');
+  else if(page==='pedidos') loadPedidos('aguardando');
+  else if(page==='financeiro') loadFinanceiro();
   else if(page==='avaliacoes') loadAvaliacoes();
   else if(page==='contatos') loadContatos();
   else loadTable(page);
@@ -267,9 +276,9 @@ async function loadDash(){
   try {
     const av = await api('avaliacoes');
     const ct = await api('contatos');
-    const pd = await api('pedidos','status=eq.novo','created_at.desc');
+    const pd = await api('pedidos','status=eq.aguardando','created_at.desc');
     document.getElementById('stats').innerHTML += `
-      <div class="stat"><div class="stat-n" style="color:#ff4444">${pd.length}</div><div class="stat-l">Pedidos Novos</div></div>
+      <div class="stat"><div class="stat-n" style="color:#ff4444">${pd.length}</div><div class="stat-l">Aguardando</div></div>
       <div class="stat"><div class="stat-n">${av.length}</div><div class="stat-l">Avaliações</div></div>
       <div class="stat"><div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">Mensagens Novas</div></div>`;
   } catch(e) {}
@@ -376,7 +385,7 @@ async function loadBairros(){
 }
 async function togBairro(id,ativo){await upd('bairros',id,{ativo});}
 
-let pedidoFiltroAtual = 'novo';
+let pedidoFiltroAtual = 'aguardando';
 
 async function filtrarPedidos(status) {
   pedidoFiltroAtual = status;
@@ -389,8 +398,8 @@ async function filtrarPedidos(status) {
 async function loadPedidos(status='novo') {
   const q = status === 'todos' ? '' : `status=eq.${status}`;
   const data = await api('pedidos', q, 'created_at.desc');
-  const statusLabels = {novo:'🔴 Novo', preparando:'🟡 Preparando', saiu:'🛵 Saiu', entregue:'✅ Entregue'};
-  const statusColors = {novo:'#ff4444', preparando:'#facc15', saiu:'#60a5fa', entregue:'#4ade80'};
+  const statusLabels = {aguardando:'⏳ Aguardando', aceito:'✅ Aceito', preparando:'🟡 Preparando', saiu:'🛵 Saiu', entregue:'🏁 Entregue'};
+  const statusColors = {aguardando:'#ff4444', aceito:'#a78bfa', preparando:'#facc15', saiu:'#60a5fa', entregue:'#4ade80'};
   
   if (!data.length) {
     document.getElementById('t-pedidos').innerHTML = '<div class="loading">Nenhum pedido encontrado.</div>';
@@ -412,10 +421,11 @@ async function loadPedidos(status='novo') {
       <td style="font-size:11px;color:rgba(255,255,255,0.35);">${hora}<br>${data_fmt}</td>
       <td>
         <select onchange="atualizarStatus(${p.id},this.value)" style="background:#111;color:white;border:1px solid rgba(255,255,255,0.1);padding:5px;border-radius:5px;font-size:12px;">
-          <option value="novo" ${p.status==='novo'?'selected':''}>🔴 Novo</option>
+          <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
+          <option value="aceito" ${p.status==='aceito'?'selected':''}>✅ Aceito</option>
           <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
           <option value="saiu" ${p.status==='saiu'?'selected':''}>🛵 Saiu</option>
-          <option value="entregue" ${p.status==='entregue'?'selected':''}>✅ Entregue</option>
+          <option value="entregue" ${p.status==='entregue'?'selected':''}>🏁 Entregue</option>
         </select>
       </td>
       <td><button class="bd" onclick="rem('pedidos',${p.id},'pedidos')">🗑️</button></td>
@@ -471,6 +481,80 @@ async function loadContatos(){
     <tbody>${rows}</tbody></table>`;
 }
 
+
+async function loadFinanceiro() {
+  const data = await api('pedidos', '', 'created_at.desc');
+  const entregues = data.filter(p => p.status === 'entregue');
+
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const semanaAtras = new Date(Date.now() - 7*24*60*60*1000);
+  const mesAtual = new Date().getMonth();
+
+  const pedHoje = entregues.filter(p => new Date(p.created_at).toLocaleDateString('pt-BR') === hoje);
+  const pedSemana = entregues.filter(p => new Date(p.created_at) >= semanaAtras);
+  const pedMes = entregues.filter(p => new Date(p.created_at).getMonth() === mesAtual);
+
+  const totalHoje = pedHoje.reduce((s,p) => s+(p.total||0), 0);
+  const totalSemana = pedSemana.reduce((s,p) => s+(p.total||0), 0);
+  const totalMes = pedMes.reduce((s,p) => s+(p.total||0), 0);
+  const totalGeral = entregues.reduce((s,p) => s+(p.total||0), 0);
+  const ticketMedio = entregues.length ? totalGeral/entregues.length : 0;
+
+  // Por forma de pagamento
+  const porPag = {};
+  entregues.forEach(p => {
+    const pag = p.pagamento || 'Não informado';
+    if (!porPag[pag]) porPag[pag] = {qtd:0, total:0};
+    porPag[pag].qtd++;
+    porPag[pag].total += p.total||0;
+  });
+
+  const fmt = v => `R$ ${v.toFixed(2).replace('.',',')}`;
+
+  document.getElementById('fin-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+      <div class="stat"><div class="stat-n" style="color:#4ade80;">${fmt(totalHoje)}</div><div class="stat-l">Hoje (${pedHoje.length} pedidos)</div></div>
+      <div class="stat"><div class="stat-n" style="color:#60a5fa;">${fmt(totalSemana)}</div><div class="stat-l">Últimos 7 dias (${pedSemana.length})</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--orange);">${fmt(totalMes)}</div><div class="stat-l">Este mês (${pedMes.length})</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--gold);">${fmt(totalGeral)}</div><div class="stat-l">Total geral (${entregues.length})</div></div>
+      <div class="stat"><div class="stat-n" style="color:white;">${fmt(ticketMedio)}</div><div class="stat-l">Ticket médio</div></div>
+    </div>
+
+    <div class="tw" style="margin-bottom:20px;">
+      <div class="tw-head"><h3>Por Forma de Pagamento</h3></div>
+      <table>
+        <thead><tr><th>Pagamento</th><th>Qtd Pedidos</th><th>Total</th></tr></thead>
+        <tbody>
+          ${Object.entries(porPag).map(([pag,v]) => `
+            <tr>
+              <td><strong>${pag}</strong></td>
+              <td>${v.qtd}</td>
+              <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">${fmt(v.total)}</td>
+            </tr>`).join('') || '<tr><td colspan="3" style="color:rgba(255,255,255,0.3);text-align:center;padding:20px;">Nenhum pedido entregue ainda</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tw">
+      <div class="tw-head"><h3>Últimos Pedidos Entregues</h3></div>
+      <table>
+        <thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Pagamento</th><th>Total</th><th>Data</th></tr></thead>
+        <tbody>
+          ${entregues.slice(0,20).map(p => {
+            const dt = new Date(p.created_at);
+            return `<tr>
+              <td style="color:var(--orange);font-family:'Bebas Neue',sans-serif;">#${p.id}</td>
+              <td><strong>${p.nome}</strong><br><span style="font-size:11px;color:rgba(255,255,255,0.3);">${p.bairro||''}</span></td>
+              <td style="font-size:11px;color:rgba(255,255,255,0.5);max-width:180px;">${p.itens}</td>
+              <td style="font-size:12px;">${p.pagamento||'—'}</td>
+              <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:#4ade80;">${fmt(p.total||0)}</td>
+              <td style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}<br>${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="6" style="color:rgba(255,255,255,0.3);text-align:center;padding:20px;">Nenhum pedido entregue ainda</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
 async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
 </script>
 </body>

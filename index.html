@@ -693,6 +693,7 @@ function finalizarPedido() {
       nome, endereco: end + (comp?', '+comp:''), bairro: bNome,
       complemento: comp, pagamento: pag,
       whatsapp: document.getElementById('f-whatsapp').value.trim() || null,
+      status: 'aguardando',
       itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
       subtotal: sub, frete: fr||0, total
     })
