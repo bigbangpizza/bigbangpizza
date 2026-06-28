@@ -504,16 +504,18 @@ let modoLojaOverride = null;
 
 async function checkModoLoja() {
   try {
-    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja`, {
+    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja&select=valor`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
-    const data = await r.json();
-    modoLojaOverride = data[0]?.valor || 'automatico';
+    if (r.ok) {
+      const data = await r.json();
+      modoLojaOverride = (data && data[0] && data[0].valor) ? data[0].valor : 'automatico';
+    }
   } catch(e) { modoLojaOverride = 'automatico'; }
   updateStatus();
 }
 checkModoLoja();
-setInterval(checkModoLoja, 60000); // Verifica a cada minuto
+setInterval(checkModoLoja, 30000); // Verifica a cada 30 segundos // Verifica a cada minuto
 
 function updateStatus() {
   const now = new Date();
@@ -740,10 +742,21 @@ function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); upda
 function calcFrete() { updateTotals(); }
 function getFrete() { const v=document.getElementById('f-bairro').value; return v?parseFloat(v.split('|')[1]):null; }
 function updateTotals() {
-  const sub = cart.reduce((s,i)=>s+i.price*i.qty,0), fr=getFrete(), tot=sub+(fr||0);
-  document.getElementById('subtotal-val').textContent=`R$ ${sub.toFixed(2).replace('.',',')}`;
-  document.getElementById('frete-val').textContent=fr===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
-  document.getElementById('total-val').textContent=`R$ ${tot.toFixed(2).replace('.',',')}`;
+  const sub = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const fr = getFrete()||0;
+  const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
+  const tot = +(sub - desconto + fr).toFixed(2);
+
+  document.getElementById('subtotal-val').textContent = `R$ ${sub.toFixed(2).replace('.',',')}`;
+  
+  // Linha de desconto
+  const descontoRow = document.getElementById('desconto-row');
+  const descontoVal = document.getElementById('desconto-val');
+  if (descontoRow) descontoRow.style.display = cupomAtivo ? 'flex' : 'none';
+  if (descontoVal) descontoVal.textContent = `- R$ ${desconto.toFixed(2).replace('.',',')}`;
+
+  document.getElementById('frete-val').textContent = getFrete()===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
+  document.getElementById('total-val').textContent = `R$ ${tot.toFixed(2).replace('.',',')}`;
 }
 let enviandoPedido = false;
 async function finalizarPedido() {
@@ -758,9 +771,15 @@ async function finalizarPedido() {
   const sub=cart.reduce((s,i)=>s+i.price*i.qty,0), tot=sub+(fr||0);
   const itens=cart.map(i=>`• ${i.qty}x ${i.name}${i.obs?' ('+i.obs+')':''} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
-  const desconto = cupomAtivo ? sub * CUPOM_DESCONTO : 0;
-  const totalFinal = tot - desconto;
-  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${cupomAtivo?'\n\n🎟️ Cupom: BIGBANG15 (-15%)':''}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n🎟️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
+  const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
+  const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
+  
+  let linhaDesconto = '';
+  if (cupomAtivo) {
+    linhaDesconto = `\n\n🎟️ Cupom aplicado: ${CUPOM_CODIGO}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto (15%): - R$ ${desconto.toFixed(2).replace('.',',')}`;
+  }
+  
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
   let estaAberto;
@@ -798,8 +817,9 @@ async function finalizarPedido() {
         cupom: cupomAtivo ? 'BIGBANG15' : null,
         itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
         subtotal: sub,
+        desconto: desconto,
         frete: fr||0,
-        total: tot
+        total: totalFinal
       })
     });
     if (!resp.ok) console.error('Erro ao salvar pedido:', resp.status);
