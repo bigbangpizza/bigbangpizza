@@ -126,6 +126,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('pedidos')" id="nav-pedidos"><span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('contatos')" id="nav-contatos"><span class="ic">💬</span> Contatos</div>
+      <div class="nav-item" onclick="show('estoque')" id="nav-estoque"><span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('financeiro')" id="nav-financeiro"><span class="ic">💰</span> Financeiro</div>
     </div>
     <div class="sb-footer"><a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a></div>
@@ -174,6 +175,19 @@ input:checked+.sl::before{transform:translateX(20px);}
         <button class="bt" onclick="filtrarPedidos('todos')" id="f-todos">📋 Todos</button>
       </div>
       <div class="tw"><div id="t-pedidos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <div id="pg-estoque" class="hidden">
+      <div class="page-title">ESTOQUE</div>
+      <div class="page-sub">Controle de produtos em estoque — atualiza automaticamente quando pedido for marcado como Entregue</div>
+      <div id="estoque-alertas" style="margin-bottom:16px;"></div>
+      <div class="tw">
+        <div class="tw-head">
+          <h3>Produtos em Estoque</h3>
+          <button class="btn-new" onclick="openModEstoque()">+ Novo Produto</button>
+        </div>
+        <div id="t-estoque"><div class="loading">Carregando...</div></div>
+      </div>
     </div>
 
     <div id="pg-financeiro" class="hidden">
@@ -253,6 +267,7 @@ function show(page){
   if(page==='dashboard') loadDash();
   else if(page==='bairros') loadBairros();
   else if(page==='pedidos') loadPedidos('aguardando');
+  else if(page==='estoque') loadEstoque();
   else if(page==='financeiro') loadFinanceiro();
   else if(page==='avaliacoes') loadAvaliacoes();
   else if(page==='contatos') loadContatos();
@@ -275,12 +290,37 @@ async function loadDash(){
   try {
     const av = await api('avaliacoes');
     const ct = await api('contatos');
-    const pd = await api('pedidos','status=eq.aguardando','created_at.desc');
+    const todos_ped = await api('pedidos','','created_at.desc');
+    const est = await api('estoque','ativo=eq.true');
+    
+    const aguardando = todos_ped.filter(p=>p.status==='aguardando').length;
+    const aceito = todos_ped.filter(p=>p.status==='aceito').length;
+    const preparando = todos_ped.filter(p=>p.status==='preparando').length;
+    const saiu = todos_ped.filter(p=>p.status==='saiu').length;
+    const estoqueBaixo = est.filter(e=>e.quantidade <= e.estoque_minimo).length;
+
     document.getElementById('stats').innerHTML += `
-      <div class="stat"><div class="stat-n" style="color:#ff4444">${pd.length}</div><div class="stat-l">Aguardando</div></div>
-      <div class="stat"><div class="stat-n">${av.length}</div><div class="stat-l">Avaliações</div></div>
-      <div class="stat"><div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">Mensagens Novas</div></div>`;
-  } catch(e) {}
+      <div class="stat" style="border-top:3px solid #ff4444;cursor:pointer;" onclick="show('pedidos');filtrarPedidos('aguardando')">
+        <div class="stat-n" style="color:#ff4444">${aguardando}</div><div class="stat-l">⏳ Aguardando</div>
+      </div>
+      <div class="stat" style="border-top:3px solid #a78bfa;cursor:pointer;" onclick="show('pedidos');filtrarPedidos('aceito')">
+        <div class="stat-n" style="color:#a78bfa">${aceito}</div><div class="stat-l">✅ Aceitos</div>
+      </div>
+      <div class="stat" style="border-top:3px solid #facc15;cursor:pointer;" onclick="show('pedidos');filtrarPedidos('preparando')">
+        <div class="stat-n" style="color:#facc15">${preparando}</div><div class="stat-l">🟡 Preparando</div>
+      </div>
+      <div class="stat" style="border-top:3px solid #60a5fa;cursor:pointer;" onclick="show('pedidos');filtrarPedidos('saiu')">
+        <div class="stat-n" style="color:#60a5fa">${saiu}</div><div class="stat-l">🛵 Na rua</div>
+      </div>
+      <div class="stat" style="border-top:3px solid ${estoqueBaixo>0?'#ff4444':'#4ade80'};cursor:pointer;" onclick="show('estoque')">
+        <div class="stat-n" style="color:${estoqueBaixo>0?'#ff4444':'#4ade80'}">${estoqueBaixo}</div>
+        <div class="stat-l">📦 Estoque Baixo</div>
+      </div>
+      <div class="stat"><div class="stat-n">${av.length}</div><div class="stat-l">⭐ Avaliações</div></div>
+      <div class="stat" style="cursor:pointer;" onclick="show('contatos')">
+        <div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">💬 Msgs Novas</div>
+      </div>`;
+  } catch(e) { console.error(e); }
 }
 
 async function loadTable(type){
@@ -314,6 +354,8 @@ async function rem(tbl,id,type){
 }
 
 async function openMod(type,id=null){
+  // Reset save button
+  document.querySelector('.bs').onclick = saveItem;
   curTable=type; editId=id;
   const tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
   let item={};
@@ -471,6 +513,62 @@ async function loadPedidos(status='novo') {
 
 async function atualizarStatus(id, status) {
   await upd('pedidos', id, {status});
+  if (status === 'entregue') {
+    await baixarEstoquePedido(id);
+  }
+  // Reload pedidos
+  loadPedidos(pedidoFiltroAtual);
+}
+
+async function baixarEstoquePedido(pedidoId) {
+  // Buscar o pedido
+  const dados = await api('pedidos', `id=eq.${pedidoId}`);
+  if (!dados || !dados[0]) return;
+  const itens = dados[0].itens || '';
+  
+  // Buscar estoque atual
+  const estoque = await api('estoque', 'ativo=eq.true');
+  
+  // Para cada item do estoque, verificar se aparece nos itens do pedido
+  for (const item of estoque) {
+    // Verificar se o nome do item aparece nos itens do pedido (case insensitive)
+    const nomeNorm = item.nome.toLowerCase();
+    const itensNorm = itens.toLowerCase();
+    
+    // Contar quantas vezes aparece
+    let count = 0;
+    const partes = itens.split(' | ');
+    for (const parte of partes) {
+      if (parte.toLowerCase().includes(nomeNorm)) {
+        // Extrair quantidade (ex: "2x Coca-Cola 1L Tradicional")
+        const match = parte.match(/^(\d+)x/);
+        count += match ? parseInt(match[1]) : 1;
+      }
+    }
+    
+    if (count > 0) {
+      const novaQtd = Math.max(0, item.quantidade - count);
+      await upd('estoque', item.id, {quantidade: novaQtd});
+      
+      // Alerta se ficou baixo
+      if (novaQtd <= item.estoque_minimo) {
+        showToastAdmin(`⚠️ Estoque baixo: ${item.nome} (${novaQtd} ${item.unidade})`);
+      }
+    }
+  }
+}
+
+function showToastAdmin(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'20px', left:'50%', transform:'translateX(-50%)',
+    background:'#ff4444', color:'white', padding:'12px 24px', borderRadius:'8px',
+    fontSize:'14px', fontWeight:'600', zIndex:'999', whiteSpace:'nowrap',
+    boxShadow:'0 4px 16px rgba(0,0,0,0.4)'
+  });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
 }
 
 async function loadAvaliacoes(){
@@ -581,6 +679,101 @@ async function loadFinanceiro() {
         </tbody>
       </table>
     </div>`;
+}
+
+// ── ESTOQUE ───────────────────────────────────────────
+let editEstoqueId = null;
+
+async function loadEstoque() {
+  const data = await api('estoque', 'ativo=eq.true');
+  
+  // Alertas de estoque baixo
+  const baixo = data.filter(e => e.quantidade <= e.estoque_minimo);
+  const alertasEl = document.getElementById('estoque-alertas');
+  if (baixo.length > 0) {
+    alertasEl.innerHTML = baixo.map(e => `
+      <div style="background:rgba(255,68,68,0.15);border:1px solid rgba(255,68,68,0.3);border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">⚠️</span>
+        <span style="color:#ff6666;font-weight:600;">Estoque baixo: <strong>${e.nome}</strong> — apenas ${e.quantidade} ${e.unidade} restantes</span>
+      </div>`).join('');
+  } else {
+    alertasEl.innerHTML = '<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:8px;padding:10px 14px;color:#4ade80;font-size:13px;">✅ Estoque OK — todos os produtos acima do mínimo</div>';
+  }
+
+  const rows = data.map(e => {
+    const baixo = e.quantidade <= e.estoque_minimo;
+    return `<tr>
+      <td><strong>${e.nome}</strong></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="ajustarEstoque(${e.id}, -1)" style="width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);background:transparent;color:white;cursor:pointer;font-size:16px;">−</button>
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:${baixo?'#ff4444':'#4ade80'};min-width:40px;text-align:center;">${e.quantidade}</span>
+          <button onclick="ajustarEstoque(${e.id}, 1)" style="width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);background:transparent;color:white;cursor:pointer;font-size:16px;">+</button>
+        </div>
+      </td>
+      <td style="color:rgba(255,255,255,0.4);font-size:12px;">${e.unidade}</td>
+      <td style="color:rgba(255,255,255,0.4);font-size:12px;">Mín: ${e.estoque_minimo}</td>
+      <td><span class="${baixo?'boff':'bon'}">${baixo?'⚠️ Baixo':'✅ OK'}</span></td>
+      <td><div class="acts">
+        <button class="be" onclick="openModEstoque(${e.id})">✏️ Editar</button>
+        <button class="bd" onclick="delEstoque(${e.id})">🗑️</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('t-estoque').innerHTML = `
+    <table>
+      <thead><tr><th>Produto</th><th>Quantidade</th><th>Unidade</th><th>Mínimo</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum produto cadastrado</td></tr>'}</tbody>
+    </table>`;
+}
+
+async function ajustarEstoque(id, delta) {
+  const data = await api('estoque', `id=eq.${id}`);
+  if (!data || !data[0]) return;
+  const novaQtd = Math.max(0, data[0].quantidade + delta);
+  await upd('estoque', id, {quantidade: novaQtd});
+  loadEstoque();
+}
+
+async function openModEstoque(id=null) {
+  editEstoqueId = id;
+  let item = {};
+  if (id) {
+    const d = await api('estoque', `id=eq.${id}`);
+    item = d[0] || {};
+  }
+  document.getElementById('mod-title').textContent = id ? 'Editar Produto Estoque' : 'Novo Produto Estoque';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg"><label>Nome do Produto</label><input id="fn" value="${item.nome||''}" placeholder="Ex: Coca-Cola 1L Tradicional"></div>
+    <div class="fr">
+      <div class="fg"><label>Quantidade Atual</label><input id="fp" type="number" value="${item.quantidade||0}"></div>
+      <div class="fg"><label>Estoque Mínimo</label><input id="fpf" type="number" value="${item.estoque_minimo||2}"></div>
+    </div>
+    <div class="fg"><label>Unidade (ex: un, L, kg)</label><input id="ff" value="${item.unidade||'un'}"></div>`;
+  
+  // Override save button
+  document.querySelector('.bs').onclick = saveEstoque;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function saveEstoque() {
+  const nome = document.getElementById('fn').value.trim();
+  const quantidade = parseInt(document.getElementById('fp').value) || 0;
+  const estoque_minimo = parseInt(document.getElementById('fpf').value) || 2;
+  const unidade = document.getElementById('ff').value.trim() || 'un';
+  if (!nome) { alert('Digite o nome!'); return; }
+  const data = {nome, quantidade, estoque_minimo, unidade, ativo: true};
+  const ok = editEstoqueId ? await upd('estoque', editEstoqueId, data) : await ins('estoque', data);
+  if (ok) { closeMod(); loadEstoque(); }
+  else { alert('Erro ao salvar!'); }
+}
+
+async function delEstoque(id) {
+  if (confirm('Deletar este produto do estoque?')) {
+    await del('estoque', id);
+    loadEstoque();
+  }
 }
 async function marcarLido(id){ await upd('contatos',id,{lido:true}); loadContatos(); }
 </script>

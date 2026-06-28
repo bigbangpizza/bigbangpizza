@@ -746,7 +746,7 @@ function initMap() {
   const scrollY = window.scrollY;
   setTimeout(() => window.scrollTo(0, scrollY), 50);
 
-  const center = {lat: -12.5900, lng: -38.3050}; // Lauro de Freitas centro real
+  const center = {lat: -12.8936, lng: -38.3174}; // Centro de Lauro de Freitas
 
   const map = new google.maps.Map(document.getElementById('mapa'), {
     zoom: 13,
@@ -767,24 +767,24 @@ function initMap() {
     fullscreenControl: true
   });
 
-  // Coordenadas reais de Lauro de Freitas e Salvador orla norte
+  // Coordenadas baseadas no centro real de Lauro de Freitas (-12.8936, -38.3174)
   const bairrosGratis = [
-    {nome:'Pitangueiras', lat:-12.5780, lng:-38.3120, frete:'Grátis'},
-    {nome:'Vilas do Atlântico', lat:-12.5700, lng:-38.3000, frete:'Grátis'},
-    {nome:'Morada do Sol', lat:-12.5850, lng:-38.3200, frete:'Grátis'},
-    {nome:'Buraquinho', lat:-12.5950, lng:-38.3150, frete:'Grátis'},
-    {nome:'Vila Praiana', lat:-12.5650, lng:-38.2980, frete:'Grátis'},
-    {nome:'Ipitanga', lat:-12.6050, lng:-38.3300, frete:'Grátis'},
-    {nome:'Residencial Buena Vista', lat:-12.5900, lng:-38.3250, frete:'Grátis'},
-    {nome:'Portão do Sol', lat:-12.5820, lng:-38.3180, frete:'Grátis'},
-    {nome:'Loteamento Miragem', lat:-12.5750, lng:-38.3080, frete:'Grátis'},
-    {nome:'Parque Jockey Clube', lat:-12.6000, lng:-38.3100, frete:'Grátis'},
+    {nome:'Pitangueiras', lat:-12.8750, lng:-38.3050, frete:'Grátis'},
+    {nome:'Vilas do Atlântico', lat:-12.8650, lng:-38.2950, frete:'Grátis'},
+    {nome:'Morada do Sol', lat:-12.8850, lng:-38.3200, frete:'Grátis'},
+    {nome:'Buraquinho', lat:-12.8950, lng:-38.3100, frete:'Grátis'},
+    {nome:'Vila Praiana', lat:-12.8700, lng:-38.2900, frete:'Grátis'},
+    {nome:'Ipitanga', lat:-12.9100, lng:-38.3300, frete:'Grátis'},
+    {nome:'Residencial Buena Vista', lat:-12.8900, lng:-38.3250, frete:'Grátis'},
+    {nome:'Portão do Sol', lat:-12.8800, lng:-38.3150, frete:'Grátis'},
+    {nome:'Loteamento Miragem', lat:-12.8720, lng:-38.3080, frete:'Grátis'},
+    {nome:'Parque Jockey Clube', lat:-12.9000, lng:-38.3100, frete:'Grátis'},
   ];
 
   const bairrosPago = [
-    {nome:'Stella Maris', lat:-12.5200, lng:-38.2650, frete:'R$ 4,99'},
-    {nome:'Praia do Flamengo', lat:-12.5380, lng:-38.2750, frete:'R$ 4,99'},
-    {nome:'Praia de Itapinga', lat:-12.5550, lng:-38.2900, frete:'R$ 4,99'},
+    {nome:'Stella Maris', lat:-12.8400, lng:-38.2700, frete:'R$ 4,99'},
+    {nome:'Praia do Flamengo', lat:-12.8550, lng:-38.2800, frete:'R$ 4,99'},
+    {nome:'Praia de Itapinga', lat:-12.8650, lng:-38.2900, frete:'R$ 4,99'},
   ];
 
   const infoWindow = new google.maps.InfoWindow();
