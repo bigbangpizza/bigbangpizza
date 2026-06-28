@@ -416,6 +416,7 @@ footer img{width:130px;margin-bottom:8px;}
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
+    <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..." style="width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical;min-height:60px;"></textarea>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
@@ -437,7 +438,8 @@ footer img{width:130px;margin-bottom:8px;}
 </div>
 
 <script>
-const SB=atob('aHR0cHM6Ly9hbHZ2a3B1ZWR3cnhibWtrYXlmZi5zdXBhYmFzZS5jbw=='), SK=atob('c2JfcHVibGlzaGFibGVfU3FrZFp6MnBreHNOSUl1ZGhGSHg3UV95SDVfZVUzMw==');
+const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
+const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
 
 async function api(table, q='') {
@@ -666,7 +668,7 @@ function updateTotals() {
   document.getElementById('frete-val').textContent=fr===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
   document.getElementById('total-val').textContent=`R$ ${tot.toFixed(2).replace('.',',')}`;
 }
-function finalizarPedido() {
+async function finalizarPedido() {
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
@@ -674,13 +676,47 @@ function finalizarPedido() {
   const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'', fr=getFrete();
   const sub=cart.reduce((s,i)=>s+i.price*i.qty,0), tot=sub+(fr||0);
   const itens=cart.map(i=>`• ${i.qty}x ${i.name}${i.obs?' ('+i.obs+')':''} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}`).join('\n');
-  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${tot.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
+  const obsVal = document.getElementById('f-obs').value.trim();
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+fr.toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+fr.toFixed(2).replace('.',',')}\n💳 Total: R$ ${tot.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
   const estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24;
   if (!estaAberto) {
     alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta a domingo das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
     return;
+  }
+
+  const obs = document.getElementById('f-obs').value.trim();
+  const wpp = document.getElementById('f-whatsapp').value.trim();
+
+  // Registrar pedido no Supabase
+  try {
+    const resp = await fetch(`${SB}/rest/v1/pedidos`, {
+      method: 'POST',
+      headers: {
+        'apikey': SK,
+        'Authorization': 'Bearer ' + SK,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        nome,
+        endereco: end + (comp?', '+comp:''),
+        bairro: bNome,
+        complemento: comp || null,
+        pagamento: pag,
+        whatsapp: wpp || null,
+        observacao: obs || null,
+        status: 'aguardando',
+        itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
+        subtotal: sub,
+        frete: fr||0,
+        total
+      })
+    });
+    if (!resp.ok) console.error('Erro ao salvar pedido:', resp.status);
+  } catch(e) {
+    console.error('Erro ao salvar pedido:', e);
   }
 
   window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`,'_blank');
