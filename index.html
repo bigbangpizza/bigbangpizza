@@ -8,10 +8,10 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍕</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--red:#CC1100;--red-dark:#880000;--orange:#FF6B00;--gold:#E8A800;--black:#0a0a0a;--cream:#F5F0E8;--cream-dark:#EDE6D6;--gray:#666;--green:#1a7a3c;}
+:root{--red:#CC1100;--red-dark:#880000;--orange:#FF6B00;--gold:#E8A800;--black:#0a0a0a;--cream:#F5F0E8;--cream-dark:#EDE6D6;--gray:#666;--green:#1a7a3c;--shadow-card:0 6px 24px rgba(0,0,0,0.10);--shadow-card-hover:0 10px 32px rgba(0,0,0,0.16);--radius-card:14px;--hero-overlay:linear-gradient(180deg,rgba(10,10,10,0.35) 0%,rgba(10,10,10,0.55) 55%,rgba(10,10,10,0.96) 100%);}
 *{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
-body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--black);overflow-x:hidden;}
+body{font-family:'Inter',sans-serif;background:var(--cream);color:var(--black);overflow-x:hidden;font-size:15px;line-height:1.5;}
 h1,h2,h3{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 
 /* SPLASH */
@@ -34,89 +34,94 @@ h1,h2,h3{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 /* HEADER */
 header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 16px rgba(0,0,0,0.5);}
 .logo-area img{height:50px;width:auto;}
-.btn-pedido{background:var(--red);color:white;border:none;padding:10px 18px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;border-radius:6px;cursor:pointer;}
+.btn-pedido{background:var(--red);color:white;border:none;padding:13px 22px;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;border-radius:8px;cursor:pointer;}
 .btn-pedido:hover{background:var(--red-dark);}
 
 /* HERO */
-.hero{background:#0a0a0a;text-align:center;padding:48px 20px 40px;position:relative;overflow:hidden;}
+.hero{background:#0a0a0a;text-align:center;padding:min(22vh,180px) 20px 40px;position:relative;overflow:hidden;min-height:min(86vh,640px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background-size:cover;background-position:center;transition:background-image 0.4s ease;}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);}
-.hero-eyebrow{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--orange);margin-bottom:14px;position:relative;}
-.hero img{width:min(340px,80vw);margin:0 auto 12px;display:block;filter:drop-shadow(0 6px 24px rgba(255,107,0,0.4));position:relative;}
-.hero-sub{font-size:14px;color:rgba(255,255,255,0.6);margin:12px 0 20px;line-height:1.6;position:relative;}
-.hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:22px;position:relative;}
-.badge{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);color:rgba(255,255,255,0.8);padding:5px 12px;border-radius:20px;font-size:12px;}
-.hero-cta{display:inline-block;background:var(--red);color:white;padding:13px 32px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;border-radius:8px;text-decoration:none;position:relative;}
-.hero-cta:hover{background:var(--red-dark);}
+.hero.hero--photo::before{background:var(--hero-overlay);}
+.hero-badge-logo{width:min(96px,22vw);margin:0 auto 14px;display:block;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.5));position:relative;border-radius:50%;}
+.hero-eyebrow{font-size:12px;letter-spacing:4px;text-transform:uppercase;color:var(--orange);margin-bottom:10px;position:relative;font-weight:700;}
+.hero h1{font-size:clamp(38px,10vw,64px);color:white;line-height:1.02;position:relative;text-shadow:0 4px 18px rgba(0,0,0,0.5);}
+.hero h1 em{font-style:normal;color:var(--orange);}
+.hero-sub{font-size:clamp(14px,3.6vw,17px);color:rgba(255,255,255,0.78);margin:14px 0 20px;line-height:1.6;position:relative;}
+.hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:24px;position:relative;}
+.badge{background:rgba(255,255,255,0.1);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.92);padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;}
+.hero-cta{display:inline-block;background:var(--red);color:white;padding:18px 46px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;border-radius:10px;text-decoration:none;position:relative;box-shadow:0 10px 30px rgba(204,17,0,0.45);transition:transform 0.15s,background 0.15s;}
+.hero-cta:hover{background:var(--red-dark);transform:translateY(-2px);}
 
 /* SECTIONS */
-.sw{max-width:1100px;margin:0 auto;padding:44px 20px;}
-.section-title{font-size:clamp(28px,6vw,48px);margin-bottom:6px;}
+.sw{max-width:1100px;margin:0 auto;padding:48px 20px;}
+.section-title{font-size:clamp(32px,7vw,52px);margin-bottom:6px;}
 .section-title span{color:var(--red);}
-.divider{width:44px;height:4px;background:var(--red);margin:8px 0 20px;border-radius:2px;}
-.section-sub{color:var(--gray);font-size:13px;margin-bottom:22px;}
-.loading{text-align:center;padding:40px;color:var(--gray);font-size:14px;}
+.divider{width:48px;height:4px;background:var(--red);margin:10px 0 22px;border-radius:2px;}
+.section-sub{color:var(--gray);font-size:14.5px;margin-bottom:24px;}
+.loading{text-align:center;padding:40px;color:var(--gray);font-size:14.5px;}
 
 /* COMBOS */
-.combos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:14px;}
-.combo-card{background:#0a0a0a;color:white;border-radius:12px;overflow:hidden;transition:transform 0.2s;}
-.combo-card:hover{transform:translateY(-3px);}
-.combo-card img{width:100%;height:175px;object-fit:cover;}
-.combo-no-img{height:175px;background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:48px;}
-.combo-body{padding:15px;}
-.combo-tag{display:inline-block;background:var(--red);color:white;font-size:10px;font-weight:700;letter-spacing:2px;padding:3px 8px;border-radius:3px;margin-bottom:7px;}
-.combo-name{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px;margin-bottom:4px;}
-.combo-desc{font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:12px;line-height:1.4;}
-.combo-bottom{display:flex;align-items:center;justify-content:space-between;}
-.combo-price{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);}
+.combos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;}
+.combo-card{background:#141414;color:white;border-radius:var(--radius-card);overflow:hidden;transition:transform 0.2s,box-shadow 0.2s;box-shadow:var(--shadow-card);position:relative;}
+.combo-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-card-hover);}
+.combo-card img{width:100%;height:clamp(190px,32vw,260px);object-fit:cover;display:block;}
+.combo-no-img{height:clamp(190px,32vw,260px);background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:48px;}
+.combo-body{padding:18px;position:relative;}
+.combo-tag{display:inline-block;background:var(--red);color:white;font-size:11px;font-weight:700;letter-spacing:2px;padding:5px 10px;border-radius:20px;margin-bottom:9px;}
+.combo-name{font-family:'Bebas Neue',sans-serif;font-size:23px;letter-spacing:1px;margin-bottom:5px;}
+.combo-desc{font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:14px;line-height:1.5;}
+.combo-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.combo-price{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);}
 
 /* PIZZA CARDS */
-.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
-.pizza-card{background:white;border-radius:10px;overflow:hidden;border:1px solid var(--cream-dark);transition:box-shadow 0.2s,transform 0.2s;display:flex;flex-direction:column;}
-.pizza-card:hover{box-shadow:0 4px 18px rgba(0,0,0,0.1);transform:translateY(-2px);}
-.pizza-card img{width:100%;height:145px;object-fit:cover;}
-.pizza-no-img{height:145px;background:var(--cream-dark);display:flex;align-items:center;justify-content:center;font-size:44px;}
-.pizza-body{padding:13px;display:flex;flex-direction:column;gap:4px;flex:1;}
-.pizza-name{font-family:'Bebas Neue',sans-serif;font-size:18px;}
-.pizza-desc{font-size:11px;color:var(--gray);line-height:1.4;flex:1;}
-.pizza-size{font-size:11px;color:var(--orange);font-weight:600;}
-.pizza-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:5px;flex-wrap:wrap;}
-.pizza-price{font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.pizza-card{background:white;border-radius:var(--radius-card);overflow:hidden;border:1px solid var(--cream-dark);transition:box-shadow 0.2s,transform 0.2s;display:flex;flex-direction:column;box-shadow:var(--shadow-card);}
+.pizza-card:hover{box-shadow:var(--shadow-card-hover);transform:translateY(-3px);}
+.pizza-card img{width:100%;height:clamp(170px,30vw,230px);object-fit:cover;display:block;}
+.pizza-no-img{height:clamp(170px,30vw,230px);background:var(--cream-dark);display:flex;align-items:center;justify-content:center;font-size:48px;}
+.pizza-body{padding:16px;display:flex;flex-direction:column;gap:6px;flex:1;}
+.pizza-name{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.5px;}
+.pizza-desc{font-size:13px;color:var(--gray);line-height:1.5;flex:1;}
+.pizza-size{font-size:13px;color:var(--orange);font-weight:700;}
+.pizza-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap;}
+.pizza-price{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red);}
 
 /* BEBIDAS */
-.bebidas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;}
-.bebida-card{background:white;border-radius:10px;border:1px solid var(--cream-dark);display:flex;align-items:center;gap:10px;padding:13px;}
-.bebida-card img{width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;}
-.bebida-emoji{font-size:32px;}
+.bebidas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
+.bebida-card{background:white;border-radius:var(--radius-card);border:1px solid var(--cream-dark);display:flex;align-items:center;gap:12px;padding:14px;box-shadow:var(--shadow-card);transition:box-shadow .2s,transform .2s;}
+.bebida-card:hover{box-shadow:var(--shadow-card-hover);transform:translateY(-2px);}
+.bebida-card img{width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0;}
+.bebida-emoji{font-size:36px;}
 .bebida-info{flex:1;}
-.bebida-name{font-weight:600;font-size:13px;}
-.bebida-price{font-family:'Bebas Neue',sans-serif;font-size:19px;color:var(--red);}
+.bebida-name{font-weight:700;font-size:14px;}
+.bebida-price{font-family:'Bebas Neue',sans-serif;font-size:21px;color:var(--red);}
 
 /* BUTTONS */
-.btn-add{background:var(--red);color:white;border:none;padding:7px 11px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-add{background:var(--red);color:white;border:none;padding:11px 16px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,transform .1s;}
 .btn-add:hover{background:var(--red-dark);}
-.btn-meio{background:transparent;border:1.5px solid var(--orange);color:var(--orange);padding:5px 8px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-add:active{transform:scale(0.97);}
+.btn-meio{background:transparent;border:1.5px solid var(--orange);color:var(--orange);padding:10px 12px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s;}
 .btn-meio:hover{background:var(--orange);color:white;}
 
 /* ENTREGA */
 .entrega-bg{background:#0a0a0a;padding:44px 0;}
 .entrega-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
 .entrega-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px;}
-.entrega-bloco{background:rgba(255,255,255,0.05);border-radius:10px;padding:18px;border:1px solid rgba(255,255,255,0.08);}
-.entrega-bloco h3{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:7px;}
-.entrega-bloco ul{list-style:none;display:flex;flex-direction:column;gap:5px;}
-.entrega-bloco ul li{font-size:13px;color:rgba(255,255,255,0.65);display:flex;align-items:center;gap:5px;}
+.entrega-bloco{background:rgba(255,255,255,0.05);border-radius:var(--radius-card);padding:20px;border:1px solid rgba(255,255,255,0.08);}
+.entrega-bloco h3{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;margin-bottom:11px;display:flex;align-items:center;gap:7px;}
+.entrega-bloco ul{list-style:none;display:flex;flex-direction:column;gap:6px;}
+.entrega-bloco ul li{font-size:14px;color:rgba(255,255,255,0.68);display:flex;align-items:center;gap:5px;}
 .entrega-bloco ul li::before{content:'•';color:var(--orange);}
-.entrega-nota{margin-top:18px;text-align:center;color:rgba(255,255,255,0.45);font-size:13px;}
-.btn-wpp{display:inline-block;background:#25D366;color:white;padding:9px 18px;border-radius:6px;text-decoration:none;font-weight:600;font-size:13px;margin-top:8px;}
+.entrega-nota{margin-top:18px;text-align:center;color:rgba(255,255,255,0.45);font-size:14px;}
+.btn-wpp{display:inline-block;background:#25D366;color:white;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;margin-top:10px;}
 
 /* FOOTER */
-footer{background:#050505;color:rgba(255,255,255,0.45);padding:32px 20px;text-align:center;}
+footer{background:#050505;color:rgba(255,255,255,0.45);padding:36px 20px;text-align:center;}
 footer img{width:130px;margin-bottom:8px;}
-.footer-slogan{color:var(--orange);font-size:13px;margin-bottom:14px;}
-.footer-links{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-bottom:10px;}
-.footer-links a{color:rgba(255,255,255,0.55);text-decoration:none;font-size:13px;}
+.footer-slogan{color:var(--orange);font-size:14px;margin-bottom:16px;font-weight:600;}
+.footer-links{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:12px;}
+.footer-links a{color:rgba(255,255,255,0.6);text-decoration:none;font-size:14px;font-weight:500;}
 .footer-links a:hover{color:white;}
-.footer-copy{font-size:11px;margin-top:10px;}
+.footer-copy{font-size:12px;margin-top:10px;}
 
 /* FAB */
 .cart-fab{position:fixed;bottom:22px;right:22px;z-index:200;display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
@@ -132,36 +137,40 @@ footer img{width:130px;margin-bottom:8px;}
 .cart-header{background:#0a0a0a;color:white;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
 .cart-header h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;}
 .cart-close{background:none;border:none;color:white;font-size:20px;cursor:pointer;}
-.cart-body{flex:1;overflow-y:auto;padding:14px;}
+.cart-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;}
+.cart-body{padding:14px;}
 .cart-empty{text-align:center;padding:44px 20px;color:var(--gray);}
-.cart-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-bottom:1px solid var(--cream-dark);}
+.cart-item{display:flex;align-items:flex-start;gap:10px;padding:13px 0;border-bottom:1px solid var(--cream-dark);}
 .cart-item-info{flex:1;}
-.cart-item-name{font-weight:600;font-size:13px;line-height:1.3;}
-.cart-item-obs{font-size:11px;color:var(--gray);margin-top:2px;}
-.cart-item-price{font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--red);white-space:nowrap;}
-.cart-item-qty{display:flex;align-items:center;gap:7px;margin-top:5px;}
-.qty-btn{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.cart-item-name{font-weight:700;font-size:14px;line-height:1.35;}
+.cart-item-obs{font-size:12px;color:var(--gray);margin-top:2px;}
+.cart-item-price{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--red);white-space:nowrap;}
+.cart-item-qty{display:flex;align-items:center;gap:10px;margin-top:7px;}
+.qty-btn{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 .qty-btn:hover{border-color:var(--red);color:var(--red);}
-.qty-num{font-weight:700;font-size:13px;min-width:18px;text-align:center;}
-.checkout-form{padding:14px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:9px;background:var(--cream);}
-.checkout-form input,.checkout-form select{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;background:white;outline:none;}
-.checkout-form input:focus,.checkout-form select:focus{border-color:var(--red);}
-.frete-info{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;}
-.total-row{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:20px;padding:7px 0;border-top:2px solid var(--cream-dark);}
-.btn-finalizar{background:#25D366;color:white;border:none;padding:13px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;}
+.qty-num{font-weight:700;font-size:14px;min-width:20px;text-align:center;}
+.checkout-form{padding:16px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:10px;background:var(--cream);}
+.checkout-form-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--gray);margin:4px 0 -3px;}
+.checkout-form-label:first-child{margin-top:0;}
+.checkout-form input,.checkout-form select,.checkout-form textarea{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;background:white;outline:none;}
+.checkout-form textarea{resize:vertical;min-height:70px;}
+.checkout-form input:focus,.checkout-form select:focus,.checkout-form textarea:focus{border-color:var(--red);}
+.frete-info{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;}
+.total-row{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:23px;padding:9px 0;border-top:2px solid var(--cream-dark);}
+.btn-finalizar{background:#25D366;color:white;border:none;padding:16px;border-radius:10px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 22px rgba(37,211,102,0.35);}
 .btn-finalizar:hover{background:#1da851;}
 
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:400;display:none;align-items:center;justify-content:center;padding:20px;}
 .modal-overlay.open{display:flex;}
-.modal{background:white;border-radius:12px;width:min(440px,100%);max-height:82vh;overflow-y:auto;padding:22px;}
-.modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:5px;}
-.modal-sub{font-size:12px;color:var(--gray);margin-bottom:14px;}
-.modal-label{font-weight:700;font-size:12px;color:var(--red);margin-bottom:5px;}
-.modal select{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;background:white;outline:none;margin-bottom:13px;}
-.modal-actions{display:flex;gap:9px;margin-top:4px;}
-.btn-modal-ok{flex:1;background:var(--red);color:white;border:none;padding:11px;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer;}
-.btn-modal-cancel{background:white;color:var(--gray);border:1.5px solid var(--cream-dark);padding:11px 16px;border-radius:6px;font-size:14px;cursor:pointer;}
+.modal{background:white;border-radius:16px;width:min(440px,100%);max-height:82vh;overflow-y:auto;padding:24px;}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:24px;margin-bottom:5px;}
+.modal-sub{font-size:13px;color:var(--gray);margin-bottom:16px;}
+.modal-label{font-weight:700;font-size:12.5px;color:var(--red);margin-bottom:6px;}
+.modal select{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;background:white;outline:none;margin-bottom:15px;}
+.modal-actions{display:flex;gap:10px;margin-top:6px;}
+.btn-modal-ok{flex:1;background:var(--red);color:white;border:none;padding:14px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer;}
+.btn-modal-cancel{background:white;color:var(--gray);border:1.5px solid var(--cream-dark);padding:14px 18px;border-radius:8px;font-size:15px;cursor:pointer;}
 
 
 /* MAPA INFO WINDOW */
@@ -174,13 +183,13 @@ footer img{width:130px;margin-bottom:8px;}
 .aval-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
 .stars{color:var(--gold);font-size:20px;margin-bottom:6px;}
 .aval-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:6px;}
-.aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:18px;}
+.aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:20px;}
 .aval-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
-.aval-avatar{width:40px;height:40px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
-.aval-nome{font-weight:600;font-size:14px;color:white;}
-.aval-data{font-size:11px;color:rgba(255,255,255,0.3);margin-top:1px;}
-.aval-texto{font-size:13px;color:rgba(255,255,255,0.65);line-height:1.5;}
-.aval-resumo{display:flex;align-items:center;gap:20px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:20px;margin-bottom:24px;}
+.aval-avatar{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
+.aval-nome{font-weight:700;font-size:14.5px;color:white;}
+.aval-data{font-size:11.5px;color:rgba(255,255,255,0.3);margin-top:1px;}
+.aval-texto{font-size:14px;color:rgba(255,255,255,0.68);line-height:1.55;}
+.aval-resumo{display:flex;align-items:center;gap:20px;background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:22px;margin-bottom:24px;}
 .aval-nota{text-align:center;}
 .aval-nota-num{font-family:'Bebas Neue',sans-serif;font-size:52px;color:var(--gold);line-height:1;}
 .aval-nota-label{font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px;}
@@ -192,58 +201,59 @@ footer img{width:130px;margin-bottom:8px;}
 .aval-barra-fill{height:100%;background:var(--gold);border-radius:3px;transition:width 1s ease;}
 .btn-aval{background:var(--red);color:white;border:none;padding:12px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;margin-top:20px;display:inline-block;}
 .btn-aval:hover{background:var(--red-dark);}
-.modal-aval{background:white;border-radius:12px;width:min(440px,100%);padding:24px;}
-.modal-aval h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:4px;color:var(--black);}
-.modal-aval p{font-size:12px;color:var(--gray);margin-bottom:16px;}
-.star-select{display:flex;gap:6px;margin-bottom:16px;}
-.star-select span{font-size:32px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;}
+.modal-aval{background:white;border-radius:16px;width:min(440px,100%);padding:26px;}
+.modal-aval h3{font-family:'Bebas Neue',sans-serif;font-size:24px;margin-bottom:4px;color:var(--black);}
+.modal-aval p{font-size:13px;color:var(--gray);margin-bottom:18px;}
+.star-select{display:flex;gap:8px;margin-bottom:18px;}
+.star-select span{font-size:36px;cursor:pointer;opacity:0.3;transition:opacity 0.15s,transform .1s;}
 .star-select span.on{opacity:1;}
-.modal-aval input,.modal-aval textarea{width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:10px;color:var(--black);}
+.modal-aval input,.modal-aval textarea{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;outline:none;margin-bottom:11px;color:var(--black);}
 .modal-aval textarea{resize:vertical;min-height:80px;}
 .modal-aval input:focus,.modal-aval textarea:focus{border-color:var(--red);}
 
 /* CONTATO */
 .contato-bg{background:var(--cream-dark);padding:44px 0;}
 .contato-inner{max-width:700px;margin:0 auto;padding:0 20px;}
-.contato-form{background:white;border-radius:12px;padding:28px;border:1px solid var(--cream-dark);}
+.contato-form{background:white;border-radius:var(--radius-card);padding:28px;border:1px solid var(--cream-dark);box-shadow:var(--shadow-card);}
 .contato-tipos{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
-.tipo-btn{padding:8px 16px;border-radius:20px;border:1.5px solid var(--cream-dark);background:white;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;color:var(--gray);}
+.tipo-btn{padding:10px 18px;border-radius:20px;border:1.5px solid var(--cream-dark);background:white;font-size:13.5px;font-weight:700;cursor:pointer;transition:all 0.2s;color:var(--gray);}
 .tipo-btn.active{background:var(--red);border-color:var(--red);color:white;}
-.contato-form input,.contato-form textarea{width:100%;padding:10px 12px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;margin-bottom:10px;color:var(--black);}
+.contato-form input,.contato-form textarea{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;outline:none;margin-bottom:11px;color:var(--black);}
 .contato-form input:focus,.contato-form textarea:focus{border-color:var(--red);}
 .contato-form textarea{resize:vertical;min-height:100px;}
-.btn-contato{background:var(--red);color:white;border:none;padding:12px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;cursor:pointer;width:100%;}
+.btn-contato{background:var(--red);color:white;border:none;padding:15px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:1px;cursor:pointer;width:100%;}
 .btn-contato:hover{background:var(--red-dark);}
 
 /* TELA DE OBRIGADO */
 #tela-obrigado{position:fixed;inset:0;background:#0a0a0a;z-index:600;display:none;align-items:center;justify-content:center;flex-direction:column;gap:0;padding:20px;text-align:center;}
 #tela-obrigado.open{display:flex;}
-.obg-icon{font-size:72px;animation:pop 0.6s cubic-bezier(0.34,1.56,0.64,1) both;}
-.obg-title{font-family:'Bebas Neue',sans-serif;font-size:36px;color:white;margin:12px 0 4px;letter-spacing:1px;}
-.obg-sub{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:20px;}
-.obg-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:22px 28px;margin-bottom:20px;width:min(340px,100%);}
-.obg-tempo{font-family:'Bebas Neue',sans-serif;font-size:48px;color:var(--orange);line-height:1;}
-.obg-tempo-label{font-size:13px;color:rgba(255,255,255,0.4);margin-top:2px;}
-.obg-alerta{background:rgba(37,211,102,0.1);border:1px solid rgba(37,211,102,0.2);border-radius:8px;padding:10px 14px;font-size:13px;color:#4ade80;margin-top:12px;}
+.obg-icon{font-size:76px;animation:pop 0.6s cubic-bezier(0.34,1.56,0.64,1) both;}
+.obg-title{font-family:'Bebas Neue',sans-serif;font-size:40px;color:white;margin:12px 0 4px;letter-spacing:1px;}
+.obg-sub{font-size:15px;color:rgba(255,255,255,0.55);margin-bottom:22px;line-height:1.5;}
+.obg-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px 28px;margin-bottom:20px;width:min(340px,100%);}
+.obg-tempo{font-family:'Bebas Neue',sans-serif;font-size:50px;color:var(--orange);line-height:1;}
+.obg-tempo-label{font-size:13.5px;color:rgba(255,255,255,0.45);margin-top:2px;}
+.obg-alerta{background:rgba(37,211,102,0.1);border:1px solid rgba(37,211,102,0.2);border-radius:8px;padding:11px 14px;font-size:13.5px;color:#4ade80;margin-top:12px;}
 .obg-pedido{background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;margin-top:12px;text-align:left;}
 .obg-pedido-title{font-size:11px;font-weight:700;color:rgba(255,255,255,0.3);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
-.obg-pedido-item{font-size:13px;color:rgba(255,255,255,0.65);padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
+.obg-pedido-item{font-size:13.5px;color:rgba(255,255,255,0.68);padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);}
 .obg-pedido-item:last-child{border:none;}
-.obg-total{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:20px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);}
-.btn-obg-novo{background:var(--red);color:white;border:none;padding:13px 32px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;cursor:pointer;margin-top:4px;}
-.btn-obg-wpp{background:#25D366;color:white;border:none;padding:10px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;margin-top:8px;}
+.obg-total{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:21px;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);}
+.btn-obg-novo{background:var(--red);color:white;border:none;padding:15px 34px;border-radius:10px;font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:1px;cursor:pointer;margin-top:4px;}
+.btn-obg-wpp{background:#25D366;color:white;border:none;padding:12px 26px;border-radius:10px;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:1px;cursor:pointer;margin-top:10px;}
 
 /* SIZE SELECTOR */
-.size-selector{display:flex;gap:8px;margin:8px 0;}
-.size-btn{flex:1;padding:10px 6px;border-radius:8px;border:2px solid var(--cream-dark);background:white;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray);text-align:center;transition:all 0.2s;line-height:1.4;}
-.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--red);margin-top:2px;}
-.size-btn.active{background:var(--red);border-color:var(--red);color:white;}
+.size-selector{display:flex;gap:9px;margin:10px 0;}
+.size-btn{flex:1;padding:11px 8px;border-radius:10px;border:2.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--gray);text-align:center;transition:all 0.15s;line-height:1.3;position:relative;}
+.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);margin-top:3px;letter-spacing:.5px;}
+.size-btn.active{background:var(--red);border-color:var(--red);color:white;box-shadow:0 6px 16px rgba(204,17,0,0.35);transform:translateY(-1px);}
 .size-btn.active span{color:white;}
+.size-btn.active::after{content:'✓';position:absolute;top:-7px;right:-7px;width:20px;height:20px;background:var(--orange);color:white;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);}
 .size-btn:hover{border-color:var(--red);}
 
 /* BUSCA */
 .search-wrap{max-width:1100px;margin:0 auto;padding:0 20px 20px;}
-.search-input{width:100%;padding:12px 16px 12px 42px;border:1.5px solid var(--cream-dark);border-radius:10px;font-size:14px;font-family:'Inter',sans-serif;outline:none;background:white;position:relative;}
+.search-input{width:100%;padding:14px 16px 14px 44px;border:1.5px solid var(--cream-dark);border-radius:12px;font-size:15px;font-family:'Inter',sans-serif;outline:none;background:white;position:relative;}
 .search-input:focus{border-color:var(--red);}
 .search-box{position:relative;}
 .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
@@ -251,19 +261,40 @@ footer img{width:130px;margin-bottom:8px;}
 /* CUPOM */
 .cupom-banner{background:linear-gradient(135deg,var(--red),#ff4422);color:white;text-align:center;padding:14px 20px;position:relative;overflow:hidden;}
 .cupom-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 10px);}
-.cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;position:relative;}
-.cupom-banner p{font-size:13px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
-.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:4px;padding:6px 20px;border-radius:6px;margin:8px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;}
-.cupom-restantes{font-size:12px;color:rgba(255,255,255,0.7);position:relative;}
+.cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;position:relative;}
+.cupom-banner p{font-size:14px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
+.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:4px;padding:7px 22px;border-radius:8px;margin:9px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;}
+.cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;}
 
 /* CAMPO CUPOM NO CHECKOUT */
 .cupom-input-wrap{display:flex;gap:8px;}
-.cupom-input-wrap input{flex:1;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;}
+.cupom-input-wrap input{flex:1;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;outline:none;}
 .cupom-input-wrap input:focus{border-color:var(--red);}
-.btn-cupom{background:var(--black);color:white;border:none;padding:9px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.btn-cupom{background:var(--black);color:white;border:none;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .cupom-ok{color:#1a7a3c;font-size:12px;font-weight:600;margin-top:4px;display:none;}
 .cupom-erro{color:var(--red);font-size:12px;font-weight:600;margin-top:4px;display:none;}
-.desconto-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:#1a7a3c;font-weight:600;}
+.desconto-row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;color:#1a7a3c;font-weight:600;}
+
+/* SKELETON LOADING */
+@keyframes skeleton-pulse{0%{opacity:.5;}50%{opacity:1;}100%{opacity:.5;}}
+.skeleton-card{border-radius:var(--radius-card);animation:skeleton-pulse 1.3s ease-in-out infinite;}
+.skeleton-card.dark{background:#1a1a1a;height:clamp(190px,32vw,260px);}
+.skeleton-card.light{background:var(--cream-dark);height:clamp(170px,30vw,230px);}
+.skeleton-card.small{background:var(--cream-dark);height:84px;}
+
+/* NAV DE CATEGORIAS */
+.cat-nav{position:sticky;top:73px;z-index:90;background:#0a0a0a;display:flex;gap:6px;overflow-x:auto;padding:10px 14px;box-shadow:0 2px 10px rgba(0,0,0,0.3);scrollbar-width:none;}
+.cat-nav::-webkit-scrollbar{display:none;}
+.cat-nav a{flex-shrink:0;color:rgba(255,255,255,0.6);text-decoration:none;font-size:13px;font-weight:700;padding:8px 16px;border-radius:20px;border:1.5px solid rgba(255,255,255,0.12);transition:all .15s;}
+.cat-nav a:hover,.cat-nav a.active{color:white;background:var(--red);border-color:var(--red);}
+
+/* BARRA DE CARRINHO FIXA (MOBILE) */
+.sticky-cart-bar{display:none;}
+@media(max-width:640px){
+  .sticky-cart-bar.open{position:fixed;left:14px;right:14px;bottom:14px;z-index:199;background:var(--red);color:white;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 26px rgba(0,0,0,0.4);cursor:pointer;font-weight:700;font-size:14px;}
+  .sticky-cart-bar .sb-count{background:rgba(255,255,255,0.25);border-radius:20px;padding:2px 9px;font-size:12px;margin-right:8px;}
+}
+
 /* RESPONSIVE */
 @media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
 @media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
@@ -284,16 +315,24 @@ footer img{width:130px;margin-bottom:8px;}
   <button class="btn-pedido" onclick="openCart()">🛒 Fazer Pedido</button>
 </header>
 
-<div class="hero">
+<nav class="cat-nav" id="cat-nav">
+  <a href="#combos">🔥 Combos</a>
+  <a href="#salgadas">🍕 Salgadas</a>
+  <a href="#doces">🍫 Doces</a>
+  <a href="#bebidas">🥤 Bebidas</a>
+</nav>
+
+<div class="hero" id="hero">
+  <img class="hero-badge-logo" src="logo-header.png" alt="Big Bang Pizza">
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
-  <img src="logo-hero.png" alt="Big Bang Pizza">
-  <p class="hero-sub">Pizzas artesanais direto na sua porta.<br>Quinta a domingo, das 18h às meia-noite.</p>
+  <h1>Pizza artesanal,<br><em>explosão</em> de sabor</h1>
+  <p class="hero-sub">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
   <div class="hero-badges">
     <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
     <span class="badge">⏱️ Entrega Rápida</span>
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
-  <a href="#combos" class="hero-cta">Ver Cardápio</a>
+  <a href="#combos" class="hero-cta">🍕 Ver Cardápio</a>
 </div>
 
 <!-- BANNER CUPOM -->
@@ -308,7 +347,7 @@ footer img{width:130px;margin-bottom:8px;}
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title" style="color:white;">COMBOS <span>EM DESTAQUE</span></h2>
     <div class="divider"></div>
-    <div class="combos-grid" id="combos-grid"><div class="loading">Carregando...</div></div>
+    <div class="combos-grid" id="combos-grid"><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div></div>
   </div>
 </div>
 
@@ -321,7 +360,7 @@ footer img{width:130px;margin-bottom:8px;}
       <input class="search-input" id="busca-pizza" type="text" placeholder="Buscar pizza... ex: frango, atum, calabresa" oninput="filtrarPizzas(this.value)">
     </div>
     <p class="section-sub">Todas disponíveis meio a meio 🍕</p>
-    <div class="menu-grid" id="salgadas-grid"><div class="loading">Carregando...</div></div>
+    <div class="menu-grid" id="salgadas-grid"><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div></div>
   </div>
 </div>
 
@@ -329,7 +368,7 @@ footer img{width:130px;margin-bottom:8px;}
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title">PIZZAS <span>DOCES</span></h2>
     <div class="divider"></div>
-    <div class="menu-grid" id="doces-grid"><div class="loading">Carregando...</div></div>
+    <div class="menu-grid" id="doces-grid"><div class="skeleton-card light"></div><div class="skeleton-card light"></div></div>
   </div>
 </div>
 
@@ -337,7 +376,7 @@ footer img{width:130px;margin-bottom:8px;}
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title">BEBIDAS</h2>
     <div class="divider"></div>
-    <div class="bebidas-grid" id="bebidas-grid"><div class="loading">Carregando...</div></div>
+    <div class="bebidas-grid" id="bebidas-grid"><div class="skeleton-card small"></div><div class="skeleton-card small"></div><div class="skeleton-card small"></div></div>
   </div>
 </div>
 
@@ -448,16 +487,24 @@ footer img{width:130px;margin-bottom:8px;}
   <button class="cart-btn" onclick="openCart()">🛒<span class="cart-count" id="cart-count"></span></button>
 </div>
 
+<div class="sticky-cart-bar" id="sticky-cart-bar" onclick="openCart()">
+  <span><span class="sb-count" id="sb-count">0</span><span id="sb-text">Ver carrinho</span></span>
+  <span id="sb-total">R$ 0,00</span>
+</div>
+
 <div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
 <div class="cart-panel" id="cart-panel">
   <div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close" onclick="closeCart()">✕</button></div>
+  <div class="cart-scroll">
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
+    <div class="checkout-form-label">📍 Dados de entrega</div>
     <input type="text" id="f-nome" placeholder="Nome completo *">
     <input type="text" id="f-endereco" placeholder="Rua e número *">
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
+    <div class="checkout-form-label">💳 Pagamento</div>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
     <div>
       <div class="cupom-input-wrap">
@@ -467,12 +514,14 @@ footer img{width:130px;margin-bottom:8px;}
       <div class="cupom-ok" id="cupom-ok">✅ Cupom aplicado! 15% de desconto</div>
       <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
     </div>
-    <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..." style="width:100%;padding:9px 11px;border:1.5px solid var(--cream-dark);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical;min-height:60px;"></textarea>
+    <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..."></textarea>
+    <div class="checkout-form-label">🧾 Resumo</div>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto (15%):</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
     <button class="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
+  </div>
   </div>
 </div>
 
@@ -692,6 +741,24 @@ async function loadBairros() {
   }
 }
 
+async function loadHeroPhoto() {
+  try {
+    let [combos, salgadas] = await Promise.all([
+      api('combos', 'ativo=eq.true'),
+      api('pizzas_salgadas', 'ativo=eq.true')
+    ]);
+    const foto = (combos.find(c => c.foto_url) || salgadas.find(p => p.foto_url) || {}).foto_url;
+    if (!foto) return;
+    const img = new Image();
+    img.onload = () => {
+      const hero = document.getElementById('hero');
+      hero.style.backgroundImage = `url('${foto}')`;
+      hero.classList.add('hero--photo');
+    };
+    img.src = foto;
+  } catch(e) { /* mantém o fundo padrão do hero */ }
+}
+loadHeroPhoto();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
 
 // CART
@@ -718,6 +785,13 @@ function updateCount() {
   const t = cart.reduce((s,i)=>s+i.qty,0);
   const el = document.getElementById('cart-count');
   el.textContent = t; el.style.display = t>0?'flex':'none';
+  const bar = document.getElementById('sticky-cart-bar');
+  if (bar) {
+    bar.classList.toggle('open', t>0);
+    const sub = cart.reduce((s,i)=>s+i.price*i.qty,0);
+    document.getElementById('sb-count').textContent = t;
+    document.getElementById('sb-total').textContent = 'R$ ' + sub.toFixed(2).replace('.',',');
+  }
 }
 function renderCart() {
   const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form');
@@ -1109,6 +1183,22 @@ async function aplicarCupom() {
   ok.style.display = 'block';
   updateTotals();
 }
+
+// NAV DE CATEGORIAS — destaque da seção visível
+function initCategoryNav() {
+  const links = document.querySelectorAll('#cat-nav a');
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  const sections = Array.from(links).map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + entry.target.id));
+      }
+    });
+  }, { rootMargin: '-50% 0px -50% 0px' });
+  sections.forEach(s => obs.observe(s));
+}
+initCategoryNav();
 
 function toast(msg) {
   const t=document.createElement('div'); t.textContent=msg;
