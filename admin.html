@@ -60,7 +60,7 @@ td img{width:40px;height:40px;object-fit:cover;border-radius:5px;background:#333
 .btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
 .btn-csv{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
-.mo{position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
+.mo{position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:900;display:none;align-items:center;justify-content:center;padding:20px;}
 .mo.open{display:flex;}
 .md{background:#1a1a1a;border:1px solid rgba(255,255,255,0.09);border-radius:11px;width:min(480px,100%);max-height:88vh;overflow-y:auto;padding:22px;}
 .md h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:18px;}
@@ -85,15 +85,48 @@ input:checked+.sl{background:var(--green2);}
 input:checked+.sl::before{transform:translateX(20px);}
 .loading{text-align:center;padding:36px;color:rgba(255,255,255,0.25);font-size:13px;}
 .sec-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-left:12px;}
+.mobile-topbar{display:none;}
+.hamburger-btn{display:none;}
+.sidebar-overlay{display:none;}
 @media(max-width:768px){
-  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;padding:8px;overflow-x:auto;}
-  .sb-logo,.sb-footer{display:none;}
-  .sb-nav{display:flex;flex-direction:row;padding:0;gap:3px;}
-  .nav-item{padding:7px 10px;border-left:none;border-bottom:3px solid transparent;font-size:11px;flex-direction:column;gap:1px;min-width:55px;text-align:center;}
-  .nav-item.active{border-left-color:transparent;border-bottom-color:var(--orange);}
-  .main{margin-left:0;padding:14px;}
+  body{overflow-x:hidden;}
+
+  /* Topo fixo com botão hambúrguer no lugar do menu lateral */
+  .mobile-topbar{display:flex;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;height:54px;background:#0a0a0a;border-bottom:1px solid rgba(255,255,255,0.07);padding:0 10px 0 14px;z-index:600;}
+  .mobile-topbar img{height:28px;}
+  .hamburger-btn{display:block;background:none;border:none;color:white;font-size:26px;padding:8px 10px;cursor:pointer;line-height:1;}
+  .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:700;opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  .sidebar-overlay.open{display:block;opacity:1;pointer-events:auto;}
+
+  /* Menu lateral vira gaveta deslizante */
+  .sidebar{width:78vw;max-width:280px;height:100vh;position:fixed;top:0;left:0;flex-direction:column;padding:0;overflow-y:auto;transform:translateX(-100%);transition:transform .25s ease;z-index:800;border-right:1px solid rgba(255,255,255,0.07);}
+  .sidebar.open{transform:translateX(0);}
+  .sb-nav{display:flex;flex-direction:column;padding:8px 0;gap:0;}
+  .nav-item{padding:14px 18px;border-left:3px solid transparent;border-bottom:none;font-size:14px;flex-direction:row;gap:12px;min-width:0;text-align:left;}
+  .nav-item .ic{font-size:19px;}
+  .nav-item.active{border-left-color:var(--orange);border-bottom-color:transparent;}
+  .main{margin-left:0;margin-top:54px;padding:14px;}
   .fr{grid-template-columns:1fr;}
   #cmv-grid{grid-template-columns:1fr !important;}
+
+  /* Botões e campos maiores para toque */
+  .be,.bt,.bd,.bp{padding:10px 14px;font-size:13px;}
+  .acts{gap:8px;}
+  .filtro-btn{padding:11px 16px !important;font-size:13px !important;}
+  .btn-new,.btn-csv{padding:11px 18px;font-size:14px;}
+  .fg input,.fg textarea,.fg select{font-size:16px;padding:11px 12px;}
+  .bs,.bc{padding:13px;font-size:15px;}
+
+  /* Tabelas viram cards empilhados */
+  table,thead,tbody,tr{display:block;width:100%;}
+  thead{display:none;}
+  table tr{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:10px;margin-bottom:12px;padding:4px 0;}
+  table td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-top:none;border-bottom:1px solid rgba(255,255,255,0.05);text-align:right;}
+  table td:last-child{border-bottom:none;}
+  table td::before{content:attr(data-label);font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.35);text-align:left;flex-shrink:0;}
+  table td .acts{justify-content:flex-end;}
+  table td[colspan]{display:block;text-align:center;}
+  table td[colspan]::before{content:none;}
 }
 </style>
 </head>
@@ -115,6 +148,11 @@ input:checked+.sl::before{transform:translateX(20px);}
 
 <!-- APP -->
 <div id="app">
+  <div class="mobile-topbar">
+    <img src="logo-header.png" alt="Big Bang Pizza">
+    <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Abrir menu">☰</button>
+  </div>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
   <div class="sidebar">
     <div class="sb-logo"><img src="logo-header.png" alt="Big Bang Pizza"></div>
     <div class="sb-nav">
@@ -128,6 +166,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('clientes')" id="nav-clientes"><span class="ic">👥</span> Clientes</div>
       <div class="nav-item" onclick="show('contatos')"  id="nav-contatos"> <span class="ic">💬</span> Contatos</div>
+      <div class="nav-item" onclick="show('cupons')"    id="nav-cupons">   <span class="ic">🎟️</span> Cupons</div>
       <div class="nav-item" onclick="show('estoque')"   id="nav-estoque">  <span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('cmv')"       id="nav-cmv">      <span class="ic">🧮</span> CMV</div>
       <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
@@ -205,6 +244,19 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-contatos" class="hidden">
       <div class="page-title">CONTATOS</div><div class="page-sub">Dúvidas, sugestões e reclamações</div>
       <div class="tw"><div class="tw-head"><h3>Mensagens</h3></div><div id="t-contatos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <!-- CUPONS -->
+    <div id="pg-cupons" class="hidden">
+      <div class="page-title">CUPONS DE DESCONTO</div>
+      <div class="page-sub">Crie e gerencie cupons para seus clientes</div>
+      <div class="tw">
+        <div class="tw-head">
+          <h3>Cupons</h3>
+          <button class="btn-new" onclick="openModCupom()">+ Novo Cupom</button>
+        </div>
+        <div id="t-cupons"><div class="loading">Carregando...</div></div>
+      </div>
     </div>
 
     <!-- ESTOQUE -->
@@ -515,11 +567,21 @@ function showToastAdmin(msg) {
 // ═══════════════════════════════════════════════════════
 // NAVEGAÇÃO
 // ═══════════════════════════════════════════════════════
+function toggleSidebar() {
+  document.querySelector('.sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
 function show(page) {
   document.querySelectorAll('.main > div').forEach(d => d.classList.add('hidden'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('pg-' + page).classList.remove('hidden');
   document.getElementById('nav-' + page).classList.add('active');
+  closeSidebar();
   if (page !== 'pedidos' && _pedidoTimer) { clearTimeout(_pedidoTimer); _pedidoTimer = null; }
   const map = {
     dashboard: () => { loadDash(); loadModoLoja(); },
@@ -531,6 +593,7 @@ function show(page) {
     avaliacoes: loadAvaliacoes,
     contatos: loadContatos,
     clientes: loadClientes,
+    cupons: loadCupons,
   };
   (map[page] || (() => loadTable(page)))();
 }
@@ -616,11 +679,11 @@ async function loadTable(type) {
       ? (item.preco_familia ? `${brl(item.preco_grande)} / Fam ${brl(item.preco_familia)}` : brl(item.preco_grande))
       : brl(item.preco||0);
     return `<tr>
-      <td>${item.foto_url?`<img src="${item.foto_url}" alt="">`: '—'}</td>
-      <td><strong>${item.nome}</strong>${item.tag?` <span style="font-size:10px;color:var(--orange)">${item.tag}</span>`:''}</td>
-      <td>${pr}</td>
-      <td><span class="${item.ativo?'bon':'boff'}">${item.ativo?'Ativo':'Inativo'}</span></td>
-      <td><div class="acts">
+      <td data-label="Foto">${item.foto_url?`<img src="${item.foto_url}" alt="">`: '—'}</td>
+      <td data-label="Nome"><strong>${item.nome}</strong>${item.tag?` <span style="font-size:10px;color:var(--orange)">${item.tag}</span>`:''}</td>
+      <td data-label="Preço">${pr}</td>
+      <td data-label="Status"><span class="${item.ativo?'bon':'boff'}">${item.ativo?'Ativo':'Inativo'}</span></td>
+      <td data-label="Ações"><div class="acts">
         <button class="be" onclick="openMod('${type}',${item.id})">✏️</button>
         <button class="bt" onclick="tog('${tbl}',${item.id},${item.ativo},'${type}')">${item.ativo?'⏸':'▶'}</button>
         <button class="bd" onclick="remItem('${tbl}',${item.id},'${type}')">🗑️</button>
@@ -859,10 +922,10 @@ async function loadEstoque(){
     : '<div style="background:rgba(74,222,128,.1);border:1px solid #4ade80;border-radius:8px;padding:10px 14px;font-size:13px;color:#4ade80;">✅ Estoque adequado</div>';
   if(!data.length){ document.getElementById('t-estoque').innerHTML='<div class="loading">Nenhum produto.</div>'; return; }
   const rows=data.map(item=>`<tr>
-    <td><strong>${item.nome}</strong></td><td>${item.quantidade} ${item.unidade||''}</td>
-    <td>${item.estoque_minimo} ${item.unidade||''}</td>
-    <td><span class="${item.quantidade<=item.estoque_minimo?'boff':'bon'}">${item.quantidade<=item.estoque_minimo?'⚠️ Baixo':'✅ OK'}</span></td>
-    <td><div class="acts">
+    <td data-label="Produto"><strong>${item.nome}</strong></td><td data-label="Qtd">${item.quantidade} ${item.unidade||''}</td>
+    <td data-label="Mínimo">${item.estoque_minimo} ${item.unidade||''}</td>
+    <td data-label="Status"><span class="${item.quantidade<=item.estoque_minimo?'boff':'bon'}">${item.quantidade<=item.estoque_minimo?'⚠️ Baixo':'✅ OK'}</span></td>
+    <td data-label="Ações"><div class="acts">
       <button class="bt" onclick="ajustarEstoque(${item.id},${item.quantidade},-1)">−</button>
       <button class="bt" onclick="ajustarEstoque(${item.id},${item.quantidade},1)">+</button>
       <button class="bd" onclick="remEstoque(${item.id})">🗑️</button>
@@ -921,10 +984,10 @@ async function loadIngredientes(filtro='tudo'){
   }
   if(!allIng.length){ document.getElementById('t-ingredientes').innerHTML='<div class="loading">Nenhum ingrediente.</div>'; return; }
   const rows=allIng.map(item=>`<tr>
-    <td><strong>${item.nome}</strong></td>
-    <td>${brl(item.custo_kg)}</td>
-    <td style="color:rgba(255,255,255,.4);font-size:11px;">${item.unidade==='un'?'por unidade':'por kg'}</td>
-    <td><div class="acts">
+    <td data-label="Ingrediente"><strong>${item.nome}</strong></td>
+    <td data-label="Custo">${brl(item.custo_kg)}</td>
+    <td data-label="Unidade" style="color:rgba(255,255,255,.4);font-size:11px;">${item.unidade==='un'?'por unidade':'por kg'}</td>
+    <td data-label="Ações"><div class="acts">
       <button class="be" onclick="editIngrediente(${item.id})">✏️</button>
       <button class="bd" onclick="remIngrediente(${item.id})">🗑️</button>
     </div></td></tr>`).join('');
@@ -983,12 +1046,12 @@ async function loadReceitas(filtro='tudo'){
 
   const cls=pct=>pct>35?'boff':pct>28?'byellow':'bon';
   const rows=list.map(item=>`<tr>
-    <td><strong>${item.produto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${item.tamanho}</span></td>
-    <td>${brl(item.ingredCusto)}</td>
-    <td>${brl(item.embalagem)}</td>
-    <td><strong>${brl(item.total)}</strong></td>
-    <td>${brl(item.preco)}</td>
-    <td><span class="${cls(item.pct)}">${item.pct.toFixed(1)}%</span></td>
+    <td data-label="Produto"><strong>${item.produto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${item.tamanho}</span></td>
+    <td data-label="Ingredientes">${brl(item.ingredCusto)}</td>
+    <td data-label="Embalagem">${brl(item.embalagem)}</td>
+    <td data-label="Custo Total"><strong>${brl(item.total)}</strong></td>
+    <td data-label="Preço Venda">${brl(item.preco)}</td>
+    <td data-label="CMV%"><span class="${cls(item.pct)}">${item.pct.toFixed(1)}%</span></td>
   </tr>`).join('');
   document.getElementById('t-receitas').innerHTML=`<table>
     <thead><tr><th>Produto</th><th>Ingredientes</th><th>Embalagem</th><th>Custo Total</th><th>Preço Venda</th><th>CMV%</th></tr></thead>
@@ -1074,7 +1137,7 @@ async function loadRelatorio(period='hoje'){
     </div>
     ${top.length?`<div class="tw"><div class="tw-head"><h3>🏆 Mais Vendidos</h3></div>
     <table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th></tr></thead>
-    <tbody>${top.map(([n,q],i)=>`<tr><td style="color:var(--orange);font-weight:700;font-family:'Bebas Neue',sans-serif;font-size:18px;">${i+1}°</td><td>${n}</td><td><strong>${q}</strong></td></tr>`).join('')}</tbody></table></div>`
+    <tbody>${top.map(([n,q],i)=>`<tr><td data-label="#" style="color:var(--orange);font-weight:700;font-family:'Bebas Neue',sans-serif;font-size:18px;">${i+1}°</td><td data-label="Produto">${n}</td><td data-label="Qtd"><strong>${q}</strong></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="loading">Nenhum pedido entregue neste período.</div>'}`;
 }
 
@@ -1131,11 +1194,11 @@ async function loadAvaliacoes(){
 
   const tipos={5:'⭐⭐⭐⭐⭐',4:'⭐⭐⭐⭐',3:'⭐⭐⭐',2:'⭐⭐',1:'⭐'};
   const rows=data.map(a=>`<tr>
-    <td><strong>${a.nome}</strong></td>
-    <td>${tipos[a.estrelas]||''}</td>
-    <td style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${a.texto||''}</td>
-    <td style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${a.data||''}</td>
-    <td><button class="bd" onclick="remAvaliacao(${a.id})">🗑️</button></td>
+    <td data-label="Cliente"><strong>${a.nome}</strong></td>
+    <td data-label="Nota">${tipos[a.estrelas]||''}</td>
+    <td data-label="Comentário" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${a.texto||''}</td>
+    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${a.data||''}</td>
+    <td data-label="Ação"><button class="bd" onclick="remAvaliacao(${a.id})">🗑️</button></td>
   </tr>`).join('');
   document.getElementById('t-avaliacoes').innerHTML=`<table><thead><tr><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th><th>Ação</th></tr></thead>
   <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3)">Nenhuma avaliação.</td></tr>'}</tbody></table>`;
@@ -1149,11 +1212,11 @@ async function loadContatos(){
   const data=await api('contatos','','created_at.desc');
   const tipos={duvida:'❓ Dúvida',sugestao:'💡 Sugestão',elogio:'❤️ Elogio',reclamacao:'⚠️ Reclamação'};
   const rows=data.map(c=>`<tr>
-    <td><strong>${c.nome}</strong>${c.telefone?`<br><span style="font-size:11px;color:rgba(255,255,255,.3)">${c.telefone}</span>`:''}</td>
-    <td>${tipos[c.tipo]||c.tipo||''}</td>
-    <td style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${c.mensagem||''}</td>
-    <td style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${c.data||new Date(c.created_at||'').toLocaleDateString('pt-BR')||''}</td>
-    <td><div class="acts">
+    <td data-label="Cliente"><strong>${c.nome}</strong>${c.telefone?`<br><span style="font-size:11px;color:rgba(255,255,255,.3)">${c.telefone}</span>`:''}</td>
+    <td data-label="Tipo">${tipos[c.tipo]||c.tipo||''}</td>
+    <td data-label="Mensagem" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${c.mensagem||''}</td>
+    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${c.data||new Date(c.created_at||'').toLocaleDateString('pt-BR')||''}</td>
+    <td data-label="Ações"><div class="acts">
       ${!c.lido?`<button class="be" onclick="marcarLido(${c.id})">✅ Lido</button>`:'<span style="color:#4ade80;font-size:11px;">✅ Lido</span>'}
       <button class="bd" onclick="remContato(${c.id})">🗑️</button>
     </div></td></tr>`).join('');
@@ -1182,13 +1245,13 @@ async function loadClientes() {
     const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp === p.whatsapp) || (!x.whatsapp && x.nome === p.nome));
     const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
     return `<tr>
-      <td><strong>${p.nome}</strong></td>
-      <td>${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
-      <td style="color:rgba(255,255,255,0.5);font-size:12px;">${p.bairro||'—'}</td>
-      <td style="text-align:center;">${pedidosCliente.length}</td>
-      <td style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
-      <td style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>
-      <td>
+      <td data-label="Nome"><strong>${p.nome}</strong></td>
+      <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
+      <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${p.bairro||'—'}</td>
+      <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}</td>
+      <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
+      <td data-label="1º Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>
+      <td data-label="Ação">
         ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}?text=Oi%20${encodeURIComponent(p.nome)}!%20Temos%20novidades%20na%20Big%20Bang%20Pizza%20🍕" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;">📨 Contatar</a>` : '—'}
       </td>
     </tr>`;
@@ -1210,6 +1273,127 @@ async function loadClientes() {
       </tr></thead>
       <tbody>${rows||'<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum cliente ainda</td></tr>'}</tbody>
     </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// CUPONS DE DESCONTO
+// ═══════════════════════════════════════════════════════
+async function loadCupons() {
+  const data = await api('cupons', '', 'created_at.desc');
+  if (!data.length) {
+    document.getElementById('t-cupons').innerHTML = '<div class="loading">Nenhum cupom criado ainda.</div>';
+    return;
+  }
+  const hoje = new Date().toISOString().split('T')[0];
+  const rows = data.map(c => {
+    const expirado = c.validade && c.validade < hoje;
+    const esgotado = c.usos_max && c.usos_atuais >= c.usos_max;
+    let statusLabel = '';
+    if (!c.ativo)      statusLabel = '<span class="boff">Inativo</span>';
+    else if (expirado) statusLabel = '<span class="boff">Expirado</span>';
+    else if (esgotado) statusLabel = '<span class="byellow">Esgotado</span>';
+    else               statusLabel = '<span class="bon">Ativo</span>';
+    const desconto = c.tipo === 'percentual' ? `${c.desconto}%` : brl(c.desconto);
+    const validade = c.validade ? new Date(c.validade + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+    const usos = c.usos_max ? `${c.usos_atuais || 0}/${c.usos_max}` : `${c.usos_atuais || 0} / ilimitado`;
+    return `<tr>
+      <td data-label="Código"><strong style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--orange);">${c.codigo}</strong></td>
+      <td data-label="Desconto"><strong>${desconto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${c.tipo === 'percentual' ? 'Percentual' : 'Valor fixo'}</span></td>
+      <td data-label="Usos" style="font-size:12px;">${usos}</td>
+      <td data-label="Validade" style="font-size:12px;">${validade}</td>
+      <td data-label="Status">${statusLabel}</td>
+      <td data-label="Ações"><div class="acts">
+        <button class="be" onclick="openModCupom(${c.id})">✏️</button>
+        <button class="bt" onclick="togCupom(${c.id},${c.ativo})">${c.ativo ? '⏸' : '▶'}</button>
+        <button class="bd" onclick="remCupom(${c.id})">🗑️</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('t-cupons').innerHTML = `<table>
+    <thead><tr><th>Código</th><th>Desconto</th><th>Usos</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+async function togCupom(id, ativo) {
+  await upd('cupons', id, { ativo: !ativo });
+  loadCupons();
+}
+
+async function remCupom(id) {
+  if (confirm('Deletar cupom?')) { await del('cupons', id); loadCupons(); }
+}
+
+async function openModCupom(id = null) {
+  document.getElementById('mod-save-btn').onclick = saveCupom;
+  editId = id;
+  let item = {};
+  if (id) { const d = await api('cupons', `id=eq.${id}`); item = d[0] || {}; }
+  document.getElementById('mod-title').textContent = id ? 'Editar Cupom' : 'Novo Cupom';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg">
+      <label>Código do Cupom</label>
+      <input id="cup-codigo" placeholder="Ex: PIZZA15" value="${item.codigo || ''}" style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Tipo de Desconto</label>
+        <select id="cup-tipo" onchange="atualizarLabelDesconto()">
+          <option value="percentual" ${item.tipo !== 'fixo' ? 'selected' : ''}>% Percentual</option>
+          <option value="fixo" ${item.tipo === 'fixo' ? 'selected' : ''}>R$ Valor Fixo</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label id="cup-desconto-label">${item.tipo === 'fixo' ? 'Desconto (R$)' : 'Desconto (%)'}</label>
+        <input id="cup-desconto" type="number" step="${item.tipo === 'fixo' ? '0.01' : '1'}" min="0" max="${item.tipo === 'fixo' ? '9999' : '100'}" value="${item.desconto || ''}" placeholder="${item.tipo === 'fixo' ? 'Ex: 10.00' : 'Ex: 15'}">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Limite de Usos (deixe vazio = ilimitado)</label>
+        <input id="cup-usos-max" type="number" min="1" value="${item.usos_max || ''}" placeholder="Ex: 100">
+      </div>
+      <div class="fg">
+        <label>Validade (deixe vazio = sem prazo)</label>
+        <input id="cup-validade" type="date" value="${item.validade || ''}">
+      </div>
+    </div>`;
+  document.getElementById('modal').classList.add('open');
+}
+
+function atualizarLabelDesconto() {
+  const tipo = document.getElementById('cup-tipo').value;
+  const label = document.getElementById('cup-desconto-label');
+  const input = document.getElementById('cup-desconto');
+  if (tipo === 'fixo') {
+    label.textContent = 'Desconto (R$)';
+    input.step = '0.01'; input.max = '9999';
+    input.placeholder = 'Ex: 10.00';
+  } else {
+    label.textContent = 'Desconto (%)';
+    input.step = '1'; input.max = '100';
+    input.placeholder = 'Ex: 15';
+  }
+}
+
+async function saveCupom() {
+  const codigo = document.getElementById('cup-codigo').value.trim().toUpperCase();
+  const desconto = parseFloat(document.getElementById('cup-desconto').value);
+  if (!codigo) { alert('Digite o código do cupom!'); return; }
+  if (!desconto || desconto <= 0) { alert('Digite um desconto válido!'); return; }
+  const tipo = document.getElementById('cup-tipo').value;
+  const usosMax = document.getElementById('cup-usos-max').value;
+  const validade = document.getElementById('cup-validade').value;
+  const data = {
+    codigo,
+    desconto,
+    tipo,
+    ativo: true,
+    usos_max: usosMax ? parseInt(usosMax) : null,
+    validade: validade || null,
+  };
+  const ok = editId ? await upd('cupons', editId, data) : await ins('cupons', data);
+  if (ok) { closeMod(); loadCupons(); showToastAdmin('✅ Cupom salvo!'); }
+  else { alert('Erro ao salvar! Verifique se o código já existe.'); }
 }
 
 async function exportarClientesCSV() {
