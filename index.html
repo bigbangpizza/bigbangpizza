@@ -795,47 +795,45 @@ async function finalizarPedido() {
   const obs = document.getElementById('f-obs').value.trim();
   const wpp = document.getElementById('f-whatsapp').value.trim();
 
-  // Registrar pedido no Supabase
-  try {
-    const resp = await fetch(`${SB}/rest/v1/pedidos`, {
-      method: 'POST',
-      headers: {
-        'apikey': SK,
-        'Authorization': 'Bearer ' + SK,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        nome,
-        endereco: end + (comp?', '+comp:''),
-        bairro: bNome,
-        complemento: comp || null,
-        pagamento: pag,
-        whatsapp: wpp || null,
-        observacao: obs || null,
-        status: 'aguardando',
-        cupom: cupomAtivo ? 'BIGBANG15' : null,
-        itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
-        subtotal: sub,
-        desconto: desconto,
-        frete: fr||0,
-        total: totalFinal
-      })
-    });
-    if (!resp.ok) console.error('Erro ao salvar pedido:', resp.status);
-  } catch(e) {
-    console.error('Erro ao salvar pedido:', e);
-  }
+  // Abrir o WhatsApp na hora, sem await antes — em mobile, a navegação para wa.me
+  // só abre o app do WhatsApp quando é resultado direto e síncrono do toque do usuário.
+  window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`, '_blank');
 
-  window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`,'_blank');
-  
+  // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
+  fetch(`${SB}/rest/v1/pedidos`, {
+    method: 'POST',
+    headers: {
+      'apikey': SK,
+      'Authorization': 'Bearer ' + SK,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({
+      nome,
+      endereco: end + (comp?', '+comp:''),
+      bairro: bNome,
+      complemento: comp || null,
+      pagamento: pag,
+      whatsapp: wpp || null,
+      observacao: obs || null,
+      status: 'aguardando',
+      cupom: cupomAtivo ? 'BIGBANG15' : null,
+      itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
+      subtotal: sub,
+      desconto: desconto,
+      frete: fr||0,
+      total: totalFinal
+    })
+  }).then(resp => {
+    if (!resp.ok) console.error('Erro ao salvar pedido:', resp.status);
+  }).catch(e => console.error('Erro ao salvar pedido:', e));
 
 
   setTimeout(() => {
   const listaEl = document.getElementById('obg-pedido-lista');
   listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
     cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.name} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}</div>`).join('');
-  document.getElementById('obg-total-val').textContent = 'R$ ' + total.toFixed(2).replace('.',',');
+  document.getElementById('obg-total-val').textContent = 'R$ ' + totalFinal.toFixed(2).replace('.',',');
   document.getElementById('tela-obrigado').classList.add('open');
   closeCart();
   }, 300);
