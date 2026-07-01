@@ -38,17 +38,19 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .btn-pedido:hover{background:var(--red-dark);}
 
 /* HERO */
-.hero{background:#0a0a0a;text-align:center;padding:min(22vh,180px) 20px 40px;position:relative;overflow:hidden;min-height:min(86vh,640px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background-size:cover;background-position:center;transition:background-image 0.4s ease;}
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);}
+.hero{background:#0a0a0a;text-align:center;padding:min(22vh,180px) 20px 40px;position:relative;overflow:hidden;min-height:min(86vh,640px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
+.hero-bg-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 55%;transform:scale(1.2);transform-origin:center bottom;z-index:0;display:none;}
+.hero.hero--photo .hero-bg-photo{display:block;}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);z-index:1;}
 .hero.hero--photo::before{background:var(--hero-overlay);}
-.hero-badge-logo{width:min(96px,22vw);margin:0 auto 14px;display:block;filter:drop-shadow(0 4px 14px rgba(0,0,0,0.5));position:relative;border-radius:50%;}
-.hero-eyebrow{font-size:12px;letter-spacing:4px;text-transform:uppercase;color:var(--orange);margin-bottom:10px;position:relative;font-weight:700;}
-.hero h1{font-size:clamp(38px,10vw,64px);color:white;line-height:1.02;position:relative;text-shadow:0 4px 18px rgba(0,0,0,0.5);}
+.hero-badge-logo{width:min(340px,80vw);margin:0 auto 12px;display:block;filter:drop-shadow(0 6px 24px rgba(0,0,0,0.5));position:relative;z-index:2;}
+.hero-eyebrow{font-size:12px;letter-spacing:4px;text-transform:uppercase;color:var(--orange);margin-bottom:10px;position:relative;font-weight:700;z-index:2;}
+.hero h1{font-size:clamp(38px,10vw,64px);color:white;line-height:1.02;position:relative;text-shadow:0 4px 18px rgba(0,0,0,0.5);z-index:2;}
 .hero h1 em{font-style:normal;color:var(--orange);}
-.hero-sub{font-size:clamp(14px,3.6vw,17px);color:rgba(255,255,255,0.78);margin:14px 0 20px;line-height:1.6;position:relative;}
-.hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:24px;position:relative;}
+.hero-sub{font-size:clamp(14px,3.6vw,17px);color:rgba(255,255,255,0.78);margin:14px 0 20px;line-height:1.6;position:relative;z-index:2;}
+.hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:24px;position:relative;z-index:2;}
 .badge{background:rgba(255,255,255,0.1);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.92);padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;}
-.hero-cta{display:inline-block;background:var(--red);color:white;padding:18px 46px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;border-radius:10px;text-decoration:none;position:relative;box-shadow:0 10px 30px rgba(204,17,0,0.45);transition:transform 0.15s,background 0.15s;}
+.hero-cta{display:inline-block;background:var(--red);color:white;padding:18px 46px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;border-radius:10px;text-decoration:none;position:relative;z-index:2;box-shadow:0 10px 30px rgba(204,17,0,0.45);transition:transform 0.15s,background 0.15s;}
 .hero-cta:hover{background:var(--red-dark);transform:translateY(-2px);}
 
 /* SECTIONS */
@@ -323,7 +325,8 @@ footer img{width:130px;margin-bottom:8px;}
 </nav>
 
 <div class="hero" id="hero">
-  <img class="hero-badge-logo" src="logo-header.png" alt="Big Bang Pizza">
+  <img class="hero-bg-photo" id="hero-bg-photo" alt="">
+  <img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza">
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1>Pizza artesanal,<br><em>explosão</em> de sabor</h1>
   <p class="hero-sub">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
@@ -747,13 +750,9 @@ async function loadHeroPhoto() {
     ]);
     const foto = (combos.find(c => c.foto_url) || salgadas.find(p => p.foto_url) || {}).foto_url;
     if (!foto) return;
-    const img = new Image();
-    img.onload = () => {
-      const hero = document.getElementById('hero');
-      hero.style.backgroundImage = `url('${foto}')`;
-      hero.classList.add('hero--photo');
-    };
-    img.src = foto;
+    const heroImg = document.getElementById('hero-bg-photo');
+    heroImg.onload = () => document.getElementById('hero').classList.add('hero--photo');
+    heroImg.src = foto;
   } catch(e) { /* mantém o fundo padrão do hero */ }
 }
 loadHeroPhoto();
