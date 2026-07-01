@@ -38,7 +38,7 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .btn-pedido:hover{background:var(--red-dark);}
 
 /* HERO */
-.hero{background:#0a0a0a;text-align:center;padding:32px 20px;position:relative;overflow:hidden;min-height:calc(100vh - var(--top-offset, 130px));display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.hero{background:radial-gradient(ellipse at 50% 35%,#3a1200 0%,#0a0a0a 70%);text-align:center;padding:32px 20px;position:relative;overflow:hidden;min-height:calc(100vh - var(--top-offset, 130px));display:flex;flex-direction:column;align-items:center;justify-content:center;}
 .hero-bg-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 55%;transform:scale(1.2);transform-origin:center bottom;z-index:0;display:none;}
 .hero.hero--photo .hero-bg-photo{display:block;}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);z-index:1;}
@@ -761,8 +761,8 @@ async function loadBairros() {
 async function loadHeroPhoto() {
   try {
     let [combos, salgadas] = await Promise.all([
-      api('combos', 'ativo=eq.true'),
-      api('pizzas_salgadas', 'ativo=eq.true')
+      api('combos', 'ativo=eq.true&select=foto_url'),
+      api('pizzas_salgadas', 'ativo=eq.true&select=foto_url')
     ]);
     const foto = (combos.find(c => c.foto_url) || salgadas.find(p => p.foto_url) || {}).foto_url;
     if (!foto) return;
