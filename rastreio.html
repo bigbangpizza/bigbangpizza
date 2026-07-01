@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rastreie seu Pedido — Big Bang Pizza</title>
+<meta name="description" content="Acompanhe em tempo real o status do seu pedido na Big Bang Pizza.">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--red:#CC1100;--red-dark:#880000;--orange:#FF6B00;--black:#0a0a0a;--gray:#888;--green:#4ade80;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:var(--black);color:white;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px 16px 40px;}
+h1,h2{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
+.logo{width:110px;margin-bottom:22px;}
+.card{background:#161616;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;width:100%;max-width:440px;}
+.loading{text-align:center;padding:30px 0;color:var(--gray);font-size:14px;}
+
+/* CABEÇALHO DO PEDIDO */
+.pedido-id{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:2px;color:var(--orange);text-align:center;}
+.cliente-nome{font-family:'Bebas Neue',sans-serif;font-size:28px;text-align:center;margin:2px 0 4px;}
+.hora-feito{font-size:12px;color:var(--gray);text-align:center;margin-bottom:6px;}
+.tempo-estimado{background:rgba(255,107,0,0.1);border:1px solid rgba(255,107,0,0.25);color:var(--orange);border-radius:8px;padding:9px 12px;text-align:center;font-size:13px;font-weight:600;margin-bottom:22px;}
+
+/* TIMELINE VERTICAL */
+.timeline{margin-bottom:22px;}
+.step{display:flex;gap:14px;}
+.step-col{display:flex;flex-direction:column;align-items:center;}
+.step-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:#262626;border:2px solid #333;color:rgba(255,255,255,0.3);transition:all .3s;}
+.step-line{width:2px;flex:1;min-height:26px;background:#333;transition:background .3s;}
+.step-body{padding:5px 0 22px;flex:1;}
+.step-label{font-weight:700;font-size:14.5px;color:rgba(255,255,255,0.35);transition:color .3s;}
+.step-sub{font-size:11.5px;color:rgba(255,255,255,0.25);margin-top:1px;}
+
+.step.done .step-icon{background:var(--red);border-color:var(--red);color:white;}
+.step.done .step-line{background:var(--red);}
+.step.done .step-label{color:rgba(255,255,255,0.75);}
+
+.step.current .step-icon{background:var(--orange);border-color:var(--orange);color:white;box-shadow:0 0 0 5px rgba(255,107,0,0.2);animation:pulse 1.6s ease infinite;}
+.step.current .step-label{color:white;}
+.step.current .step-sub{color:var(--orange);}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,107,0,0.4);}70%{box-shadow:0 0 0 8px rgba(255,107,0,0);}100%{box-shadow:0 0 0 0 rgba(255,107,0,0);}}
+
+.step:last-child .step-body{padding-bottom:2px;}
+.step:last-child .step-line{display:none;}
+
+/* ITENS DO PEDIDO */
+.itens-box{background:rgba(255,255,255,0.04);border-radius:10px;padding:14px;margin-bottom:14px;}
+.itens-title{font-size:10.5px;font-weight:700;color:rgba(255,255,255,0.3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;}
+.item-row{font-size:13.5px;color:rgba(255,255,255,0.75);padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+.item-row:last-of-type{border-bottom:none;}
+.total-row{display:flex;justify-content:space-between;font-family:'Bebas Neue',sans-serif;font-size:19px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);}
+.total-row span{color:var(--orange);}
+
+.atualizado{text-align:center;font-size:11px;color:rgba(255,255,255,0.25);}
+
+.erro-box{text-align:center;padding:20px 0;}
+.erro-emoji{font-size:52px;margin-bottom:14px;}
+.erro-box h2{font-size:24px;margin-bottom:8px;}
+.erro-box p{color:rgba(255,255,255,0.55);font-size:14px;line-height:1.5;}
+.btn-site{display:inline-block;margin-top:18px;background:var(--red);color:white;text-decoration:none;padding:11px 24px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;}
+</style>
+</head>
+<body>
+
+<img class="logo" src="logo-header.png" alt="Big Bang Pizza">
+<div class="card" id="card"><div class="loading">Carregando seu pedido...</div></div>
+
+<script>
+const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
+const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
+const params=new URLSearchParams(location.search);
+const pedidoId=params.get('id');
+
+const ETAPAS=[
+  {key:'aguardando',label:'Aguardando confirmação',icon:'⏳'},
+  {key:'aceito',label:'Pedido aceito',icon:'✅'},
+  {key:'preparando',label:'Preparando sua pizza',icon:'🟡'},
+  {key:'saiu',label:'Saiu para entrega',icon:'🛵'},
+  {key:'entregue',label:'Entregue',icon:'🏁'},
+];
+
+function renderErro(msg){
+  document.getElementById('card').innerHTML=`<div class="erro-box">
+    <div class="erro-emoji">🍕</div>
+    <h2>Ops!</h2>
+    <p>${msg}</p>
+    <a class="btn-site" href="index.html">Ver cardápio</a>
+  </div>`;
+}
+
+function renderPedido(p){
+  let idxAtual=ETAPAS.findIndex(e=>e.key===p.status);
+  if(idxAtual===-1) idxAtual=0;
+  const hora=p.created_at?new Date(p.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+  const stepsHtml=ETAPAS.map((e,i)=>{
+    const cls=i<idxAtual?'done':(i===idxAtual?'current':'');
+    return `<div class="step ${cls}">
+      <div class="step-col">
+        <div class="step-icon">${e.icon}</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <div class="step-label">${e.label}</div>
+        ${i===idxAtual?'<div class="step-sub">Status atual</div>':''}
+      </div>
+    </div>`;
+  }).join('');
+  const itens=(p.itens||'').split(' | ').filter(Boolean);
+  document.getElementById('card').innerHTML=`
+    <div class="pedido-id">PEDIDO #${p.id}</div>
+    <div class="cliente-nome">${p.nome||''}</div>
+    ${hora?`<div class="hora-feito">Feito às ${hora}</div>`:''}
+    <div class="tempo-estimado">⏱️ Tempo estimado: 35–60 minutos</div>
+    <div class="timeline">${stepsHtml}</div>
+    <div class="itens-box">
+      <div class="itens-title">Seu pedido</div>
+      ${itens.map(i=>`<div class="item-row">🍕 ${i}</div>`).join('')}
+      <div class="total-row"><span>TOTAL</span><span>R$ ${Number(p.total||0).toFixed(2).replace('.',',')}</span></div>
+    </div>
+    <div class="atualizado">🔄 Atualiza automaticamente a cada 30s</div>
+  `;
+}
+
+async function carregarPedido(){
+  if(!pedidoId){ renderErro('Link de rastreio inválido. Confira o link que você recebeu ou peça um novo.'); return; }
+  try{
+    const r=await fetch(`${SB}/rest/v1/pedidos_rastreio?id=eq.${encodeURIComponent(pedidoId)}&select=*`,{
+      headers:{apikey:SK,Authorization:'Bearer '+SK}
+    });
+    if(!r.ok){ renderErro('Não foi possível buscar seu pedido agora. Tente novamente em instantes.'); return; }
+    const data=await r.json();
+    if(!data||!data.length){ renderErro('Pedido não encontrado. Confira se o link está correto.'); return; }
+    renderPedido(data[0]);
+  }catch(e){ renderErro('Não foi possível buscar seu pedido agora. Tente novamente em instantes.'); }
+}
+
+carregarPedido();
+setInterval(carregarPedido,30000);
+</script>
+</body>
+</html>
