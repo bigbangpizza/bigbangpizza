@@ -38,7 +38,7 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .btn-pedido:hover{background:var(--red-dark);}
 
 /* HERO */
-.hero{background:#0a0a0a;text-align:center;padding:min(22vh,180px) 20px 40px;position:relative;overflow:hidden;min-height:min(86vh,640px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
+.hero{background:#0a0a0a;text-align:center;padding:32px 20px;position:relative;overflow:hidden;min-height:calc(100vh - var(--top-offset, 130px));display:flex;flex-direction:column;align-items:center;justify-content:center;}
 .hero-bg-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 55%;transform:scale(1.2);transform-origin:center bottom;z-index:0;display:none;}
 .hero.hero--photo .hero-bg-photo{display:block;}
 .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(255,107,0,0.15) 0%,transparent 65%);z-index:1;}
@@ -630,6 +630,22 @@ function updateStatus() {
 }
 updateStatus();
 setInterval(updateStatus, 1000);
+
+// AJUSTE DE ALTURA DO HERO — 100vh descontando banner de status + header + nav de categorias
+function ajustarAlturaHero() {
+  const banner = document.getElementById('status-banner');
+  const head = document.querySelector('header');
+  const nav = document.getElementById('cat-nav');
+  const total = (banner ? banner.offsetHeight : 0) + (head ? head.offsetHeight : 0) + (nav ? nav.offsetHeight : 0);
+  document.documentElement.style.setProperty('--top-offset', total + 'px');
+}
+ajustarAlturaHero();
+window.addEventListener('resize', ajustarAlturaHero);
+if ('ResizeObserver' in window) {
+  const roHero = new ResizeObserver(ajustarAlturaHero);
+  [document.getElementById('status-banner'), document.querySelector('header'), document.getElementById('cat-nav')]
+    .filter(Boolean).forEach(el => roHero.observe(el));
+}
 
 // SPLASH + SCROLL LOCK
 document.body.style.overflow = 'hidden';
