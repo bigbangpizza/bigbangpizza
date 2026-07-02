@@ -1426,15 +1426,26 @@ async function salvarCores(){
 }
 
 // --- SEÇÃO 3: FOTOS DOS PRODUTOS ---
+let apProdutosReqId = 0;
 async function filtrarProdutosFoto(btn, tipo){
   apProdutosFiltro = tipo;
   document.querySelectorAll('#ap-produtos-filtros button').forEach(b=>b.className='bt filtro-btn');
   if(btn) btn.className='be filtro-btn';
   const tabela = AP_TABELAS[tipo];
-  if(!apProdutosCache[tipo].length){
-    apProdutosCache[tipo] = await api(tabela,'','nome.asc');
+  const meuId = ++apProdutosReqId;
+  document.getElementById('ap-produtos-lista').innerHTML = '<div class="loading">Carregando...</div>';
+  try {
+    if(!apProdutosCache[tipo].length){
+      apProdutosCache[tipo] = await api(tabela,'','nome.asc');
+    }
+    if (meuId !== apProdutosReqId) return; // uma troca de filtro mais recente já assumiu, descarta esta resposta
+    renderProdutosFoto(tipo);
+  } catch(e) {
+    console.error('Erro ao carregar produtos para foto:', e);
+    if (meuId === apProdutosReqId) {
+      document.getElementById('ap-produtos-lista').innerHTML = '<div class="loading">⚠️ Erro ao carregar produtos. Tente novamente.</div>';
+    }
   }
-  renderProdutosFoto(tipo);
 }
 
 function renderProdutosFoto(tipo){
