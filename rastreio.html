@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co; object-src 'none'; base-uri 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Rastreie seu Pedido — Big Bang Pizza</title>
 <meta name="description" content="Acompanhe em tempo real o status do seu pedido na Big Bang Pizza.">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -69,7 +71,7 @@ h1,h2{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 const params=new URLSearchParams(location.search);
-const pedidoId=params.get('id');
+const pedidoToken=params.get('token');
 
 const ETAPAS=[
   {key:'aguardando',label:'Aguardando confirmação',icon:'⏳'},
@@ -78,6 +80,12 @@ const ETAPAS=[
   {key:'saiu',label:'Saiu para entrega',icon:'🛵'},
   {key:'entregue',label:'Entregue',icon:'🏁'},
 ];
+
+function esc(s){
+  const d=document.createElement('div');
+  d.textContent=String(s??'');
+  return d.innerHTML;
+}
 
 function renderErro(msg){
   document.getElementById('card').innerHTML=`<div class="erro-box">
@@ -107,25 +115,27 @@ function renderPedido(p){
   }).join('');
   const itens=(p.itens||'').split(' | ').filter(Boolean);
   document.getElementById('card').innerHTML=`
-    <div class="pedido-id">PEDIDO #${p.id}</div>
-    <div class="cliente-nome">${p.nome||''}</div>
-    ${hora?`<div class="hora-feito">Feito às ${hora}</div>`:''}
+    <div class="pedido-id">PEDIDO #${esc(p.id)}</div>
+    <div class="cliente-nome">${esc(p.nome||'')}</div>
+    ${hora?`<div class="hora-feito">Feito às ${esc(hora)}</div>`:''}
     <div class="tempo-estimado">⏱️ Tempo estimado: 35–60 minutos</div>
     <div class="timeline">${stepsHtml}</div>
     <div class="itens-box">
       <div class="itens-title">Seu pedido</div>
-      ${itens.map(i=>`<div class="item-row">🍕 ${i}</div>`).join('')}
-      <div class="total-row"><span>TOTAL</span><span>R$ ${Number(p.total||0).toFixed(2).replace('.',',')}</span></div>
+      ${itens.map(i=>`<div class="item-row">🍕 ${esc(i)}</div>`).join('')}
+      <div class="total-row"><span>TOTAL</span><span>R$ ${esc(Number(p.total||0).toFixed(2).replace('.',','))}</span></div>
     </div>
     <div class="atualizado">🔄 Atualiza automaticamente a cada 30s</div>
   `;
 }
 
 async function carregarPedido(){
-  if(!pedidoId){ renderErro('Link de rastreio inválido. Confira o link que você recebeu ou peça um novo.'); return; }
+  if(!pedidoToken){ renderErro('Link de rastreio inválido. Confira o link que você recebeu ou peça um novo.'); return; }
   try{
-    const r=await fetch(`${SB}/rest/v1/pedidos_rastreio?id=eq.${encodeURIComponent(pedidoId)}&select=*`,{
-      headers:{apikey:SK,Authorization:'Bearer '+SK}
+    const r=await fetch(`${SB}/rest/v1/rpc/rastrear_pedido`,{
+      method:'POST',
+      headers:{apikey:SK,Authorization:'Bearer '+SK,'Content-Type':'application/json'},
+      body:JSON.stringify({p_token:pedidoToken})
     });
     if(!r.ok){ renderErro('Não foi possível buscar seu pedido agora. Tente novamente em instantes.'); return; }
     const data=await r.json();

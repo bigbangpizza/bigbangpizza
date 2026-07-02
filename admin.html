@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co; object-src 'none'; base-uri 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Admin — Big Bang Pizza</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -621,6 +623,15 @@ async function del(table, id) {
 // ═══════════════════════════════════════════════════════
 function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
 
+// Escapa dados vindos de formulários públicos (pedidos, contatos, avaliações)
+// antes de interpolar em innerHTML — evita XSS armazenado via campos livres
+// como nome/mensagem/observação, que qualquer visitante anônimo pode enviar.
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s === null || s === undefined ? '' : String(s);
+  return d.innerHTML;
+}
+
 function showToastAdmin(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -962,22 +973,22 @@ async function loadPedidos(status='aguardando'){
       const dt=new Date(p.created_at);
       const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       const cor=cores[p.status]||'#fff';
-      const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${i}</div>`).join('');
+      const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
       const mostrarTimer=(p.status==='aguardando'||p.status==='aceito');
       return `<div style="background:#1a1a1a;border:2px solid ${cor};border-radius:12px;padding:18px;margin-bottom:14px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
             <div>
-              <div style="font-weight:700;font-size:15px;">${p.nome}</div>
-              <div style="font-size:12px;color:rgba(255,255,255,.4);">${hora} · ${p.bairro||''}</div>
-              ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>`:''}
+              <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
+              <div style="font-size:12px;color:rgba(255,255,255,.4);">${hora} · ${esc(p.bairro||'')}</div>
+              ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
               ${mostrarTimer?`<div class="pedido-timer" data-created="${p.created_at}" style="font-size:12px;font-weight:700;margin-top:2px;"></div>`:''}
             </div>
           </div>
           <div style="text-align:right;">
             <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);">${brl(p.total||0)}</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.4);">${p.pagamento||''}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.4);">${esc(p.pagamento||'')}</div>
           </div>
         </div>
         <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px;margin-bottom:10px;">
@@ -986,9 +997,9 @@ async function loadPedidos(status='aguardando'){
         </div>
         ${p.observacao?`<div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:10px;">
           <div style="font-size:10px;font-weight:700;color:#facc15;margin-bottom:3px;">⚠️ OBSERVAÇÃO</div>
-          <div style="font-size:13px;font-weight:600;">${p.observacao}</div></div>`:''}
-        <div style="font-size:12px;color:rgba(255,255,255,.3);margin-bottom:12px;">📍 ${p.endereco||''} ${p.complemento?'— '+p.complemento:''}</div>
-        ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${p.cupom}</strong> — 15% OFF</div>` : ''}
+          <div style="font-size:13px;font-weight:600;">${esc(p.observacao)}</div></div>`:''}
+        <div style="font-size:12px;color:rgba(255,255,255,.3);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
+        ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — 15% OFF</div>` : ''}
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <select onchange="atualizarStatus(${p.id},this.value)" style="flex:1;min-width:200px;background:#111;color:white;border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
             <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
@@ -1027,8 +1038,11 @@ function atualizarTemporizadoresPedidos(){
 }
 setInterval(atualizarTemporizadoresPedidos, 60000);
 
-function copiarLinkRastreio(id){
-  const url=`https://bigbangpizza.com.br/rastreio.html?id=${id}`;
+async function copiarLinkRastreio(id){
+  const dados=await api('pedidos',`id=eq.${id}&select=rastreio_token`);
+  const token=dados?.[0]?.rastreio_token;
+  if(!token){ showToastAdmin('⚠️ Não foi possível gerar o link.'); return; }
+  const url=`https://bigbangpizza.com.br/rastreio.html?token=${token}`;
   navigator.clipboard.writeText(url)
     .then(()=>showToastAdmin('Link copiado! Envie para o cliente 📋'))
     .catch(()=>showToastAdmin('⚠️ Não foi possível copiar o link automaticamente.'));
@@ -1055,17 +1069,17 @@ async function imprimirPedido(id){
 <div class="sub">Delivery em Lauro de Freitas — (71) 99373-8823</div>
 <hr>
 <div class="row"><span>Pedido</span><strong>#${p.id}</strong></div>
-<div class="row"><span>Data/Hora</span><strong>${dataHora}</strong></div>
+<div class="row"><span>Data/Hora</span><strong>${esc(dataHora)}</strong></div>
 <hr>
-<div class="row"><span>Cliente</span><strong>${p.nome}</strong></div>
-<div class="row"><span>WhatsApp</span><strong>${p.whatsapp||'—'}</strong></div>
-<div class="row"><span>Bairro</span><strong>${p.bairro||'—'}</strong></div>
-<div class="row"><span>Endereço</span><strong>${p.endereco||'—'}${p.complemento?' — '+p.complemento:''}</strong></div>
-<div class="row"><span>Pagamento</span><strong>${p.pagamento||'—'}</strong></div>
+<div class="row"><span>Cliente</span><strong>${esc(p.nome)}</strong></div>
+<div class="row"><span>WhatsApp</span><strong>${esc(p.whatsapp||'—')}</strong></div>
+<div class="row"><span>Bairro</span><strong>${esc(p.bairro||'—')}</strong></div>
+<div class="row"><span>Endereço</span><strong>${esc(p.endereco||'—')}${p.complemento?' — '+esc(p.complemento):''}</strong></div>
+<div class="row"><span>Pagamento</span><strong>${esc(p.pagamento||'—')}</strong></div>
 <hr>
 <div style="font-size:11px;color:#555;font-weight:bold;margin-bottom:6px;">ITENS DO PEDIDO</div>
-${(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="item">${i}</div>`).join('')}
-${p.observacao?`<div class="obs">⚠️ OBS: ${p.observacao}</div>`:''}
+${(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="item">${esc(i)}</div>`).join('')}
+${p.observacao?`<div class="obs">⚠️ OBS: ${esc(p.observacao)}</div>`:''}
 <hr>
 <div class="row"><span>Subtotal</span><span>${brl(p.subtotal||0)}</span></div>
 <div class="row"><span>Frete</span><span>${p.frete==0?'Grátis':brl(p.frete||0)}</span></div>
@@ -1606,10 +1620,10 @@ async function loadAvaliacoes(){
 
   const tipos={5:'⭐⭐⭐⭐⭐',4:'⭐⭐⭐⭐',3:'⭐⭐⭐',2:'⭐⭐',1:'⭐'};
   const rows=data.map(a=>`<tr>
-    <td data-label="Cliente"><strong>${a.nome}</strong></td>
+    <td data-label="Cliente"><strong>${esc(a.nome)}</strong></td>
     <td data-label="Nota">${tipos[a.estrelas]||''}</td>
-    <td data-label="Comentário" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${a.texto||''}</td>
-    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${a.data||''}</td>
+    <td data-label="Comentário" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${esc(a.texto||'')}</td>
+    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${esc(a.data||'')}</td>
     <td data-label="Ação"><button class="bd" onclick="remAvaliacao(${a.id})">🗑️</button></td>
   </tr>`).join('');
   document.getElementById('t-avaliacoes').innerHTML=`<table><thead><tr><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th><th>Ação</th></tr></thead>
@@ -1624,10 +1638,10 @@ async function loadContatos(){
   const data=await api('contatos','','created_at.desc');
   const tipos={duvida:'❓ Dúvida',sugestao:'💡 Sugestão',elogio:'❤️ Elogio',reclamacao:'⚠️ Reclamação'};
   const rows=data.map(c=>`<tr>
-    <td data-label="Cliente"><strong>${c.nome}</strong>${c.telefone?`<br><span style="font-size:11px;color:rgba(255,255,255,.3)">${c.telefone}</span>`:''}</td>
-    <td data-label="Tipo">${tipos[c.tipo]||c.tipo||''}</td>
-    <td data-label="Mensagem" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${c.mensagem||''}</td>
-    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${c.data||new Date(c.created_at||'').toLocaleDateString('pt-BR')||''}</td>
+    <td data-label="Cliente"><strong>${esc(c.nome)}</strong>${c.telefone?`<br><span style="font-size:11px;color:rgba(255,255,255,.3)">${esc(c.telefone)}</span>`:''}</td>
+    <td data-label="Tipo">${tipos[c.tipo]||esc(c.tipo)||''}</td>
+    <td data-label="Mensagem" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${esc(c.mensagem||'')}</td>
+    <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${esc(c.data||new Date(c.created_at||'').toLocaleDateString('pt-BR')||'')}</td>
     <td data-label="Ações"><div class="acts">
       ${!c.lido?`<button class="be" onclick="marcarLido(${c.id})">✅ Lido</button>`:'<span style="color:#4ade80;font-size:11px;">✅ Lido</span>'}
       <button class="bd" onclick="remContato(${c.id})">🗑️</button>
@@ -1657,9 +1671,9 @@ async function loadClientes() {
     const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp === p.whatsapp) || (!x.whatsapp && x.nome === p.nome));
     const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
     return `<tr>
-      <td data-label="Nome"><strong>${p.nome}</strong></td>
-      <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${p.whatsapp}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
-      <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${p.bairro||'—'}</td>
+      <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
+      <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
+      <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
       <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}</td>
       <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
       <td data-label="1º Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>

@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com; object-src 'none'; base-uri 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
 <meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta a domingo das 18h às 00h.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍕</text></svg>">
@@ -551,6 +553,15 @@ function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
 async function api(table, q='') {
   const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=ordem.asc,id.asc`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
   return r.json();
+}
+
+// Escapa texto vindo de formulários públicos (avaliações) antes de interpolar
+// em innerHTML — qualquer visitante pode enviar uma avaliação, então esses
+// campos não podem ser tratados como HTML confiável.
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s === null || s === undefined ? '' : String(s);
+  return d.innerHTML;
 }
 
 // STATUS + COUNTDOWN
@@ -1136,14 +1147,14 @@ async function loadAvaliacoes() {
     document.getElementById('aval-grid').innerHTML = data.map(a => `
       <div class="aval-card">
         <div class="aval-header">
-          <div class="aval-avatar">${a.nome.charAt(0).toUpperCase()}</div>
+          <div class="aval-avatar">${esc(a.nome.charAt(0).toUpperCase())}</div>
           <div>
-            <div class="aval-nome">${a.nome}</div>
-            <div class="aval-data">${a.data || ''}</div>
+            <div class="aval-nome">${esc(a.nome)}</div>
+            <div class="aval-data">${esc(a.data || '')}</div>
           </div>
         </div>
         <div class="stars">${'★'.repeat(a.estrelas)}${'☆'.repeat(5 - a.estrelas)}</div>
-        <div class="aval-texto">${a.texto}</div>
+        <div class="aval-texto">${esc(a.texto)}</div>
       </div>`).join('');
   } catch(e) { console.log('Avaliacoes nao carregadas:', e); }
 }
