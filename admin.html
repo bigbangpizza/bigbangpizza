@@ -1445,17 +1445,28 @@ function renderProdutosFoto(tipo){
     const pos = posicaoParaPercent(p.foto_posicao);
     const key = `${tabela}-${p.id}`;
     return `<div style="background:#1a1a1a;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
-      <img src="${p.foto_url||''}" alt="" style="width:80px;height:80px;object-fit:cover;object-position:${p.foto_posicao||'center'};border-radius:8px;background:#333;flex-shrink:0;" onerror="this.style.opacity='0.15'">
+      <img id="pf-thumb-${key}" src="${p.foto_url||''}" alt="" style="width:80px;height:80px;object-fit:cover;object-position:${p.foto_posicao||'center'};border-radius:8px;background:#333;flex-shrink:0;" onerror="this.style.opacity='0.15'">
       <div style="flex:1;min-width:220px;">
         <div style="font-weight:700;margin-bottom:8px;">${p.nome}</div>
-        <input type="text" id="pf-url-${key}" value="${(p.foto_url||'').replace(/"/g,'&quot;')}" placeholder="URL da foto" style="width:100%;padding:8px 10px;background:#111;border:1.5px solid rgba(255,255,255,.09);border-radius:6px;color:white;font-size:12px;margin-bottom:8px;">
+        <input type="text" id="pf-url-${key}" value="${(p.foto_url||'').replace(/"/g,'&quot;')}" placeholder="URL da foto" oninput="atualizarThumbProduto('${key}')" style="width:100%;padding:8px 10px;background:#111;border:1.5px solid rgba(255,255,255,.09);border-radius:6px;color:white;font-size:12px;margin-bottom:8px;">
         <input type="file" accept="image/*" onchange="uploadProdutoFoto(this,'${tabela}',${p.id})" style="font-size:11px;margin-bottom:8px;color:rgba(255,255,255,.5);">
         <label style="font-size:11px;color:rgba(255,255,255,.4);display:block;margin-bottom:2px;">Posição da foto: <span id="pf-pos-val-${key}">${pos}</span>%</label>
-        <input type="range" min="0" max="100" value="${pos}" id="pf-pos-${key}" oninput="document.getElementById('pf-pos-val-${key}').textContent=this.value" style="width:100%;">
+        <input type="range" min="0" max="100" value="${pos}" id="pf-pos-${key}" oninput="atualizarThumbProduto('${key}')" style="width:100%;">
       </div>
       <button class="be" onclick="salvarFotoProduto('${tabela}',${p.id})">💾 Salvar</button>
     </div>`;
   }).join('');
+}
+
+function atualizarThumbProduto(key){
+  const url = document.getElementById(`pf-url-${key}`).value.trim();
+  const pos = document.getElementById(`pf-pos-${key}`).value;
+  document.getElementById(`pf-pos-val-${key}`).textContent = pos;
+  const thumb = document.getElementById(`pf-thumb-${key}`);
+  if (thumb) {
+    if (url) thumb.src = url;
+    thumb.style.objectPosition = `center ${pos}%`;
+  }
 }
 
 async function uploadProdutoFoto(input, tabela, id){
@@ -1465,6 +1476,7 @@ async function uploadProdutoFoto(input, tabela, id){
   try{
     const url = await uploadImagem(file, tabela);
     document.getElementById(`pf-url-${tabela}-${id}`).value = url;
+    atualizarThumbProduto(`${tabela}-${id}`);
     showToastAdmin('✅ Foto enviada! Clique em Salvar.');
   }catch(e){ showToastAdmin('⚠️ Erro ao enviar foto.'); }
 }
