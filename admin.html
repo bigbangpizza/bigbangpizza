@@ -170,6 +170,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('estoque')"   id="nav-estoque">  <span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('cmv')"       id="nav-cmv">      <span class="ic">🧮</span> CMV</div>
       <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
+      <div class="nav-item" onclick="show('aparencia')" id="nav-aparencia"><span class="ic">🎨</span> Aparência</div>
     </div>
     <div class="sb-footer">
       <a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a>
@@ -276,6 +277,7 @@ input:checked+.sl::before{transform:translateX(20px);}
         <button class="be filtro-btn" id="cf-tudo"     onclick="filtrarCMV(this,'tudo')">    📋 Todos</button>
         <button class="bt filtro-btn" id="cf-salgadas" onclick="filtrarCMV(this,'salgadas')">🍕 Salgadas</button>
         <button class="bt filtro-btn" id="cf-familia"  onclick="filtrarCMV(this,'familia')"> 👨‍👩‍👧 Família</button>
+        <button class="bt filtro-btn" id="cf-combos"   onclick="filtrarCMV(this,'combos')">  🔥 Combos</button>
         <button class="bt filtro-btn" id="cf-doces"    onclick="filtrarCMV(this,'doces')">   🍫 Doces</button>
         <button class="bt filtro-btn" id="cf-bebidas"  onclick="filtrarCMV(this,'bebidas')"> 🥤 Bebidas</button>
       </div>
@@ -302,6 +304,69 @@ input:checked+.sl::before{transform:translateX(20px);}
         <button class="btn-csv"       onclick="exportarCSV()">              📊 Exportar CSV</button>
       </div>
       <div id="rel-content"><div class="loading">Carregando...</div></div>
+    </div>
+
+    <!-- APARÊNCIA -->
+    <div id="pg-aparencia" class="hidden">
+      <div class="page-title">APARÊNCIA</div><div class="page-sub">Controle o visual do site — hero, cores, fotos e informações gerais</div>
+
+      <!-- SEÇÃO 1: HERO -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🖼️ Hero (Tela Inicial)</h3>
+        <div class="fg"><label>URL da foto de fundo</label><input type="text" id="ap-hero-foto" placeholder="https://..." oninput="atualizarPreviewHero()"></div>
+        <div class="fg"><label>Ou envie uma foto do computador/celular</label><input type="file" accept="image/*" id="ap-hero-foto-file" onchange="uploadHeroFoto(this)"></div>
+        <div id="ap-hero-preview-wrap" style="margin-bottom:14px;border-radius:10px;overflow:hidden;height:170px;background:#111;position:relative;display:flex;align-items:center;justify-content:center;">
+          <img id="ap-hero-preview" style="width:100%;height:100%;object-fit:cover;display:none;">
+          <div id="ap-hero-preview-empty" style="color:rgba(255,255,255,.25);font-size:13px;">Sem foto definida — preview aqui</div>
+          <div id="ap-hero-preview-overlay" style="position:absolute;inset:0;pointer-events:none;"></div>
+        </div>
+        <div class="fg"><label>Posição/foco da foto (<span id="ap-hero-pos-val">50</span>%)</label>
+          <input type="range" min="0" max="100" value="50" id="ap-hero-pos" oninput="atualizarPreviewHero()" style="width:100%;"></div>
+        <div class="fg"><label>Escurecimento do overlay (<span id="ap-hero-overlay-val">55</span>%)</label>
+          <input type="range" min="0" max="80" value="55" id="ap-hero-overlay" oninput="atualizarPreviewHero()" style="width:100%;"></div>
+        <div class="fg"><label>Slogan principal</label><input type="text" id="ap-hero-slogan" placeholder="Pizza artesanal,"></div>
+        <div class="fg"><label>Frase em destaque (laranja)</label><input type="text" id="ap-hero-destaque" placeholder="Explosão de sabor"></div>
+        <div class="fg"><label>Subtítulo</label><input type="text" id="ap-hero-subtitulo" placeholder="Direto na sua porta. Quinta a domingo, das 18h às 00h."></div>
+        <button class="btn-new" onclick="salvarHero()">💾 Salvar Hero</button>
+      </div>
+
+      <!-- SEÇÃO 2: CORES -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🎨 Cores do Site</h3>
+        <div class="fr" style="grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;">
+          <div class="fg"><label>Cor principal</label><input type="color" id="ap-cor-principal" value="#CC1100" oninput="atualizarPreviewCores()" style="width:100%;height:44px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.09);cursor:pointer;background:#111;"></div>
+          <div class="fg"><label>Cor de destaque</label><input type="color" id="ap-cor-destaque" value="#FF6B00" oninput="atualizarPreviewCores()" style="width:100%;height:44px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.09);cursor:pointer;background:#111;"></div>
+          <div class="fg"><label>Cor dourada</label><input type="color" id="ap-cor-gold" value="#E8A800" oninput="atualizarPreviewCores()" style="width:100%;height:44px;border-radius:8px;border:1.5px solid rgba(255,255,255,0.09);cursor:pointer;background:#111;"></div>
+        </div>
+        <div style="background:#0a0a0a;border-radius:10px;padding:18px;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+          <button id="ap-preview-btn" style="color:white;border:none;padding:12px 22px;border-radius:8px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;">Ver Cardápio</button>
+          <span id="ap-preview-destaque" style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;">EXPLOSÃO DE SABOR</span>
+          <span id="ap-preview-stars" style="font-size:20px;">★★★★★</span>
+        </div>
+        <button class="btn-new" onclick="salvarCores()">💾 Salvar Cores</button>
+      </div>
+
+      <!-- SEÇÃO 3: FOTOS DOS PRODUTOS -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">📸 Fotos dos Produtos</h3>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="ap-produtos-filtros">
+          <button class="be filtro-btn" onclick="filtrarProdutosFoto(this,'combos')">🔥 Combos</button>
+          <button class="bt filtro-btn" onclick="filtrarProdutosFoto(this,'salgadas')">🍕 Salgadas</button>
+          <button class="bt filtro-btn" onclick="filtrarProdutosFoto(this,'doces')">🍫 Doces</button>
+          <button class="bt filtro-btn" onclick="filtrarProdutosFoto(this,'bebidas')">🥤 Bebidas</button>
+        </div>
+        <div id="ap-produtos-lista"><div class="loading">Carregando...</div></div>
+      </div>
+
+      <!-- SEÇÃO 4: INFORMAÇÕES GERAIS -->
+      <div class="tw" style="padding:20px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">ℹ️ Informações Gerais</h3>
+        <div class="fg"><label>WhatsApp (DDI+DDD+número, ex: 5571993738823)</label><input type="text" id="ap-info-whatsapp" placeholder="5571993738823"></div>
+        <div class="fg"><label>Instagram (@usuario)</label><input type="text" id="ap-info-instagram" placeholder="@bigbangpizza"></div>
+        <div class="fg"><label>Horário de funcionamento (texto exibido no site)</label><input type="text" id="ap-info-horario" placeholder="Quinta a domingo, das 18h às 00h"></div>
+        <div class="fg"><label>Slogan do rodapé</label><input type="text" id="ap-info-rodape" placeholder="Explosão de Sabor 🍕🔥💥"></div>
+        <button class="btn-new" onclick="salvarInfoGeral()">💾 Salvar Informações</button>
+      </div>
     </div>
 
   </div><!-- /main -->
@@ -688,6 +753,7 @@ function show(page) {
     contatos: loadContatos,
     clientes: loadClientes,
     cupons: loadCupons,
+    aparencia: loadAparencia,
   };
   (map[page] || (() => loadTable(page)))();
 }
@@ -1092,14 +1158,14 @@ function filtrarCMV(btn,tipo){
 async function loadIngredientes(filtro='tudo'){
   let allIng=await api('ingredientes','ativo=eq.true','nome.asc');
   if(filtro!=='tudo'){
-    const tamMap={salgadas:'Grande',familia:'Família',bebidas:'Bebida'};
+    const tamMap={salgadas:'Grande',familia:'Família',bebidas:'Bebida',combos:'Combo'};
     const tam=tamMap[filtro];
     let recs;
     if(tam){
       recs=await api('receitas',`tamanho=eq.${encodeURIComponent(tam)}&ativo=eq.true`);
     } else {
       const todos=await api('receitas','ativo=eq.true');
-      recs=todos.filter(r=>!['Grande','Família','Bebida'].includes(r.tamanho));
+      recs=todos.filter(r=>!['Grande','Família','Bebida','Combo'].includes(r.tamanho));
     }
     const usados=new Set(recs.map(r=>r.ingrediente_id));
     allIng=allIng.filter(i=>usados.has(i.id));
@@ -1117,12 +1183,13 @@ async function loadIngredientes(filtro='tudo'){
 }
 
 async function loadReceitas(filtro='tudo'){
-  const [allIng,allRec,salP,docP,bebP]=await Promise.all([
+  const [allIng,allRec,salP,docP,bebP,comP]=await Promise.all([
     api('ingredientes','ativo=eq.true'),
     api('receitas','ativo=eq.true','produto_nome.asc'),
     api('pizzas_salgadas','ativo=eq.true','nome.asc'),
     api('pizzas_doces','ativo=eq.true','nome.asc'),
     api('bebidas','ativo=eq.true','nome.asc'),
+    api('combos','','nome.asc'),
   ]);
   const ingMap={};
   allIng.forEach(i=>ingMap[i.id]=i);
@@ -1132,12 +1199,15 @@ async function loadReceitas(filtro='tudo'){
   docP.forEach(p=>docMap[p.nome]=p.preco);
   const bebMap={};
   bebP.forEach(p=>bebMap[p.nome]=p.preco);
+  const comMap={};
+  comP.forEach(p=>comMap[p.nome]=p.preco);
 
   let recFilt=allRec;
   if(filtro==='salgadas') recFilt=allRec.filter(r=>r.tamanho==='Grande');
   else if(filtro==='familia') recFilt=allRec.filter(r=>r.tamanho==='Família');
   else if(filtro==='bebidas') recFilt=allRec.filter(r=>r.tamanho==='Bebida');
-  else if(filtro==='doces') recFilt=allRec.filter(r=>!['Grande','Família','Bebida'].includes(r.tamanho));
+  else if(filtro==='combos') recFilt=allRec.filter(r=>r.tamanho==='Combo');
+  else if(filtro==='doces') recFilt=allRec.filter(r=>!['Grande','Família','Bebida','Combo'].includes(r.tamanho));
 
   const cmvMap={};
   recFilt.forEach(r=>{
@@ -1159,6 +1229,7 @@ async function loadReceitas(filtro='tudo'){
     if(item.tamanho==='Grande') preco=salMap[item.produto]?.grande||0;
     else if(item.tamanho==='Família') preco=salMap[item.produto]?.familia||0;
     else if(item.tamanho==='Bebida') preco=bebMap[item.produto]||0;
+    else if(item.tamanho==='Combo') preco=comMap[item.produto]||0;
     else preco=docMap[item.produto]||0;
     const pct=preco>0?(total/preco*100):0;
     return{...item,total,preco,pct};
@@ -1224,6 +1295,202 @@ async function editIngrediente(id){
   document.getElementById('modal').classList.add('open');
 }
 async function remIngrediente(id){ if(confirm('Remover ingrediente?')){ await upd('ingredientes',id,{ativo:false}); loadIngredientes(cmvFiltroAtual); } }
+
+// ═══════════════════════════════════════════════════════
+// APARÊNCIA — hero, cores, fotos de produtos, infos gerais
+// ═══════════════════════════════════════════════════════
+let apConfigsAtuais = {};
+let apProdutosFiltro = 'combos';
+let apProdutosCache = { combos:[], salgadas:[], doces:[], bebidas:[] };
+const AP_TABELAS = { combos:'combos', salgadas:'pizzas_salgadas', doces:'pizzas_doces', bebidas:'bebidas' };
+
+async function carregarConfigs(){
+  const data = await api('configuracoes','');
+  const map = {};
+  data.forEach(c => map[c.chave] = c.valor);
+  return map;
+}
+
+async function salvarConfigs(obj){
+  const results = await Promise.all(Object.entries(obj).map(([chave,valor]) =>
+    fetch(`${SB}/rest/v1/configuracoes?on_conflict=chave`, {
+      method: 'POST',
+      headers: { ...getHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ chave, valor: (valor===null||valor===undefined) ? '' : String(valor) })
+    }).then(r => r.ok)
+  ));
+  return results.every(Boolean);
+}
+
+async function uploadImagem(file, pasta){
+  const token = getToken();
+  const nomeArquivo = `${pasta}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g,'_')}`;
+  const r = await fetch(`${SB}/storage/v1/object/site-images/${nomeArquivo}`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + (token || SK), 'apikey': SK, 'x-upsert': 'true' },
+    body: file
+  });
+  if(!r.ok) throw new Error('Falha no upload');
+  return `${SB}/storage/v1/object/public/site-images/${nomeArquivo}`;
+}
+
+function posicaoParaPercent(pos){
+  const m = (pos||'').match(/(\d+)%/);
+  return m ? parseInt(m[1]) : 50;
+}
+function percentParaPosicao(v){ return `center ${v}%`; }
+
+async function loadAparencia(){
+  apConfigsAtuais = await carregarConfigs();
+
+  document.getElementById('ap-hero-foto').value = apConfigsAtuais.hero_foto || '';
+  document.getElementById('ap-hero-pos').value = posicaoParaPercent(apConfigsAtuais.hero_foto_posicao);
+  document.getElementById('ap-hero-overlay').value = (apConfigsAtuais.hero_overlay!==undefined && apConfigsAtuais.hero_overlay!=='') ? apConfigsAtuais.hero_overlay : 55;
+  document.getElementById('ap-hero-slogan').value = apConfigsAtuais.hero_slogan || '';
+  document.getElementById('ap-hero-destaque').value = apConfigsAtuais.hero_destaque || '';
+  document.getElementById('ap-hero-subtitulo').value = apConfigsAtuais.hero_subtitulo || '';
+  atualizarPreviewHero();
+
+  document.getElementById('ap-cor-principal').value = apConfigsAtuais.cor_principal || '#CC1100';
+  document.getElementById('ap-cor-destaque').value = apConfigsAtuais.cor_destaque || '#FF6B00';
+  document.getElementById('ap-cor-gold').value = apConfigsAtuais.cor_gold || '#E8A800';
+  atualizarPreviewCores();
+
+  document.getElementById('ap-info-whatsapp').value = apConfigsAtuais.info_whatsapp || '';
+  document.getElementById('ap-info-instagram').value = apConfigsAtuais.info_instagram || '';
+  document.getElementById('ap-info-horario').value = apConfigsAtuais.info_horario || '';
+  document.getElementById('ap-info-rodape').value = apConfigsAtuais.info_rodape_slogan || '';
+
+  filtrarProdutosFoto(document.querySelector('#ap-produtos-filtros .be'), apProdutosFiltro);
+}
+
+// --- SEÇÃO 1: HERO ---
+function atualizarPreviewHero(){
+  const url = document.getElementById('ap-hero-foto').value.trim();
+  const pos = document.getElementById('ap-hero-pos').value;
+  const overlay = document.getElementById('ap-hero-overlay').value;
+  document.getElementById('ap-hero-pos-val').textContent = pos;
+  document.getElementById('ap-hero-overlay-val').textContent = overlay;
+  const img = document.getElementById('ap-hero-preview');
+  const empty = document.getElementById('ap-hero-preview-empty');
+  const ov = document.getElementById('ap-hero-preview-overlay');
+  if(url){
+    img.src = url; img.style.display = 'block'; img.style.objectPosition = `center ${pos}%`;
+    empty.style.display = 'none';
+  } else {
+    img.style.display = 'none'; empty.style.display = 'block';
+  }
+  ov.style.background = `rgba(0,0,0,${(overlay/100).toFixed(2)})`;
+}
+
+async function uploadHeroFoto(input){
+  const file = input.files[0];
+  if(!file) return;
+  showToastAdmin('⏳ Enviando foto...');
+  try{
+    const url = await uploadImagem(file, 'hero');
+    document.getElementById('ap-hero-foto').value = url;
+    atualizarPreviewHero();
+    showToastAdmin('✅ Foto enviada!');
+  }catch(e){ showToastAdmin('⚠️ Erro ao enviar foto.'); }
+}
+
+async function salvarHero(){
+  const ok = await salvarConfigs({
+    hero_foto: document.getElementById('ap-hero-foto').value.trim(),
+    hero_foto_posicao: percentParaPosicao(document.getElementById('ap-hero-pos').value),
+    hero_overlay: document.getElementById('ap-hero-overlay').value,
+    hero_slogan: document.getElementById('ap-hero-slogan').value.trim(),
+    hero_destaque: document.getElementById('ap-hero-destaque').value.trim(),
+    hero_subtitulo: document.getElementById('ap-hero-subtitulo').value.trim(),
+  });
+  showToastAdmin(ok ? '✅ Hero salvo!' : '⚠️ Erro ao salvar.');
+}
+
+// --- SEÇÃO 2: CORES ---
+function atualizarPreviewCores(){
+  const c1 = document.getElementById('ap-cor-principal').value;
+  const c2 = document.getElementById('ap-cor-destaque').value;
+  const c3 = document.getElementById('ap-cor-gold').value;
+  document.getElementById('ap-preview-btn').style.background = c1;
+  document.getElementById('ap-preview-destaque').style.color = c2;
+  document.getElementById('ap-preview-stars').style.color = c3;
+}
+async function salvarCores(){
+  const ok = await salvarConfigs({
+    cor_principal: document.getElementById('ap-cor-principal').value,
+    cor_destaque: document.getElementById('ap-cor-destaque').value,
+    cor_gold: document.getElementById('ap-cor-gold').value,
+  });
+  showToastAdmin(ok ? '✅ Cores salvas!' : '⚠️ Erro ao salvar.');
+}
+
+// --- SEÇÃO 3: FOTOS DOS PRODUTOS ---
+async function filtrarProdutosFoto(btn, tipo){
+  apProdutosFiltro = tipo;
+  document.querySelectorAll('#ap-produtos-filtros button').forEach(b=>b.className='bt filtro-btn');
+  if(btn) btn.className='be filtro-btn';
+  const tabela = AP_TABELAS[tipo];
+  if(!apProdutosCache[tipo].length){
+    apProdutosCache[tipo] = await api(tabela,'','nome.asc');
+  }
+  renderProdutosFoto(tipo);
+}
+
+function renderProdutosFoto(tipo){
+  const tabela = AP_TABELAS[tipo];
+  const data = apProdutosCache[tipo];
+  if(!data.length){ document.getElementById('ap-produtos-lista').innerHTML='<div class="loading">Nenhum produto.</div>'; return; }
+  document.getElementById('ap-produtos-lista').innerHTML = data.map(p=>{
+    const pos = posicaoParaPercent(p.foto_posicao);
+    const key = `${tabela}-${p.id}`;
+    return `<div style="background:#1a1a1a;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;">
+      <img src="${p.foto_url||''}" alt="" style="width:80px;height:80px;object-fit:cover;object-position:${p.foto_posicao||'center'};border-radius:8px;background:#333;flex-shrink:0;" onerror="this.style.opacity='0.15'">
+      <div style="flex:1;min-width:220px;">
+        <div style="font-weight:700;margin-bottom:8px;">${p.nome}</div>
+        <input type="text" id="pf-url-${key}" value="${(p.foto_url||'').replace(/"/g,'&quot;')}" placeholder="URL da foto" style="width:100%;padding:8px 10px;background:#111;border:1.5px solid rgba(255,255,255,.09);border-radius:6px;color:white;font-size:12px;margin-bottom:8px;">
+        <input type="file" accept="image/*" onchange="uploadProdutoFoto(this,'${tabela}',${p.id})" style="font-size:11px;margin-bottom:8px;color:rgba(255,255,255,.5);">
+        <label style="font-size:11px;color:rgba(255,255,255,.4);display:block;margin-bottom:2px;">Posição da foto: <span id="pf-pos-val-${key}">${pos}</span>%</label>
+        <input type="range" min="0" max="100" value="${pos}" id="pf-pos-${key}" oninput="document.getElementById('pf-pos-val-${key}').textContent=this.value" style="width:100%;">
+      </div>
+      <button class="be" onclick="salvarFotoProduto('${tabela}',${p.id})">💾 Salvar</button>
+    </div>`;
+  }).join('');
+}
+
+async function uploadProdutoFoto(input, tabela, id){
+  const file = input.files[0];
+  if(!file) return;
+  showToastAdmin('⏳ Enviando foto...');
+  try{
+    const url = await uploadImagem(file, tabela);
+    document.getElementById(`pf-url-${tabela}-${id}`).value = url;
+    showToastAdmin('✅ Foto enviada! Clique em Salvar.');
+  }catch(e){ showToastAdmin('⚠️ Erro ao enviar foto.'); }
+}
+
+async function salvarFotoProduto(tabela, id){
+  const key = `${tabela}-${id}`;
+  const foto_url = document.getElementById(`pf-url-${key}`).value.trim();
+  const posVal = document.getElementById(`pf-pos-${key}`).value;
+  const ok = await upd(tabela, id, { foto_url: foto_url || null, foto_posicao: percentParaPosicao(posVal) });
+  showToastAdmin(ok ? '✅ Foto salva!' : '⚠️ Erro ao salvar.');
+  const tipo = Object.keys(AP_TABELAS).find(k=>AP_TABELAS[k]===tabela);
+  const item = apProdutosCache[tipo]?.find(p=>p.id===id);
+  if(item){ item.foto_url = foto_url; item.foto_posicao = percentParaPosicao(posVal); }
+  if(ok) renderProdutosFoto(tipo);
+}
+
+// --- SEÇÃO 4: INFORMAÇÕES GERAIS ---
+async function salvarInfoGeral(){
+  const ok = await salvarConfigs({
+    info_whatsapp: document.getElementById('ap-info-whatsapp').value.trim(),
+    info_instagram: document.getElementById('ap-info-instagram').value.trim(),
+    info_horario: document.getElementById('ap-info-horario').value.trim(),
+    info_rodape_slogan: document.getElementById('ap-info-rodape').value.trim(),
+  });
+  showToastAdmin(ok ? '✅ Informações salvas!' : '⚠️ Erro ao salvar.');
+}
 
 // ═══════════════════════════════════════════════════════
 // RELATÓRIO + EXPORTAR CSV

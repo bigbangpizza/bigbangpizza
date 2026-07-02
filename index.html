@@ -329,8 +329,8 @@ footer img{width:130px;margin-bottom:8px;}
   <img class="hero-bg-photo" id="hero-bg-photo" alt="">
   <img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza">
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
-  <h1>Pizza artesanal,<br><em>explosão</em> de sabor</h1>
-  <p class="hero-sub">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
+  <h1><span id="hero-slogan">Pizza artesanal,</span><br><em id="hero-destaque">explosão de sabor</em></h1>
+  <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
   <div class="hero-badges">
     <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
     <span class="badge">⏱️ Entrega Rápida</span>
@@ -448,7 +448,7 @@ footer img{width:130px;margin-bottom:8px;}
     </div>
     <div class="entrega-nota">
       Não encontrou seu bairro? Fale com a gente!<br>
-      <a class="btn-wpp" href="https://wa.me/5571993738823" target="_blank">📱 Chamar no WhatsApp</a>
+      <a class="btn-wpp" id="wpp-entrega" href="https://wa.me/5571993738823" target="_blank">📱 Chamar no WhatsApp</a>
     </div>
   </div>
 </div>
@@ -474,18 +474,19 @@ footer img{width:130px;margin-bottom:8px;}
 </div>
 <footer>
   <img src="logo-header.png" alt="Big Bang Pizza">
-  <div class="footer-slogan">Explosão de Sabor 🍕🔥💥</div>
+  <div class="footer-slogan" id="footer-slogan">Explosão de Sabor 🍕🔥💥</div>
   <div class="footer-links">
-    <a href="https://wa.me/5571993738823" target="_blank">📱 (71) 99373-8823</a>
+    <a href="https://wa.me/5571993738823" id="wpp-footer" target="_blank">📱 (71) 99373-8823</a>
     <a href="mailto:bigbangpz@outlook.com">✉️ bigbangpz@outlook.com</a>
     <a href="https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9" target="_blank">🛵 iFood</a>
+    <a href="#" id="footer-instagram" target="_blank" style="display:none;">📷 Instagram</a>
   </div>
-  <div style="font-size:12px;color:rgba(255,255,255,0.3);">Quinta a Domingo | 18h às 00h</div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Quinta a Domingo | 18h às 00h</div>
   <div class="footer-copy">© 2025 Big Bang Pizza — Todos os direitos reservados</div>
 </footer>
 
 <div class="cart-fab">
-  <a class="wpp-fab" href="https://wa.me/5571993738823" target="_blank">💬</a>
+  <a class="wpp-fab" id="wpp-fab" href="https://wa.me/5571993738823" target="_blank">💬</a>
   <button class="cart-btn" onclick="openCart()">🛒<span class="cart-count" id="cart-count"></span></button>
 </div>
 
@@ -544,6 +545,8 @@ footer img{width:130px;margin-bottom:8px;}
 const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
+let WPP_NUMBER = '5571993738823';
+function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
 
 async function api(table, q='') {
   const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=ordem.asc,id.asc`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
@@ -666,7 +669,7 @@ async function loadCombos() {
   const data = await api('combos', 'ativo=eq.true');
   document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
     <div class="combo-card">
-      ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy">` : '<div class="combo-no-img">🍕</div>'}
+      ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
       <div class="combo-body">
         <span class="combo-tag">PROMOÇÃO</span>
         <div class="combo-name">${c.nome}</div>
@@ -685,7 +688,7 @@ async function loadSalgadas() {
   m1.innerHTML = m2.innerHTML = '';
   document.getElementById('salgadas-grid').innerHTML = data.map(p => `
     <div class="pizza-card">
-      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy">` : '<div class="pizza-no-img">🍕</div>'}
+      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍕</div>'}
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
@@ -717,7 +720,7 @@ async function loadDoces() {
   const data = await api('pizzas_doces', 'ativo=eq.true');
   document.getElementById('doces-grid').innerHTML = data.map(p => `
     <div class="pizza-card">
-      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy">` : '<div class="pizza-no-img">🍫</div>'}
+      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍫</div>'}
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
@@ -734,7 +737,7 @@ async function loadBebidas() {
   const data = await api('bebidas', 'ativo=eq.true');
   document.getElementById('bebidas-grid').innerHTML = data.map(b => `
     <div class="bebida-card">
-      ${b.foto_url ? `<img src="${b.foto_url}" alt="${b.nome}" loading="lazy">` : '<div class="bebida-emoji">🥤</div>'}
+      ${b.foto_url ? `<img src="${b.foto_url}" alt="${b.nome}" loading="lazy" style="object-position:${b.foto_posicao||'center'}">` : '<div class="bebida-emoji">🥤</div>'}
       <div class="bebida-info"><div class="bebida-name">${b.nome}</div><div class="bebida-price">R$ ${b.preco.toFixed(2).replace('.',',')}</div></div>
       <button class="btn-add" onclick="addItem('${b.nome}',${b.preco})">+</button>
     </div>`).join('');
@@ -764,20 +767,76 @@ async function loadBairros() {
   }
 }
 
-async function loadHeroPhoto() {
+async function loadHeroPhoto(fotoConfigurada) {
   try {
-    let [combos, salgadas] = await Promise.all([
-      api('combos', 'ativo=eq.true&select=foto_url'),
-      api('pizzas_salgadas', 'ativo=eq.true&select=foto_url')
-    ]);
-    const foto = (combos.find(c => c.foto_url) || salgadas.find(p => p.foto_url) || {}).foto_url;
+    let foto = fotoConfigurada;
+    if (!foto) {
+      let [combos, salgadas] = await Promise.all([
+        api('combos', 'ativo=eq.true&select=foto_url'),
+        api('pizzas_salgadas', 'ativo=eq.true&select=foto_url')
+      ]);
+      foto = (combos.find(c => c.foto_url) || salgadas.find(p => p.foto_url) || {}).foto_url;
+    }
     if (!foto) return;
     const heroImg = document.getElementById('hero-bg-photo');
     heroImg.onload = () => document.getElementById('hero').classList.add('hero--photo');
     heroImg.src = foto;
   } catch(e) { /* mantém o fundo padrão do hero */ }
 }
-loadHeroPhoto();
+
+// CONFIGURAÇÕES VISUAIS — aplica o que foi definido na aba Aparência do admin
+async function aplicarConfigsVisuais() {
+  let cfg = {};
+  try {
+    const r = await fetch(`${SB}/rest/v1/configuracoes?select=chave,valor`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    if (Array.isArray(data)) data.forEach(c => cfg[c.chave] = c.valor);
+  } catch(e) { /* mantém os padrões do site */ }
+
+  const root = document.documentElement.style;
+  if (cfg.cor_principal) root.setProperty('--red', cfg.cor_principal);
+  if (cfg.cor_destaque) root.setProperty('--orange', cfg.cor_destaque);
+  if (cfg.cor_gold) root.setProperty('--gold', cfg.cor_gold);
+
+  if (cfg.hero_slogan) document.getElementById('hero-slogan').textContent = cfg.hero_slogan;
+  if (cfg.hero_destaque) document.getElementById('hero-destaque').textContent = cfg.hero_destaque;
+  if (cfg.hero_subtitulo) document.getElementById('hero-subtitulo').textContent = cfg.hero_subtitulo;
+
+  const heroImg = document.getElementById('hero-bg-photo');
+  if (cfg.hero_foto_posicao) heroImg.style.objectPosition = cfg.hero_foto_posicao;
+  if (cfg.hero_overlay !== undefined && cfg.hero_overlay !== '') {
+    const alpha = Math.max(0, Math.min(80, parseFloat(cfg.hero_overlay) || 0)) / 100;
+    root.setProperty('--hero-overlay',
+      `linear-gradient(180deg,rgba(10,10,10,${(alpha*0.65).toFixed(2)}) 0%,rgba(10,10,10,${alpha.toFixed(2)}) 55%,rgba(10,10,10,${Math.min(0.98,alpha*1.75).toFixed(2)}) 100%)`);
+  }
+
+  if (cfg.info_whatsapp) {
+    WPP_NUMBER = cfg.info_whatsapp.replace(/\D/g, '');
+    const novoHref = `https://wa.me/${WPP_NUMBER}`;
+    ['wpp-entrega', 'wpp-footer', 'wpp-fab'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.href = novoHref;
+    });
+  }
+
+  if (cfg.info_instagram) {
+    const ig = document.getElementById('footer-instagram');
+    if (ig) {
+      const handle = cfg.info_instagram.replace('@', '').trim();
+      ig.href = `https://instagram.com/${handle}`;
+      ig.textContent = `📷 @${handle}`;
+      ig.style.display = 'inline';
+    }
+  }
+
+  if (cfg.info_horario) document.getElementById('footer-horario').textContent = cfg.info_horario;
+  if (cfg.info_rodape_slogan) document.getElementById('footer-slogan').textContent = cfg.info_rodape_slogan;
+
+  loadHeroPhoto(cfg.hero_foto || null);
+}
+aplicarConfigsVisuais();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
 
 // CART
@@ -896,7 +955,7 @@ async function finalizarPedido() {
 
   // Abrir o WhatsApp na hora, sem await antes — em mobile, a navegação para wa.me
   // só abre o app do WhatsApp quando é resultado direto e síncrono do toque do usuário.
-  window.open(`https://wa.me/5571993738823?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 
   // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
   fetch(`${SB}/rest/v1/pedidos`, {
@@ -1271,7 +1330,7 @@ function toast(msg) {
 
   <button class="btn-obg-novo" onclick="novosPedido()">🍕 FAZER NOVO PEDIDO</button>
   <br>
-  <button class="btn-obg-wpp" onclick="window.open('https://wa.me/5571993738823','_blank')">💬 Abrir WhatsApp</button>
+  <button class="btn-obg-wpp" onclick="abrirWhatsApp()">💬 Abrir WhatsApp</button>
 </div>
 </body>
 </html>
