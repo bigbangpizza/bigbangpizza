@@ -930,8 +930,8 @@ function renderSelectsMeio() {
   m1.innerHTML = '<option value="">Escolha...</option>';
   m2.innerHTML = '<option value="">Escolha...</option>';
   modalState.sabores.forEach(s => {
-    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
-    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
+    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco/2)}`, s.id));
+    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco/2)}`, s.id));
   });
   if (modalState.sabor1) m1.value = modalState.sabor1.id;
   if (modalState.sabor2) m2.value = modalState.sabor2.id;
