@@ -999,7 +999,7 @@ async function loadPedidos(status='aguardando'){
           <div style="font-size:10px;font-weight:700;color:#facc15;margin-bottom:3px;">⚠️ OBSERVAÇÃO</div>
           <div style="font-size:13px;font-weight:600;">${esc(p.observacao)}</div></div>`:''}
         <div style="font-size:12px;color:rgba(255,255,255,.3);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
-        ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — 15% OFF</div>` : ''}
+        ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — ${brl(p.desconto||0)} de desconto</div>` : ''}
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <select onchange="atualizarStatus(${p.id},this.value)" style="flex:1;min-width:200px;background:#111;color:white;border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
             <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
@@ -1050,8 +1050,18 @@ async function copiarLinkRastreio(id){
 
 async function atualizarStatus(id,status){
   await upd('pedidos',id,{status});
-  if(status==='entregue') await baixarEstoquePedido(id);
+  if(status==='entregue') { await baixarEstoquePedido(id); await incrementarUsoCupom(id); }
   loadPedidos(pedidoFiltroAtual);
+}
+
+async function incrementarUsoCupom(id){
+  const dados = await api('pedidos', `id=eq.${id}&select=cupom`);
+  const codigo = dados?.[0]?.cupom;
+  if (!codigo) return;
+  const cupons = await api('cupons', `codigo=eq.${encodeURIComponent(codigo)}`);
+  const cupom = cupons?.[0];
+  if (!cupom) return;
+  await upd('cupons', cupom.id, { usos_atuais: (cupom.usos_atuais||0) + 1 });
 }
 
 async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(pedidoFiltroAtual); } }

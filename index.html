@@ -526,13 +526,13 @@ footer img{width:130px;margin-bottom:8px;}
         <input type="text" id="f-cupom" placeholder="Cupom de desconto (opcional)" style="text-transform:uppercase;">
         <button class="btn-cupom" onclick="aplicarCupom()">Aplicar</button>
       </div>
-      <div class="cupom-ok" id="cupom-ok">✅ Cupom aplicado! 15% de desconto</div>
+      <div class="cupom-ok" id="cupom-ok">✅ Cupom aplicado!</div>
       <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
     </div>
     <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..."></textarea>
     <div class="checkout-form-label">🧾 Resumo</div>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
-    <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto (15%):</span><span id="desconto-val">- R$ 0,00</span></div>
+    <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
     <button class="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
@@ -1046,7 +1046,7 @@ function getFrete() { const v=document.getElementById('f-bairro').value; return 
 function updateTotals() {
   const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
   const fr = getFrete()||0;
-  const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
+  const desconto = calcDesconto(sub);
   const tot = +(sub - desconto + fr).toFixed(2);
 
   document.getElementById('subtotal-val').textContent = brl(sub);
@@ -1054,8 +1054,10 @@ function updateTotals() {
   // Linha de desconto
   const descontoRow = document.getElementById('desconto-row');
   const descontoVal = document.getElementById('desconto-val');
-  if (descontoRow) descontoRow.style.display = cupomAtivo ? 'flex' : 'none';
+  const descontoLabel = document.getElementById('desconto-label');
+  if (descontoRow) descontoRow.style.display = cupomAplicado ? 'flex' : 'none';
   if (descontoVal) descontoVal.textContent = `- ${brl(desconto)}`;
+  if (descontoLabel) descontoLabel.textContent = cupomAplicado && cupomAplicado.tipo !== 'fixo' ? ` (${cupomAplicado.desconto}%)` : '';
 
   document.getElementById('frete-val').textContent = getFrete()===null?'—':fr===0?'🎉 Grátis':brl(fr);
   document.getElementById('total-val').textContent = brl(tot);
@@ -1073,12 +1075,13 @@ async function finalizarPedido() {
   const sub=cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0), tot=sub+(fr||0);
   const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
-  const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
+  const desconto = calcDesconto(sub);
   const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
-  
+
   let linhaDesconto = '';
-  if (cupomAtivo) {
-    linhaDesconto = `\n\n🎟️ Cupom aplicado: ${CUPOM_CODIGO}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto (15%): - R$ ${desconto.toFixed(2).replace('.',',')}`;
+  if (cupomAplicado) {
+    const pct = cupomAplicado.tipo === 'fixo' ? '' : ` (${cupomAplicado.desconto}%)`;
+    linhaDesconto = `\n\n🎟️ Cupom aplicado: ${cupomAplicado.codigo}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto${pct}: - R$ ${desconto.toFixed(2).replace('.',',')}`;
   }
   
   const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
@@ -1119,7 +1122,7 @@ async function finalizarPedido() {
       whatsapp: wpp || null,
       observacao: obs || null,
       status: 'aguardando',
-      cupom: cupomAtivo ? 'BIGBANG15' : null,
+      cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
       itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
       subtotal: sub,
@@ -1335,28 +1338,24 @@ function filtrarPizzas(termo) {
 }
 
 // CUPOM
-const CUPOM_CODIGO = 'BIGBANG15';
-const CUPOM_DESCONTO = 0.15;
-const CUPOM_LIMITE = 50;
-let cupomAtivo = false;
+let cupomAplicado = null; // { codigo, tipo, desconto } vindo da tabela cupons, ou null
 
 async function loadCupomRestantes() {
-  // Só esconde o banner se cupom esgotado - não mostra quantidade para cliente
+  // Só esconde o banner se o BIGBANG15 (cupom em destaque) estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&select=id&status=eq.entregue`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG15&select=usos_max,usos_atuais,ativo`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
-    const usados = Array.isArray(data) ? data.length : 0;
-    const restantes = CUPOM_LIMITE - usados;
+    const cupom = Array.isArray(data) ? data[0] : null;
     const banner = document.getElementById('cupom-banner');
     const el = document.getElementById('cupom-restantes');
-    if (restantes <= 0) {
+    if (!cupom || !cupom.ativo || (cupom.usos_max != null && (cupom.usos_atuais||0) >= cupom.usos_max)) {
       if (banner) banner.style.display = 'none';
-    } else {
-      // Só mostra urgência quando restam poucos
-      if (el) el.textContent = restantes <= 10 ? `⚡ Últimas ${restantes} vagas!` : '⚡ Válido para os primeiros 50 pedidos!';
+      return;
     }
+    const restantes = cupom.usos_max != null ? cupom.usos_max - (cupom.usos_atuais||0) : null;
+    if (el) el.textContent = (restantes !== null && restantes <= 10) ? `⚡ Últimas ${restantes} vagas!` : '⚡ Válido para os primeiros 50 pedidos!';
   } catch(e) {
     const el = document.getElementById('cupom-restantes');
     if (el) el.textContent = '⚡ Válido para os primeiros 50 pedidos!';
@@ -1364,40 +1363,71 @@ async function loadCupomRestantes() {
 }
 loadCupomRestantes();
 
+function calcDesconto(sub) {
+  if (!cupomAplicado) return 0;
+  if (cupomAplicado.tipo === 'fixo') return Math.min(cupomAplicado.desconto, sub);
+  return +(sub * (cupomAplicado.desconto/100)).toFixed(2);
+}
+
 async function aplicarCupom() {
-  const codigo = document.getElementById('f-cupom').value.trim().toUpperCase();
+  const codigo = document.getElementById('f-cupom').value.trim();
   const ok = document.getElementById('cupom-ok');
   const erro = document.getElementById('cupom-erro');
   ok.style.display = 'none';
   erro.style.display = 'none';
-  
-  if (codigo !== CUPOM_CODIGO) {
-    cupomAtivo = false;
-    erro.textContent = '❌ Cupom inválido';
+  cupomAplicado = null;
+
+  if (!codigo) {
+    erro.textContent = '❌ Digite um código de cupom';
     erro.style.display = 'block';
     updateTotals();
     return;
   }
 
-  // Verificar se ainda há vagas (conta só pedidos entregues)
   try {
-    const r = await fetch(`${SB}/rest/v1/pedidos?cupom=eq.BIGBANG15&status=eq.entregue&select=id`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=ilike.${encodeURIComponent(codigo)}&select=*`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
-    const usados = Array.isArray(data) ? data.length : 0;
-    if (usados >= CUPOM_LIMITE) {
-      cupomAtivo = false;
+    const cupom = Array.isArray(data) ? data[0] : null;
+
+    if (!cupom) {
+      erro.textContent = '❌ Cupom não existe';
+      erro.style.display = 'block';
+      updateTotals();
+      return;
+    }
+    if (!cupom.ativo) {
+      erro.textContent = '❌ Cupom inativo';
+      erro.style.display = 'block';
+      updateTotals();
+      return;
+    }
+    const hoje = new Date().toISOString().split('T')[0];
+    if (cupom.validade && cupom.validade < hoje) {
+      erro.textContent = '❌ Cupom expirado';
+      erro.style.display = 'block';
+      updateTotals();
+      return;
+    }
+    if (cupom.usos_max != null && (cupom.usos_atuais||0) >= cupom.usos_max) {
       erro.textContent = '❌ Cupom esgotado! Todas as vagas foram utilizadas.';
       erro.style.display = 'block';
       updateTotals();
       return;
     }
-  } catch(e) {}
 
-  cupomAtivo = true;
-  ok.style.display = 'block';
-  updateTotals();
+    cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
+    ok.textContent = cupomAplicado.tipo === 'fixo'
+      ? `✅ Cupom aplicado! ${brl(cupomAplicado.desconto)} de desconto`
+      : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
+    ok.style.display = 'block';
+    updateTotals();
+  } catch(e) {
+    erro.textContent = '❌ Erro ao verificar cupom. Tente novamente.';
+    erro.style.display = 'block';
+    updateTotals();
+  }
 }
 
 // NAV DE CATEGORIAS — destaque da seção visível
