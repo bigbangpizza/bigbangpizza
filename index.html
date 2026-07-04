@@ -103,9 +103,6 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .btn-add{background:var(--red);color:white;border:none;padding:11px 16px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,transform .1s;}
 .btn-add:hover{background:var(--red-dark);}
 .btn-add:active{transform:scale(0.97);}
-.btn-meio{background:transparent;border:1.5px solid var(--red);color:var(--red);padding:11px 16px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,transform .1s;}
-.btn-meio:hover{background:var(--red);color:white;}
-.btn-meio:active{transform:scale(0.97);}
 
 /* ENTREGA */
 .entrega-bg{background:#0a0a0a;padding:44px 0;}
@@ -175,7 +172,20 @@ footer img{width:130px;margin-bottom:8px;}
 .modal select{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;background:white;outline:none;margin-bottom:15px;}
 .modal-actions{display:flex;gap:10px;margin-top:6px;}
 .btn-modal-ok{flex:1;background:var(--red);color:white;border:none;padding:14px;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer;}
+.btn-modal-ok:disabled{opacity:0.4;cursor:not-allowed;}
 .btn-modal-cancel{background:white;color:var(--gray);border:1.5px solid var(--cream-dark);padding:14px 18px;border-radius:8px;font-size:15px;cursor:pointer;}
+.modal-tabs{display:flex;gap:8px;margin-bottom:16px;}
+.modal-tab{flex:1;padding:10px;border-radius:8px;border:1.5px solid var(--cream-dark);background:white;font-weight:700;font-size:13px;cursor:pointer;color:var(--gray);}
+.modal-tab.active{background:var(--red);border-color:var(--red);color:white;}
+.sabor-grid{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;margin-bottom:6px;}
+.sabor-opt{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-radius:8px;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:14px;font-weight:600;text-align:left;width:100%;}
+.sabor-opt span{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--red);white-space:nowrap;}
+.sabor-opt.active{border-color:var(--red);background:rgba(204,17,0,0.06);}
+.modal-resumo{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--red);text-align:center;padding:10px 0 2px;min-height:38px;}
+.modal-aviso{background:rgba(204,17,0,0.08);color:var(--red);font-size:13px;font-weight:600;padding:9px 12px;border-radius:8px;margin:-4px 0 10px;}
+.cart-item-del{background:none;border:none;color:var(--gray);font-size:16px;cursor:pointer;padding:4px;line-height:1;}
+.cart-item-del:hover{color:var(--red);}
+.cart-item-name.clickable{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;}
 
 
 /* MAPA INFO WINDOW */
@@ -532,13 +542,24 @@ footer img{width:130px;margin-bottom:8px;}
 
 <div class="modal-overlay" id="modal-overlay">
   <div class="modal">
-    <h3>🍕 Pizza Meio a Meio</h3>
-    <p class="modal-sub">Escolha os dois sabores</p>
-    <div class="modal-label">1ª Metade</div><select id="meio1"></select>
-    <div class="modal-label">2ª Metade</div><select id="meio2"></select>
+    <h3 id="modal-titulo">🍕 Pizza</h3>
+    <p class="modal-sub">Escolha o sabor</p>
+    <div class="modal-tabs">
+      <button type="button" class="modal-tab active" id="tab-unico" onclick="setModoSabor('unico')">1 Sabor</button>
+      <button type="button" class="modal-tab" id="tab-meio" onclick="setModoSabor('meio')">🍕 2 Sabores</button>
+    </div>
+    <div id="painel-unico">
+      <div class="sabor-grid" id="sabor-grid-unico"></div>
+    </div>
+    <div id="painel-meio" style="display:none;">
+      <div class="modal-label">1ª Metade</div><select id="meio1" onchange="onMeioChange()"></select>
+      <div class="modal-label">2ª Metade</div><select id="meio2" onchange="onMeioChange()"></select>
+      <div class="modal-aviso" id="modal-aviso-igual" style="display:none;">⚠️ Sabores iguais — use a aba "1 Sabor"</div>
+    </div>
+    <div class="modal-resumo" id="modal-resumo"></div>
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal()">Cancelar</button>
-      <button class="btn-modal-ok" onclick="confirmMeio()">Adicionar</button>
+      <button class="btn-modal-ok" id="modal-confirm-btn" onclick="confirmModalSabor()" disabled>Adicionar</button>
     </div>
   </div>
 </div>
@@ -547,7 +568,12 @@ footer img{width:130px;margin-bottom:8px;}
 const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
+let modalState = null;
 let WPP_NUMBER = '5571993738823';
+function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
+function novoId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2); }
+function persistCart() { try { sessionStorage.setItem('bb_cart', JSON.stringify(cart)); } catch(e) {} }
+function restoreCart() { try { const raw = sessionStorage.getItem('bb_cart'); cart = raw ? JSON.parse(raw) : []; } catch(e) { cart = []; } }
 function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
 
 async function api(table, q='') {
@@ -693,38 +719,26 @@ async function loadCombos() {
     </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
 }
 
-async function loadSalgadas() {
-  const data = await api('pizzas_salgadas', 'ativo=eq.true');
-  const m1 = document.getElementById('meio1'), m2 = document.getElementById('meio2');
-  m1.innerHTML = m2.innerHTML = '';
-  document.getElementById('salgadas-grid').innerHTML = data.map(p => `
+let salgadasCache = [];
+function renderPizzaCard(p) {
+  const temFamilia = p.preco_familia != null;
+  return `
     <div class="pizza-card">
       ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍕</div>'}
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
-        ${p.preco_familia ? `
         <div class="size-selector">
-          <button class="size-btn active" onclick="selectSize(this,${p.id},'Grande',${p.preco_grande})">Grande<br><span>R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span></button>
-          <button class="size-btn" onclick="selectSize(this,${p.id},'Família',${p.preco_familia})">Família<br><span>R$ ${p.preco_familia.toFixed(2).replace('.',',')}</span></button>
-        </div>` : `<div class="pizza-size">A partir de R$ ${p.preco_grande.toFixed(2).replace('.',',')}</div>`}
-        <div class="pizza-bottom">
-          <span class="pizza-price" id="price-${p.id}">R$ ${p.preco_grande.toFixed(2).replace('.',',')}</span>
-          <button class="btn-meio" id="btn-meio-${p.id}" onclick="openMeio('${p.nome}',${p.preco_grande},'Grande')">🍕 2 Sabores</button>
-          <button class="btn-add" id="btn-${p.id}" data-nome="${p.nome}" onclick="addItem('${p.nome} (Grande)',${p.preco_grande})">+ Adicionar</button>
+          <button class="size-btn" onclick="abrirModalSabor('Grande',${p.id})">Grande<br><span>${brl(p.preco_grande)}</span></button>
+          ${temFamilia ? `<button class="size-btn" onclick="abrirModalSabor('Família',${p.id})">Família<br><span>${brl(p.preco_familia)}</span></button>` : ''}
         </div>
       </div>
-    </div>`).join('');
-  data.forEach(p => {
-    const o1 = new Option(`${p.nome} (Grande) — R$ ${p.preco_grande.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_grande}|Grande`);
-    const o2 = new Option(`${p.nome} (Grande) — R$ ${p.preco_grande.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_grande}|Grande`);
-    m1.appendChild(o1); m2.appendChild(o2);
-    if (p.preco_familia) {
-      const o1f = new Option(`${p.nome} (Família) — R$ ${p.preco_familia.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_familia}|Família`);
-      const o2f = new Option(`${p.nome} (Família) — R$ ${p.preco_familia.toFixed(2).replace('.',',')}`, `${p.nome}|${p.preco_familia}|Família`);
-      m1.appendChild(o1f); m2.appendChild(o2f);
-    }
-  });
+    </div>`;
+}
+async function loadSalgadas() {
+  const data = await api('pizzas_salgadas', 'ativo=eq.true');
+  salgadasCache = data;
+  document.getElementById('salgadas-grid').innerHTML = data.map(renderPizzaCard).join('');
 }
 
 async function loadDoces() {
@@ -848,34 +862,150 @@ async function aplicarConfigsVisuais() {
   loadHeroPhoto(cfg.hero_foto || null);
 }
 aplicarConfigsVisuais();
+restoreCart();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
+updateCount();
 
 // CART
 function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); }
 function closeCart() { document.getElementById('cart-overlay').classList.remove('open'); document.getElementById('cart-panel').classList.remove('open'); }
 function addItem(name, price, obs='') {
-  const ex = cart.find(i => i.name===name && i.obs===obs);
-  if (ex) ex.qty++; else cart.push({name,price,obs,qty:1});
-  updateCount(); toast('Adicionado! 🍕');
+  const ex = cart.find(i => i.tipo==='simples' && i.nomeExibicao===name && i.obs===obs);
+  if (ex) { ex.qty++; }
+  else cart.push({ id: novoId(), tipo:'simples', tabela:null, tamanho:null, sabores:[{nome:name,preco:price}], precoUnitario:price, qty:1, obs, nomeExibicao:name });
+  persistCart(); updateCount(); toast('Adicionado! 🍕');
 }
-function openMeio(sabor, preco, tamanho) {
-  const s = document.getElementById('meio1');
-  const alvo = (preco!==undefined && tamanho) ? `${sabor}|${preco}|${tamanho}` : null;
-  let match = null;
-  for (let o of s.options) {
-    if (alvo && o.value === alvo) { match = o; break; }
-    if (!match && o.value.startsWith(sabor + '|')) { match = o; }
-  }
-  if (match) match.selected = true;
+
+// MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio, sempre filtrado pelo tamanho escolhido)
+function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
+  const campoPreco = tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
+  const sabores = salgadasCache
+    .filter(p => p[campoPreco] != null)
+    .map(p => ({ id: p.id, nome: p.nome, preco: p[campoPreco] }));
+
+  const modo = editItem ? (editItem.sabores.length === 2 ? 'meio' : 'unico') : 'unico';
+  const sabor1 = editItem
+    ? sabores.find(s => s.id === editItem.sabores[0].id) || null
+    : sabores.find(s => s.id === produtoIdClicado) || null;
+  const sabor2 = (editItem && editItem.sabores[1])
+    ? sabores.find(s => s.id === editItem.sabores[1].id) || null
+    : null;
+
+  modalState = { tamanho, sabores, modo, sabor1, sabor2, editId: editItem ? editItem.id : null };
+
+  document.getElementById('modal-titulo').textContent = `🍕 Pizza ${tamanho}`;
+  document.getElementById('tab-meio').style.display = sabores.length >= 2 ? '' : 'none';
+  document.getElementById('modal-aviso-igual').style.display = 'none';
+
+  renderPainelUnico();
+  renderSelectsMeio();
+  setModoSabor(sabores.length >= 2 ? modo : 'unico');
   document.getElementById('modal-overlay').classList.add('open');
 }
-function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
-function confirmMeio() {
-  const m1 = document.getElementById('meio1').value.split('|');
-  const m2 = document.getElementById('meio2').value.split('|');
-  addItem(`Pizza ½ ${m1[0]} + ½ ${m2[0]}`, Math.max(parseFloat(m1[1]), parseFloat(m2[1])));
-  closeModal();
+
+function setModoSabor(modo) {
+  modalState.modo = modo;
+  document.getElementById('tab-unico').classList.toggle('active', modo === 'unico');
+  document.getElementById('tab-meio').classList.toggle('active', modo === 'meio');
+  document.getElementById('painel-unico').style.display = modo === 'unico' ? '' : 'none';
+  document.getElementById('painel-meio').style.display = modo === 'meio' ? '' : 'none';
+  atualizarResumo();
 }
+
+function renderPainelUnico() {
+  document.getElementById('sabor-grid-unico').innerHTML = modalState.sabores.map(s => `
+    <button type="button" class="sabor-opt ${modalState.sabor1 && modalState.sabor1.id === s.id ? 'active' : ''}" onclick="selecionarSaborUnico(${s.id})">
+      ${s.nome} <span>${brl(s.preco)}</span>
+    </button>`).join('');
+}
+
+function selecionarSaborUnico(id) {
+  modalState.sabor1 = modalState.sabores.find(s => s.id === id) || null;
+  renderPainelUnico();
+  atualizarResumo();
+}
+
+function renderSelectsMeio() {
+  const m1 = document.getElementById('meio1'), m2 = document.getElementById('meio2');
+  m1.innerHTML = '<option value="">Escolha...</option>';
+  m2.innerHTML = '<option value="">Escolha...</option>';
+  modalState.sabores.forEach(s => {
+    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
+    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
+  });
+  if (modalState.sabor1) m1.value = modalState.sabor1.id;
+  if (modalState.sabor2) m2.value = modalState.sabor2.id;
+}
+
+function getSelecionadoMeio(selectId) {
+  const v = document.getElementById(selectId).value;
+  if (!v) return null;
+  return modalState.sabores.find(s => s.id === parseInt(v)) || null;
+}
+
+function onMeioChange() {
+  modalState.sabor1 = getSelecionadoMeio('meio1');
+  modalState.sabor2 = getSelecionadoMeio('meio2');
+  atualizarResumo();
+}
+
+function atualizarResumo() {
+  const btn = document.getElementById('modal-confirm-btn');
+  const resumo = document.getElementById('modal-resumo');
+  const aviso = document.getElementById('modal-aviso-igual');
+  aviso.style.display = 'none';
+
+  if (modalState.modo === 'unico') {
+    if (!modalState.sabor1) { btn.disabled = true; resumo.textContent = ''; return; }
+    btn.disabled = false;
+    resumo.textContent = brl(modalState.sabor1.preco);
+  } else {
+    const s1 = modalState.sabor1, s2 = modalState.sabor2;
+    if (!s1 || !s2) { btn.disabled = true; resumo.textContent = ''; return; }
+    if (s1.id === s2.id) { aviso.style.display = 'block'; btn.disabled = true; resumo.textContent = ''; return; }
+    btn.disabled = false;
+    resumo.textContent = brl((s1.preco/2) + (s2.preco/2));
+  }
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); modalState = null; }
+
+function confirmModalSabor() {
+  if (!modalState) return;
+  let sabores, precoUnitario, nomeExibicao;
+  if (modalState.modo === 'unico') {
+    if (!modalState.sabor1) return;
+    sabores = [modalState.sabor1];
+    precoUnitario = modalState.sabor1.preco;
+    nomeExibicao = `Pizza ${modalState.tamanho} — ${modalState.sabor1.nome}`;
+  } else {
+    const s1 = modalState.sabor1, s2 = modalState.sabor2;
+    if (!s1 || !s2 || s1.id === s2.id) return;
+    sabores = [s1, s2];
+    precoUnitario = +((s1.preco/2) + (s2.preco/2)).toFixed(2);
+    nomeExibicao = `Pizza ${modalState.tamanho} — ½ ${s1.nome} + ½ ${s2.nome}`;
+  }
+
+  if (modalState.editId) {
+    const idx = cart.findIndex(i => i.id === modalState.editId);
+    if (idx > -1) cart[idx] = { ...cart[idx], tamanho: modalState.tamanho, sabores, precoUnitario, nomeExibicao };
+  } else {
+    cart.push({ id: novoId(), tipo:'pizza', tabela:'pizzas_salgadas', tamanho: modalState.tamanho, sabores, precoUnitario, qty:1, obs:'', nomeExibicao });
+  }
+  persistCart(); updateCount(); renderCart(); closeModal(); toast('Adicionado! 🍕');
+}
+
+function editCartItem(id) {
+  const item = cart.find(i => i.id === id);
+  if (!item || item.tipo !== 'pizza') return;
+  abrirModalSabor(item.tamanho, null, item);
+}
+
+function removeCartItem(id) {
+  cart = cart.filter(i => i.id !== id);
+  persistCart(); updateCount(); renderCart();
+}
+
 function updateCount() {
   const t = cart.reduce((s,i)=>s+i.qty,0);
   const el = document.getElementById('cart-count');
@@ -883,9 +1013,9 @@ function updateCount() {
   const bar = document.getElementById('sticky-cart-bar');
   if (bar) {
     bar.classList.toggle('open', t>0);
-    const sub = cart.reduce((s,i)=>s+i.price*i.qty,0);
+    const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
     document.getElementById('sb-count').textContent = t;
-    document.getElementById('sb-total').textContent = 'R$ ' + sub.toFixed(2).replace('.',',');
+    document.getElementById('sb-total').textContent = brl(sub);
   }
 }
 function renderCart() {
@@ -895,7 +1025,7 @@ function renderCart() {
   body.innerHTML = cart.map((item,i) => `
     <div class="cart-item">
       <div class="cart-item-info">
-        <div class="cart-item-name">${item.name}</div>
+        <div class="cart-item-name${item.tipo==='pizza'?' clickable':''}"${item.tipo==='pizza'?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
         ${item.obs?`<div class="cart-item-obs">${item.obs}</div>`:''}
         <div class="cart-item-qty">
           <button class="qty-btn" onclick="chQty(${i},-1)">−</button>
@@ -903,29 +1033,32 @@ function renderCart() {
           <button class="qty-btn" onclick="chQty(${i},1)">+</button>
         </div>
       </div>
-      <div class="cart-item-price">R$ ${(item.price*item.qty).toFixed(2).replace('.',',')}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+        <button class="cart-item-del" onclick="removeCartItem('${item.id}')" aria-label="Remover">🗑️</button>
+        <div class="cart-item-price">${brl(item.precoUnitario*item.qty)}</div>
+      </div>
     </div>`).join('');
   updateTotals();
 }
-function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); updateCount(); renderCart(); }
+function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); persistCart(); updateCount(); renderCart(); }
 function calcFrete() { updateTotals(); }
 function getFrete() { const v=document.getElementById('f-bairro').value; return v?parseFloat(v.split('|')[1]):null; }
 function updateTotals() {
-  const sub = cart.reduce((s,i)=>s+i.price*i.qty,0);
+  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
   const fr = getFrete()||0;
   const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
   const tot = +(sub - desconto + fr).toFixed(2);
 
-  document.getElementById('subtotal-val').textContent = `R$ ${sub.toFixed(2).replace('.',',')}`;
-  
+  document.getElementById('subtotal-val').textContent = brl(sub);
+
   // Linha de desconto
   const descontoRow = document.getElementById('desconto-row');
   const descontoVal = document.getElementById('desconto-val');
   if (descontoRow) descontoRow.style.display = cupomAtivo ? 'flex' : 'none';
-  if (descontoVal) descontoVal.textContent = `- R$ ${desconto.toFixed(2).replace('.',',')}`;
+  if (descontoVal) descontoVal.textContent = `- ${brl(desconto)}`;
 
-  document.getElementById('frete-val').textContent = getFrete()===null?'—':fr===0?'🎉 Grátis':`R$ ${fr.toFixed(2).replace('.',',')}`;
-  document.getElementById('total-val').textContent = `R$ ${tot.toFixed(2).replace('.',',')}`;
+  document.getElementById('frete-val').textContent = getFrete()===null?'—':fr===0?'🎉 Grátis':brl(fr);
+  document.getElementById('total-val').textContent = brl(tot);
 }
 let enviandoPedido = false;
 async function finalizarPedido() {
@@ -937,8 +1070,8 @@ async function finalizarPedido() {
   const pag=document.getElementById('f-pagamento').value;
   if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); return; }
   const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'', fr=getFrete();
-  const sub=cart.reduce((s,i)=>s+i.price*i.qty,0), tot=sub+(fr||0);
-  const itens=cart.map(i=>`• ${i.qty}x ${i.name}${i.obs?' ('+i.obs+')':''} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}`).join('\n');
+  const sub=cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0), tot=sub+(fr||0);
+  const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
   const desconto = cupomAtivo ? +(sub * CUPOM_DESCONTO).toFixed(2) : 0;
   const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
@@ -987,7 +1120,8 @@ async function finalizarPedido() {
       observacao: obs || null,
       status: 'aguardando',
       cupom: cupomAtivo ? 'BIGBANG15' : null,
-      itens: cart.map(i=>`${i.qty}x ${i.name}`).join(' | '),
+      itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
+      itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
       subtotal: sub,
       desconto: desconto,
       frete: fr||0,
@@ -1001,8 +1135,8 @@ async function finalizarPedido() {
   setTimeout(() => {
   const listaEl = document.getElementById('obg-pedido-lista');
   listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
-    cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.name} — R$ ${(i.price*i.qty).toFixed(2).replace('.',',')}</div>`).join('');
-  document.getElementById('obg-total-val').textContent = 'R$ ' + totalFinal.toFixed(2).replace('.',',');
+    cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.nomeExibicao} — ${brl(i.precoUnitario*i.qty)}</div>`).join('');
+  document.getElementById('obg-total-val').textContent = brl(totalFinal);
   document.getElementById('tela-obrigado').classList.add('open');
   closeCart();
   }, 300);
@@ -1010,6 +1144,7 @@ async function finalizarPedido() {
 
 function novosPedido() {
   cart = [];
+  sessionStorage.removeItem('bb_cart');
   updateCount();
   document.getElementById('tela-obrigado').classList.remove('open');
   window.scrollTo(0,0);
@@ -1186,23 +1321,6 @@ async function enviarContato() {
     sessionStorage.setItem('contatou', '1');
     toast('Mensagem enviada! Obrigado 💬');
   } else { alert('Erro ao enviar. Tente novamente.'); }
-}
-
-// SELETOR DE TAMANHO
-function selectSize(el, id, tamanho, preco) {
-  // Atualiza botões ativos
-  const parent = el.closest('.size-selector');
-  parent.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  // Atualiza preço
-  document.getElementById('price-'+id).textContent = 'R$ ' + preco.toFixed(2).replace('.',',');
-  // Atualiza botão adicionar
-  const btnAdd = document.getElementById('btn-'+id);
-  const nomePizza = btnAdd.getAttribute('data-nome') || '';
-  btnAdd.onclick = () => addItem(nomePizza + ' (' + tamanho + ')', preco);
-  // Atualiza botão "2 Sabores" para refletir o tamanho selecionado
-  const btnMeio = document.getElementById('btn-meio-'+id);
-  if (btnMeio) btnMeio.onclick = () => openMeio(nomePizza, preco, tamanho);
 }
 
 // BUSCA NO CARDÁPIO
