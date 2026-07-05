@@ -755,11 +755,14 @@ async function loadBairros() {
   const data = await api('bairros', 'ativo=eq.true');
   bairrosData = data;
 
+  const sel = document.getElementById('f-bairro');
+  const idSelecionado = sel.value ? sel.value.split('|')[0] : null;
+
   const fretes = [...new Set(data.map(b => b.frete))].sort((a,b) => a-b);
   const legenda = document.getElementById('entrega-legenda');
   const grid = document.getElementById('entrega-grid');
-  const sel = document.getElementById('f-bairro');
   legenda.innerHTML = ''; grid.innerHTML = '';
+  sel.innerHTML = '<option value="">Selecione o bairro *</option>';
 
   fretes.forEach((frete, i) => {
     const cor = FRETE_CORES[i % FRETE_CORES.length];
@@ -774,6 +777,31 @@ async function loadBairros() {
     doTier.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`)));
     sel.appendChild(g);
   });
+
+  // Preserva o bairro já selecionado (ex: cliente no meio do checkout) se ele
+  // continuar ativo depois de um reload disparado pelo watcher de publicação
+  if (idSelecionado && data.some(b => String(b.id) === idSelecionado)) {
+    const opt = Array.from(sel.options).find(o => o.value.split('|')[0] === idSelecionado);
+    if (opt) { sel.value = opt.value; calcFrete(); }
+  }
+}
+
+// Detecta quando o admin clica "Publicar Alterações" na aba Bairros e recarrega
+// a lista sem precisar de F5 — mesmo padrão de polling do checkModoLoja()
+let bairrosUpdatedAtConhecido = null;
+async function checkBairrosAtualizados(inicial = false) {
+  try {
+    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.bairros_updated_at&select=valor`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    const valor = (data && data[0]) ? data[0].valor : null;
+    if (inicial) { bairrosUpdatedAtConhecido = valor; return; }
+    if (valor && valor !== bairrosUpdatedAtConhecido) {
+      bairrosUpdatedAtConhecido = valor;
+      loadBairros();
+    }
+  } catch(e) {}
 }
 
 async function loadHeroPhoto(fotoConfigurada) {
@@ -848,6 +876,8 @@ async function aplicarConfigsVisuais() {
 aplicarConfigsVisuais();
 restoreCart();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
+checkBairrosAtualizados(true);
+setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 segundos
 updateCount();
 
 // CART

@@ -211,7 +211,8 @@ input:checked+.sl::before{transform:translateX(20px);}
 
     <!-- BAIRROS -->
     <div id="pg-bairros" class="hidden">
-      <div class="page-title">BAIRROS</div><div class="page-sub">Ative bairros quando contratar motoboy 🛵</div>
+      <div class="page-title">BAIRROS</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:20px;"><div class="page-sub" style="margin:0;">Ative bairros quando contratar motoboy 🛵</div><button class="btn-new" onclick="publicarBairros()">🔄 Publicar Alterações no Site</button></div>
       <div id="t-bairros"><div class="loading">Carregando...</div></div>
     </div>
 
@@ -949,6 +950,12 @@ async function loadBairros() {
   document.getElementById('t-bairros').innerHTML=html;
 }
 async function togBairro(id,ativo){ await upd('bairros',id,{ativo}); }
+
+async function publicarBairros(){
+  const ok = await salvarConfigs({ bairros_updated_at: Date.now() });
+  if (ok) showToastAdmin('✅ Alterações publicadas no site!');
+  else alert('Erro ao publicar alterações!');
+}
 
 // ═══════════════════════════════════════════════════════
 // PEDIDOS + IMPRIMIR
