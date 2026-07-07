@@ -370,6 +370,7 @@ footer img{width:130px;margin-bottom:8px;}
 <div id="salgadas" style="background:var(--cream-dark);padding:44px 0;">
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title">PIZZAS <span>SALGADAS</span></h2>
+    <p class="section-sub" id="subtitulo-salgadas" style="text-align:center;max-width:640px;margin-left:auto;margin-right:auto;">Preparadas com massa artesanal de longa fermentação, molho especial, muçarela premium e ingredientes cuidadosamente selecionados para entregar uma verdadeira explosão de sabor em cada fatia.</p>
     <div class="divider"></div>
     <div class="search-box" style="margin-bottom:16px;">
       <span class="search-icon">🔍</span>
@@ -383,6 +384,7 @@ footer img{width:130px;margin-bottom:8px;}
 <div id="doces" style="padding:44px 0;">
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title">PIZZAS <span>DOCES</span></h2>
+    <p class="section-sub" id="subtitulo-doces" style="text-align:center;max-width:640px;margin-left:auto;margin-right:auto;">Todas as nossas pizzas doces são preparadas com massa artesanal, ingredientes selecionados e recheio generoso, garantindo uma verdadeira explosão de sabor em cada fatia.</p>
     <div class="divider"></div>
     <div class="menu-grid" id="doces-grid"><div class="skeleton-card light"></div><div class="skeleton-card light"></div></div>
   </div>
@@ -870,6 +872,9 @@ async function aplicarConfigsVisuais() {
 
   if (cfg.info_horario) document.getElementById('footer-horario').textContent = cfg.info_horario;
   if (cfg.info_rodape_slogan) document.getElementById('footer-slogan').textContent = cfg.info_rodape_slogan;
+
+  if (cfg.subtitulo_salgadas) document.getElementById('subtitulo-salgadas').textContent = cfg.subtitulo_salgadas;
+  if (cfg.subtitulo_doces) document.getElementById('subtitulo-doces').textContent = cfg.subtitulo_doces;
 
   loadHeroPhoto(cfg.hero_foto || null);
 }

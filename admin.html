@@ -59,6 +59,12 @@ td img{width:40px;height:40px;object-fit:cover;border-radius:5px;background:#333
 .bt{background:rgba(255,255,255,0.07);color:rgba(255,255,255,0.5);border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
 .bd{background:rgba(255,68,68,0.1);color:#ff6666;border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
 .bp{background:rgba(100,200,255,0.1);color:#60cfff;border:none;padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;}
+.drag-col{width:36px;text-align:center;}
+.drag-handle{display:inline-block;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;color:rgba(255,255,255,0.3);font-size:16px;padding:6px 8px;}
+.drag-handle:active{cursor:grabbing;}
+tr.dragging{opacity:0.4;}
+tr.drag-placeholder{background:transparent!important;border:none!important;margin:6px 0!important;padding:0!important;}
+tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);border-radius:2px;border:none!important;}
 .btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
 .btn-csv{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
@@ -369,6 +375,14 @@ input:checked+.sl::before{transform:translateX(20px);}
         <div class="fg"><label>Horário de funcionamento (texto exibido no site)</label><input type="text" id="ap-info-horario" placeholder="Quinta a domingo, das 18h às 00h"></div>
         <div class="fg"><label>Slogan do rodapé</label><input type="text" id="ap-info-rodape" placeholder="Explosão de Sabor 🍕🔥💥"></div>
         <button class="btn-new" onclick="salvarInfoGeral()">💾 Salvar Informações</button>
+      </div>
+
+      <!-- SEÇÃO 5: TEXTOS DAS SEÇÕES -->
+      <div class="tw" style="padding:20px;margin-top:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">📝 Textos das Seções</h3>
+        <div class="fg"><label>Subtítulo Pizzas Salgadas</label><textarea id="ap-subtitulo-salgadas" placeholder="Preparadas com massa artesanal de longa fermentação..."></textarea></div>
+        <div class="fg"><label>Subtítulo Pizzas Doces</label><textarea id="ap-subtitulo-doces" placeholder="Todas as nossas pizzas doces são preparadas com massa artesanal..."></textarea></div>
+        <button class="btn-new" onclick="salvarTextosSecoes()">💾 Salvar Textos</button>
       </div>
     </div>
 
@@ -843,14 +857,18 @@ async function loadDash() {
 // ═══════════════════════════════════════════════════════
 // CARDÁPIO — CRUD
 // ═══════════════════════════════════════════════════════
+let tableDataCache = {};
+
 async function loadTable(type) {
   const tbl = type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
   const data = await api(tbl);
+  tableDataCache[type] = data;
   const rows = data.map(item => {
     const pr = item.preco_grande !== undefined
       ? (item.preco_familia ? `${brl(item.preco_grande)} / Fam ${brl(item.preco_familia)}` : brl(item.preco_grande))
       : brl(item.preco||0);
-    return `<tr>
+    return `<tr data-id="${item.id}">
+      <td data-label="Ordem" class="drag-col"><span class="drag-handle" title="Arraste para reordenar">☰</span></td>
       <td data-label="Foto">${item.foto_url?`<img src="${item.foto_url}" alt="">`: '—'}</td>
       <td data-label="Nome"><strong>${item.nome}</strong>${item.tag?` <span style="font-size:10px;color:var(--orange)">${item.tag}</span>`:''}</td>
       <td data-label="Preço">${pr}</td>
@@ -863,8 +881,8 @@ async function loadTable(type) {
     </tr>`;
   }).join('');
   document.getElementById('t-'+type).innerHTML = `<table>
-    <thead><tr><th>Foto</th><th>Nome</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3)">Nenhum item.</td></tr>'}</tbody></table>`;
+    <thead><tr><th></th><th>Foto</th><th>Nome</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3)">Nenhum item.</td></tr>'}</tbody></table>`;
 }
 
 async function tog(tbl,id,cur,type){ await upd(tbl,id,{ativo:!cur}); loadTable(type); }
@@ -886,8 +904,7 @@ async function openMod(type, id=null) {
       <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${item.preco_familia||''}" placeholder="Opcional"></div>
     </div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
-    <div class="fg"><label>Tag (ex: 🔥 Mais Pedido)</label><input id="ftag" value="${item.tag||''}"></div>
-    <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
+    <div class="fg"><label>Tag (ex: 🔥 Mais Pedido)</label><input id="ftag" value="${item.tag||''}"></div>`;
   } else if(type==='bebidas'){
     body+=`<div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
@@ -896,8 +913,7 @@ async function openMod(type, id=null) {
     body+=`<div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
     <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
-    <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>
-    <div class="fg"><label>Ordem</label><input id="fo" type="number" value="${item.ordem||0}"></div>`;
+    <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>`;
   }
   document.getElementById('mod-body').innerHTML=body;
   document.getElementById('modal').classList.add('open');
@@ -917,18 +933,109 @@ async function saveItem() {
     const fpf=document.getElementById('fpf').value;
     data.preco_familia=fpf?parseFloat(fpf):null;
     data.descricao=document.getElementById('fd').value.trim();
-    data.ordem=parseInt(document.getElementById('fo').value||0);
   } else if(type==='bebidas'){
     data.preco=parseFloat(document.getElementById('fp').value);
   } else {
     data.preco=parseFloat(document.getElementById('fp').value);
     data.descricao=document.getElementById('fd')?.value.trim()||'';
-    data.ordem=parseInt(document.getElementById('fo')?.value||0);
+  }
+  if(!editId){
+    const cache=tableDataCache[type]||[];
+    data.ordem=cache.length?Math.max(...cache.map(i=>i.ordem||0))+1:0;
   }
   const ok=editId?await upd(tbl,editId,data):await ins(tbl,data);
   if(ok){ closeMod(); loadTable(type); showToastAdmin('✅ Salvo!'); }
   else{ alert('Erro ao salvar!'); }
 }
+
+// ═══════════════════════════════════════════════════════
+// ORDENAÇÃO POR ARRASTAR E SOLTAR (cardápio)
+// Pointer Events cobre mouse (desktop) e touch (mobile) com um único
+// fluxo de eventos, evitando duplicar a lógica de arrastar.
+// ═══════════════════════════════════════════════════════
+let dragState = null;
+
+function tblDoTipo(type){ return type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type; }
+
+document.addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  const tr = handle.closest('tr[data-id]');
+  const wrap = handle.closest('[id^="t-"]');
+  if (!tr || !wrap) return;
+  e.preventDefault();
+
+  const placeholder = document.createElement('tr');
+  placeholder.className = 'drag-placeholder';
+  const td = document.createElement('td');
+  td.colSpan = tr.children.length;
+  placeholder.appendChild(td);
+  tr.parentElement.insertBefore(placeholder, tr.nextSibling);
+
+  tr.classList.add('dragging');
+  try { handle.setPointerCapture(e.pointerId); } catch(err) {}
+
+  dragState = { type: wrap.id.replace('t-', ''), tbody: tr.parentElement, tr, placeholder, pointerId: e.pointerId };
+});
+
+document.addEventListener('pointermove', (e) => {
+  if (!dragState || e.pointerId !== dragState.pointerId) return;
+  e.preventDefault();
+  const { tbody, tr, placeholder } = dragState;
+  const rows = [...tbody.querySelectorAll('tr[data-id]')].filter(r => r !== tr);
+  let target = null, before = true;
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    before = e.clientY < rect.top + rect.height / 2;
+    target = row;
+    if (before) break;
+  }
+  if (target) tbody.insertBefore(placeholder, before ? target : target.nextSibling);
+  else tbody.insertBefore(placeholder, tbody.firstChild);
+});
+
+async function updComRetry(tbl, id, data) {
+  return (await upd(tbl, id, data)) || (await upd(tbl, id, data));
+}
+
+async function finalizarDrag() {
+  const { type, tbody, tr, placeholder } = dragState;
+  dragState = null;
+  tbody.insertBefore(tr, placeholder);
+  placeholder.remove();
+  tr.classList.remove('dragging');
+
+  const tbl = tblDoTipo(type);
+  const cache = tableDataCache[type] || [];
+  const ids = [...tbody.querySelectorAll('tr[data-id]')].map(r => r.dataset.id);
+  const changes = [];
+  ids.forEach((id, i) => {
+    const item = cache.find(x => String(x.id) === String(id));
+    if (item && item.ordem !== i) { item.ordem = i; changes.push([id, i]); }
+  });
+  if (changes.length) {
+    // Envia uma PATCH de cada vez (não em paralelo): rajadas de PATCHs concorrentes
+    // podem saturar o pooler de conexões do Supabase neste projeto e retornar 503.
+    let allOk = true;
+    for (const [id, i] of changes) {
+      const ok = await updComRetry(tbl, id, { ordem: i });
+      if (!ok) allOk = false;
+    }
+    showToastAdmin(allOk ? '✅ Ordem atualizada!' : '⚠️ Erro ao salvar ordem.');
+  }
+}
+
+document.addEventListener('pointerup', (e) => {
+  if (!dragState || e.pointerId !== dragState.pointerId) return;
+  finalizarDrag();
+});
+
+document.addEventListener('pointercancel', (e) => {
+  if (!dragState || e.pointerId !== dragState.pointerId) return;
+  dragState.tr.classList.remove('dragging');
+  dragState.placeholder.remove();
+  dragState = null;
+});
 
 // ═══════════════════════════════════════════════════════
 // BAIRROS
@@ -1392,6 +1499,9 @@ async function loadAparencia(){
   document.getElementById('ap-info-horario').value = apConfigsAtuais.info_horario || '';
   document.getElementById('ap-info-rodape').value = apConfigsAtuais.info_rodape_slogan || '';
 
+  document.getElementById('ap-subtitulo-salgadas').value = apConfigsAtuais.subtitulo_salgadas || '';
+  document.getElementById('ap-subtitulo-doces').value = apConfigsAtuais.subtitulo_doces || '';
+
   filtrarProdutosFoto(document.querySelector('#ap-produtos-filtros .be'), apProdutosFiltro);
 }
 
@@ -1544,6 +1654,15 @@ async function salvarInfoGeral(){
     info_rodape_slogan: document.getElementById('ap-info-rodape').value.trim(),
   });
   showToastAdmin(ok ? '✅ Informações salvas!' : '⚠️ Erro ao salvar.');
+}
+
+// --- SEÇÃO 5: TEXTOS DAS SEÇÕES ---
+async function salvarTextosSecoes(){
+  const ok = await salvarConfigs({
+    subtitulo_salgadas: document.getElementById('ap-subtitulo-salgadas').value.trim(),
+    subtitulo_doces: document.getElementById('ap-subtitulo-doces').value.trim(),
+  });
+  showToastAdmin(ok ? '✅ Textos salvos!' : '⚠️ Erro ao salvar.');
 }
 
 // ═══════════════════════════════════════════════════════
