@@ -50,6 +50,7 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .hero h1{font-size:clamp(38px,10vw,64px);color:white;line-height:1.02;position:relative;text-shadow:0 4px 18px rgba(0,0,0,0.5);z-index:2;}
 .hero h1 em{font-style:normal;color:var(--orange);}
 .hero-sub{font-size:clamp(14px,3.6vw,17px);color:rgba(255,255,255,0.78);margin:14px 0 20px;line-height:1.6;position:relative;z-index:2;}
+.hero-delivery-time{display:inline-flex;align-items:center;gap:8px;background:rgba(232,168,0,0.16);border:1.5px solid var(--gold);color:var(--gold);padding:9px 20px;border-radius:30px;font-size:15px;font-weight:800;margin-bottom:22px;position:relative;z-index:2;}
 .hero-badges{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:24px;position:relative;z-index:2;}
 .badge{background:rgba(255,255,255,0.1);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.92);padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;}
 .hero-cta{display:inline-block;background:var(--red);color:white;padding:18px 46px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;border-radius:10px;text-decoration:none;position:relative;z-index:2;box-shadow:0 10px 30px rgba(204,17,0,0.45);transition:transform 0.15s,background 0.15s;}
@@ -61,6 +62,11 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .section-title span{color:var(--red);}
 .divider{width:48px;height:4px;background:var(--red);margin:10px 0 22px;border-radius:2px;}
 .section-sub{color:var(--gray);font-size:14.5px;margin-bottom:24px;}
+.cf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:8px;}
+.cf-step{text-align:center;background:white;border-radius:var(--radius-card);padding:30px 18px;box-shadow:var(--shadow-card);}
+.cf-step-num{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:2px;color:var(--red);margin-bottom:10px;}
+.cf-icon{font-size:46px;line-height:1;margin-bottom:12px;}
+.cf-title{font-weight:800;font-size:16px;color:var(--black);}
 .loading{text-align:center;padding:40px;color:var(--gray);font-size:14.5px;}
 
 /* COMBOS */
@@ -314,7 +320,7 @@ footer img{width:130px;margin-bottom:8px;}
 }
 
 /* RESPONSIVE */
-@media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}}
+@media(max-width:640px){.entrega-grid{grid-template-columns:1fr;}.combos-grid{grid-template-columns:1fr;}.menu-grid{grid-template-columns:1fr 1fr;}.bebidas-grid{grid-template-columns:1fr;}.cf-grid{grid-template-columns:1fr;}}
 @media(max-width:380px){.menu-grid{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -346,12 +352,38 @@ footer img{width:130px;margin-bottom:8px;}
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1><span id="hero-slogan">Pizza artesanal,</span><br><em id="hero-destaque">explosão de sabor</em></h1>
   <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
+  <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
     <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
     <span class="badge">⏱️ Entrega Rápida</span>
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
   <a href="#combos" class="hero-cta">🍕 Ver Cardápio</a>
+</div>
+
+<!-- COMO FUNCIONA -->
+<div id="como-funciona" style="background:var(--cream);padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;text-align:center;">
+    <h2 class="section-title">COMO <span>FUNCIONA</span></h2>
+    <div class="divider" style="margin-left:auto;margin-right:auto;"></div>
+    <div class="cf-grid">
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 1</div>
+        <div class="cf-icon">🍕</div>
+        <div class="cf-title">Escolha sua pizza</div>
+      </div>
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 2</div>
+        <div class="cf-icon">📱</div>
+        <div class="cf-title">Monte seu pedido</div>
+      </div>
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 3</div>
+        <div class="cf-icon">🚀</div>
+        <div class="cf-title">Receba em casa</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- BANNER CUPOM -->
@@ -478,10 +510,10 @@ footer img{width:130px;margin-bottom:8px;}
     <a href="https://wa.me/5571993738823" id="wpp-footer" target="_blank">📱 (71) 99373-8823</a>
     <a href="mailto:bigbangpz@outlook.com">✉️ bigbangpz@outlook.com</a>
     <a href="https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9" target="_blank">🛵 iFood</a>
-    <a href="#" id="footer-instagram" target="_blank" style="display:none;">📷 Instagram</a>
+    <a href="https://instagram.com/bigbangpz" id="footer-instagram" target="_blank">📷 @bigbangpz</a>
   </div>
   <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Quinta a Domingo | 18h às 00h</div>
-  <div class="footer-copy">© 2025 Big Bang Pizza — Todos os direitos reservados</div>
+  <div class="footer-copy">© 2026 Big Bang Pizza — Todos os direitos reservados</div>
 </footer>
 
 <div class="cart-fab">
