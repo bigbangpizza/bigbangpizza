@@ -140,6 +140,8 @@ footer img{width:130px;margin-bottom:8px;}
 .cart-header h2{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;}
 .cart-close{background:none;border:none;color:white;font-size:20px;cursor:pointer;}
 .cart-scroll{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0;}
+.btn-continuar{background:none;border:none;color:var(--gray);font-size:13px;font-weight:600;padding:14px 20px 0;cursor:pointer;display:flex;align-items:center;gap:6px;text-align:left;width:100%;}
+.btn-continuar:hover{color:var(--black);}
 .cart-body{padding:14px;}
 .cart-empty{text-align:center;padding:44px 20px;color:var(--gray);}
 .cart-item{display:flex;align-items:flex-start;gap:10px;padding:13px 0;border-bottom:1px solid var(--cream-dark);}
@@ -495,6 +497,7 @@ footer img{width:130px;margin-bottom:8px;}
 <div class="cart-panel" id="cart-panel">
   <div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close" onclick="closeCart()">✕</button></div>
   <div class="cart-scroll">
+  <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
     <div class="checkout-form-label">📍 Dados de entrega</div>
@@ -892,7 +895,7 @@ function addItem(name, price, obs='') {
   const ex = cart.find(i => i.tipo==='simples' && i.nomeExibicao===name && i.obs===obs);
   if (ex) { ex.qty++; }
   else cart.push({ id: novoId(), tipo:'simples', tabela:null, tamanho:null, sabores:[{nome:name,preco:price}], precoUnitario:price, qty:1, obs, nomeExibicao:name });
-  persistCart(); updateCount(); toast('Adicionado! 🍕');
+  persistCart(); updateCount(); openCart(); toast('Adicionado! 🍕');
 }
 
 // MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio, sempre filtrado pelo tamanho escolhido)
@@ -1011,7 +1014,7 @@ function confirmModalSabor() {
   } else {
     cart.push({ id: novoId(), tipo:'pizza', tabela:'pizzas_salgadas', tamanho: modalState.tamanho, sabores, precoUnitario, qty:1, obs:'', nomeExibicao });
   }
-  persistCart(); updateCount(); renderCart(); closeModal(); toast('Adicionado! 🍕');
+  persistCart(); updateCount(); openCart(); closeModal(); toast('Adicionado! 🍕');
 }
 
 function editCartItem(id) {
