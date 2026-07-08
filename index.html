@@ -154,8 +154,9 @@ footer img{width:130px;margin-bottom:8px;}
 .qty-btn:hover{border-color:var(--red);color:var(--red);}
 .qty-num{font-weight:700;font-size:14px;min-width:20px;text-align:center;}
 .checkout-form{padding:16px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:10px;background:var(--cream);}
-.checkout-form-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--gray);margin:4px 0 -3px;}
+.checkout-form-label{font-size:15px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--red);margin-top:20px;padding:10px 12px;background:var(--cream-dark);border-radius:8px;border-left:4px solid var(--red);display:flex;align-items:center;gap:8px;}
 .checkout-form-label:first-child{margin-top:0;}
+.cfl-icon{font-size:20px;line-height:1;}
 .checkout-form input,.checkout-form select,.checkout-form textarea{width:100%;padding:12px 13px;border:1.5px solid var(--cream-dark);border-radius:8px;font-size:15px;font-family:'Inter',sans-serif;background:white;outline:none;}
 .checkout-form textarea{resize:vertical;min-height:70px;}
 .checkout-form input:focus,.checkout-form select:focus,.checkout-form textarea:focus{border-color:var(--red);}
@@ -500,13 +501,13 @@ footer img{width:130px;margin-bottom:8px;}
   <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
-    <div class="checkout-form-label">📍 Dados de entrega</div>
+    <div class="checkout-form-label"><span class="cfl-icon">📍</span> Dados de entrega</div>
     <input type="text" id="f-nome" placeholder="Nome completo *">
     <input type="text" id="f-endereco" placeholder="Rua e número *">
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
-    <div class="checkout-form-label">💳 Pagamento</div>
+    <div class="checkout-form-label"><span class="cfl-icon">💳</span> Pagamento</div>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
     <div>
       <div class="cupom-input-wrap">
@@ -517,7 +518,7 @@ footer img{width:130px;margin-bottom:8px;}
       <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
     </div>
     <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..."></textarea>
-    <div class="checkout-form-label">🧾 Resumo</div>
+    <div class="checkout-form-label"><span class="cfl-icon">🧾</span> Resumo</div>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
