@@ -387,7 +387,7 @@ footer img{width:130px;margin-bottom:8px;}
 <body>
 
 <div id="splash">
-  <img src="logo-hero.png" alt="Big Bang Pizza">
+  <picture><source srcset="logo-hero.webp" type="image/webp"><img src="logo-hero.png" alt="Big Bang Pizza"></picture>
   <div class="sub">Explosão de Sabor</div>
   <div class="dots"><span></span><span></span><span></span></div>
 </div>
@@ -395,7 +395,7 @@ footer img{width:130px;margin-bottom:8px;}
 <div id="status-banner"></div>
 
 <header>
-  <div class="logo-area"><img src="logo-header.png" alt="Big Bang Pizza"></div>
+  <div class="logo-area"><picture><source srcset="logo-header.webp" type="image/webp"><img src="logo-header.png" alt="Big Bang Pizza"></picture></div>
   <button class="btn-pedido" onclick="openCart()">🛒 Fazer Pedido</button>
 </header>
 
@@ -407,8 +407,8 @@ footer img{width:130px;margin-bottom:8px;}
 </nav>
 
 <div class="hero" id="hero">
-  <img class="hero-bg-photo" id="hero-bg-photo" alt="">
-  <img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza">
+  <img class="hero-bg-photo" id="hero-bg-photo" alt="" fetchpriority="high">
+  <picture><source srcset="logo-hero.webp" type="image/webp"><img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza"></picture>
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1><span id="hero-slogan">Pizza artesanal,</span><br><em id="hero-destaque">explosão de sabor</em></h1>
   <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
@@ -564,7 +564,7 @@ footer img{width:130px;margin-bottom:8px;}
   </div>
 </div>
 <footer>
-  <img src="logo-header.png" alt="Big Bang Pizza">
+  <picture><source srcset="logo-header.webp" type="image/webp"><img src="logo-header.png" alt="Big Bang Pizza"></picture>
   <div class="footer-slogan" id="footer-slogan">Explosão de Sabor 🍕🔥💥</div>
   <div class="footer-links">
     <a href="https://wa.me/5571993738823" id="wpp-footer" target="_blank">📱 (71) 99373-8823</a>
@@ -902,6 +902,17 @@ async function checkBairrosAtualizados(inicial = false) {
   } catch(e) {}
 }
 
+// Fotos hospedadas no Storage do Supabase suportam transformação on-the-fly
+// (resize + WebP) via /render/image/ — a foto original do hero costuma vir
+// de upload de celular (vários MB); isso evita baixar o arquivo inteiro só
+// para exibi-lo redimensionado no fundo do hero.
+function otimizarFotoSupabase(url, width = 1600, quality = 75) {
+  if (!url) return url;
+  const marcador = '/storage/v1/object/public/';
+  if (!url.includes(marcador)) return url;
+  return url.replace(marcador, '/storage/v1/render/image/public/') + `?width=${width}&quality=${quality}&format=webp`;
+}
+
 async function loadHeroPhoto(fotoConfigurada) {
   try {
     let foto = fotoConfigurada;
@@ -915,7 +926,7 @@ async function loadHeroPhoto(fotoConfigurada) {
     if (!foto) return;
     const heroImg = document.getElementById('hero-bg-photo');
     heroImg.onload = () => document.getElementById('hero').classList.add('hero--photo');
-    heroImg.src = foto;
+    heroImg.src = otimizarFotoSupabase(foto);
   } catch(e) { /* mantém o fundo padrão do hero */ }
 }
 
