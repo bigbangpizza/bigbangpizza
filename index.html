@@ -1578,7 +1578,24 @@ function toast(msg) {
   document.body.appendChild(t); setTimeout(()=>t.remove(),2000);
 }
 </script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCfFbckWc7fVyOHtOSvMHbMbn5mjZns29M&callback=initMap&loading=async" async></script>
+<script>
+// Carrega a API do Google Maps só quando a seção "Área de Entrega" estiver perto
+// da tela, em vez de em todo carregamento — a maioria das visitas nunca rola até
+// lá, e a API inteira do Maps é um script pesado para baixar/parsear à toa.
+(() => {
+  const secaoMapa = document.getElementById('entrega');
+  if (!secaoMapa) return;
+  const obs = new IntersectionObserver((entries) => {
+    if (!entries.some(e => e.isIntersecting)) return;
+    obs.disconnect();
+    const s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCfFbckWc7fVyOHtOSvMHbMbn5mjZns29M&callback=initMap&loading=async';
+    s.async = true;
+    document.body.appendChild(s);
+  }, { rootMargin: '400px' });
+  obs.observe(secaoMapa);
+})();
+</script>
 
 <div class="modal-overlay" id="modal-aval-overlay" style="z-index:450;">
   <div class="modal-aval">
