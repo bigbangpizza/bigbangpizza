@@ -357,7 +357,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .cupom-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 10px);}
 .cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;position:relative;}
 .cupom-banner p{font-size:14px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
-.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:4px;padding:7px 22px;border-radius:8px;margin:9px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;}
+.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:4px;padding:7px 22px;border-radius:8px;margin:9px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;cursor:pointer;}
 .cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;}
 
 /* CAMPO CUPOM NO CHECKOUT */
@@ -460,7 +460,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 <div class="cupom-banner" id="cupom-banner">
   <h3>🎉 OFERTA DE LANÇAMENTO — USE O CUPOM E GANHE 15% OFF!</h3>
   <p>Válido para os primeiros 50 pedidos pelo site</p>
-  <div class="cupom-code">BIGBANG15</div>
+  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG15'})">BIGBANG15</div>
   <div class="cupom-restantes" id="cupom-restantes">Carregando vagas...</div>
 </div>
 
@@ -794,6 +794,7 @@ setTimeout(() => {
 // LOAD DATA
 async function loadCombos() {
   const data = await api('combos', 'ativo=eq.true');
+  data.forEach(c => gtag('event', 'view_item', {item_name: c.nome, item_category: 'combo', price: c.preco}));
   document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
     <div class="combo-card">
       ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
@@ -828,11 +829,13 @@ function renderPizzaCard(p) {
 async function loadSalgadas() {
   const data = await api('pizzas_salgadas', 'ativo=eq.true');
   salgadasCache = data;
+  data.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_salgada', price: p.preco_grande}));
   document.getElementById('salgadas-grid').innerHTML = data.map(renderPizzaCard).join('');
 }
 
 async function loadDoces() {
   const data = await api('pizzas_doces', 'ativo=eq.true');
+  data.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_doce', price: p.preco}));
   document.getElementById('doces-grid').innerHTML = data.map(p => `
     <div class="pizza-card">
       ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍫</div>'}
@@ -850,6 +853,7 @@ async function loadDoces() {
 
 async function loadBebidas() {
   const data = await api('bebidas', 'ativo=eq.true');
+  data.forEach(b => gtag('event', 'view_item', {item_name: b.nome, item_category: 'bebida', price: b.preco}));
   document.getElementById('bebidas-grid').innerHTML = data.map(b => `
     <div class="bebida-card">
       ${b.foto_url ? `<img src="${b.foto_url}" alt="${b.nome}" loading="lazy" style="object-position:${b.foto_posicao||'center'}">` : '<div class="bebida-emoji">🥤</div>'}
@@ -1027,6 +1031,10 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
   const sabor2 = (editItem && editItem.sabores[1])
     ? sabores.find(s => s.id === editItem.sabores[1].id) || null
     : null;
+
+  if (!editItem && sabor1) {
+    gtag('event', 'view_item_detail', {item_name: sabor1.nome, tamanho: tamanho, price: sabor1.preco});
+  }
 
   modalState = { tamanho, sabores, modo, sabor1, sabor2, editId: editItem ? editItem.id : null };
 
@@ -1214,7 +1222,6 @@ let enviandoPedido = false;
 async function finalizarPedido() {
   if (enviandoPedido) return;
   enviandoPedido = true;
-  gtag('event', 'begin_checkout');
   setTimeout(() => enviandoPedido = false, 5000);
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
@@ -1226,6 +1233,7 @@ async function finalizarPedido() {
   const obsVal = document.getElementById('f-obs').value.trim();
   const desconto = calcDesconto(sub);
   const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
+  gtag('event', 'begin_checkout', {currency: 'BRL', value: totalFinal, coupon: cupomAplicado ? cupomAplicado.codigo : ''});
 
   let linhaDesconto = '';
   if (cupomAplicado) {
@@ -1251,7 +1259,14 @@ async function finalizarPedido() {
 
   // Abrir o WhatsApp na hora, sem await antes — em mobile, a navegação para wa.me
   // só abre o app do WhatsApp quando é resultado direto e síncrono do toque do usuário.
-  gtag('event', 'purchase', {value: totalFinal, currency: 'BRL'});
+  gtag('event', 'purchase', {
+    transaction_id: Date.now().toString(),
+    currency: 'BRL',
+    value: totalFinal,
+    coupon: cupomAplicado ? cupomAplicado.codigo : '',
+    items: cart.map(i => ({ item_name: i.nomeExibicao, price: i.precoUnitario, quantity: i.qty }))
+  });
+  gtag('event', 'generate_lead', {currency: 'BRL', value: totalFinal});
   window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 
   // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
@@ -1477,6 +1492,7 @@ async function enviarContato() {
 }
 
 // BUSCA NO CARDÁPIO
+let buscaTrackTimer = null;
 function filtrarPizzas(termo) {
   const cards = document.querySelectorAll('#salgadas-grid .pizza-card');
   const t = termo.toLowerCase().trim();
@@ -1485,6 +1501,10 @@ function filtrarPizzas(termo) {
     const desc = card.querySelector('.pizza-desc')?.textContent?.toLowerCase() || '';
     card.style.display = (!t || nome.includes(t) || desc.includes(t)) ? '' : 'none';
   });
+  // Debounce: só registra a busca depois que o usuário para de digitar,
+  // pra não disparar um evento a cada letra.
+  clearTimeout(buscaTrackTimer);
+  if (t) buscaTrackTimer = setTimeout(() => gtag('event', 'search', {search_term: t}), 600);
 }
 
 // CUPOM
@@ -1619,6 +1639,18 @@ function toast(msg) {
     document.body.appendChild(s);
   }, { rootMargin: '400px' });
   obs.observe(secaoMapa);
+})();
+
+// Registra view_promotion quando o banner do cupom BIGBANG15 aparece na tela
+(() => {
+  const banner = document.getElementById('cupom-banner');
+  if (!banner) return;
+  const obsPromo = new IntersectionObserver((entries) => {
+    if (!entries.some(e => e.isIntersecting)) return;
+    obsPromo.disconnect();
+    gtag('event', 'view_promotion', {promotion_name: 'BIGBANG15', creative_name: 'banner_cupom'});
+  }, { threshold: 0.5 });
+  obsPromo.observe(banner);
 })();
 </script>
 
