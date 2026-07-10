@@ -1128,6 +1128,17 @@ function confirmModalSabor() {
     if (idx > -1) cart[idx] = { ...cart[idx], tamanho: modalState.tamanho, sabores, precoUnitario, nomeExibicao };
   } else {
     cart.push({ id: novoId(), tipo:'pizza', tabela:'pizzas_salgadas', tamanho: modalState.tamanho, sabores, precoUnitario, qty:1, obs:'', nomeExibicao });
+    gtag('event', 'add_to_cart', {
+      currency: 'BRL',
+      value: precoUnitario,
+      items: [{
+        item_name: nomeExibicao,
+        item_category: 'pizza_salgada',
+        item_variant: modalState.tamanho,
+        price: precoUnitario,
+        quantity: 1
+      }]
+    });
   }
   persistCart(); updateCount(); openCart(); closeModal(); toast('Adicionado! 🍕');
 }
