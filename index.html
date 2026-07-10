@@ -2,8 +2,18 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-V4FTSFT4YB"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-V4FTSFT4YB');
+</script>
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#CC1100">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
@@ -626,7 +636,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <p class="modal-sub">Escolha o sabor</p>
     <div class="modal-tabs">
       <button type="button" class="modal-tab active" id="tab-unico" onclick="setModoSabor('unico')">1 Sabor</button>
-      <button type="button" class="modal-tab" id="tab-meio" onclick="setModoSabor('meio')">🍕 2 Sabores</button>
+      <button type="button" class="modal-tab" id="tab-meio" onclick="setModoSabor('meio'); gtag('event', 'select_meio_a_meio')">🍕 2 Sabores</button>
     </div>
     <div id="painel-unico">
       <div class="sabor-grid" id="sabor-grid-unico"></div>
@@ -993,13 +1003,14 @@ setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 
 updateCount();
 
 // CART
-function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); }
+function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); gtag('event', 'view_cart'); }
 function closeCart() { document.getElementById('cart-overlay').classList.remove('open'); document.getElementById('cart-panel').classList.remove('open'); }
 function addItem(name, price, obs='') {
   const ex = cart.find(i => i.tipo==='simples' && i.nomeExibicao===name && i.obs===obs);
   if (ex) { ex.qty++; }
   else cart.push({ id: novoId(), tipo:'simples', tabela:null, tamanho:null, sabores:[{nome:name,preco:price}], precoUnitario:price, qty:1, obs, nomeExibicao:name });
   persistCart(); updateCount(); openCart(); toast('Adicionado! 🍕');
+  gtag('event', 'add_to_cart', {item_name: name, value: price});
 }
 
 // MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio, sempre filtrado pelo tamanho escolhido)
@@ -1192,6 +1203,7 @@ let enviandoPedido = false;
 async function finalizarPedido() {
   if (enviandoPedido) return;
   enviandoPedido = true;
+  gtag('event', 'begin_checkout');
   setTimeout(() => enviandoPedido = false, 5000);
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
@@ -1228,6 +1240,7 @@ async function finalizarPedido() {
 
   // Abrir o WhatsApp na hora, sem await antes — em mobile, a navegação para wa.me
   // só abre o app do WhatsApp quando é resultado direto e síncrono do toque do usuário.
+  gtag('event', 'purchase', {value: totalFinal, currency: 'BRL'});
   window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 
   // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
@@ -1549,6 +1562,7 @@ async function aplicarCupom() {
       : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
     ok.style.display = 'block';
     updateTotals();
+    gtag('event', 'apply_coupon', {coupon: codigo});
   } catch(e) {
     erro.textContent = '❌ Erro ao verificar cupom. Tente novamente.';
     erro.style.display = 'block';
