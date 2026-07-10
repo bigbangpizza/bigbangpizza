@@ -12,8 +12,26 @@
   gtag('config', 'G-V4FTSFT4YB');
 </script>
 
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1592863375768160');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://www.facebook.com https://connect.facebook.net; object-src 'none'; base-uri 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#CC1100">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
@@ -1015,6 +1033,7 @@ function addItem(name, price, obs='') {
   else cart.push({ id: novoId(), tipo:'simples', tabela:null, tamanho:null, sabores:[{nome:name,preco:price}], precoUnitario:price, qty:1, obs, nomeExibicao:name });
   persistCart(); updateCount(); openCart(); toast('Adicionado! 🍕');
   gtag('event', 'add_to_cart', {item_name: name, value: price});
+  fbq('track', 'AddToCart', {value: price, currency: 'BRL', content_name: name});
 }
 
 // MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio, sempre filtrado pelo tamanho escolhido)
@@ -1147,6 +1166,7 @@ function confirmModalSabor() {
         quantity: 1
       }]
     });
+    fbq('track', 'AddToCart', {value: precoUnitario, currency: 'BRL', content_name: nomeExibicao});
   }
   persistCart(); updateCount(); openCart(); closeModal(); toast('Adicionado! 🍕');
 }
@@ -1234,6 +1254,7 @@ async function finalizarPedido() {
   const desconto = calcDesconto(sub);
   const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
   gtag('event', 'begin_checkout', {currency: 'BRL', value: totalFinal, coupon: cupomAplicado ? cupomAplicado.codigo : ''});
+  fbq('track', 'InitiateCheckout', {value: totalFinal, currency: 'BRL'});
 
   let linhaDesconto = '';
   if (cupomAplicado) {
@@ -1267,6 +1288,7 @@ async function finalizarPedido() {
     items: cart.map(i => ({ item_name: i.nomeExibicao, price: i.precoUnitario, quantity: i.qty }))
   });
   gtag('event', 'generate_lead', {currency: 'BRL', value: totalFinal});
+  fbq('track', 'Purchase', {value: totalFinal, currency: 'BRL'});
   window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 
   // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
@@ -1594,6 +1616,7 @@ async function aplicarCupom() {
     ok.style.display = 'block';
     updateTotals();
     gtag('event', 'apply_coupon', {coupon: codigo});
+    fbq('track', 'ViewContent', {content_name: 'cupom_aplicado'});
   } catch(e) {
     erro.textContent = '❌ Erro ao verificar cupom. Tente novamente.';
     erro.style.display = 'block';
