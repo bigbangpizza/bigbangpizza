@@ -115,6 +115,8 @@ h1,h2,h3{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 @keyframes pop{from{opacity:0;transform:scale(0.5);}to{opacity:1;transform:scale(1);}}
 @keyframes fadeup{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes pulse{from{transform:scale(0.8);}to{transform:scale(1.3);}}
+@keyframes btn-pulse{0%,100%{transform:scale(1);box-shadow:0 4px 14px rgba(204,17,0,0.25);}50%{transform:scale(1.045);box-shadow:0 6px 22px rgba(204,17,0,0.5);}}
+@keyframes cupom-blink{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.55);}50%{box-shadow:0 0 0 12px rgba(255,255,255,0);}}
 
 /* STATUS */
 #status-banner{text-align:center;padding:10px;font-size:14px;font-weight:600;}
@@ -194,7 +196,7 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .bebida-price{font-family:'Bebas Neue',sans-serif;font-size:21px;color:var(--red);}
 
 /* BUTTONS */
-.btn-add{background:var(--red);color:white;border:none;padding:11px 16px;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s,transform .1s;}
+.btn-add{background:var(--red);color:white;border:none;padding:13px 20px;border-radius:9px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;transition:background .15s,transform .1s;animation:btn-pulse 2s ease-in-out infinite;}
 .btn-add:hover{background:var(--red-dark);}
 .btn-add:active{transform:scale(0.97);}
 
@@ -356,9 +358,9 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 /* SIZE SELECTOR */
 .size-selector{display:flex;gap:9px;margin:10px 0;}
-.size-btn{flex:1;padding:11px 8px;border-radius:10px;border:2.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--gray);text-align:center;transition:all 0.15s;line-height:1.3;position:relative;}
-.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--red);margin-top:3px;letter-spacing:.5px;}
-.size-btn.active{background:var(--red);border-color:var(--red);color:white;box-shadow:0 6px 16px rgba(204,17,0,0.35);transform:translateY(-1px);}
+.size-btn{flex:1;padding:16px 8px;border-radius:12px;border:3px solid var(--cream-dark);background:white;cursor:pointer;font-size:14px;font-weight:800;color:var(--gray);text-align:center;transition:all 0.15s;line-height:1.3;position:relative;animation:btn-pulse 2.2s ease-in-out infinite;}
+.size-btn span{display:block;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--red);margin-top:4px;letter-spacing:.5px;}
+.size-btn.active{background:var(--red);border-color:var(--red);color:white;box-shadow:0 6px 16px rgba(204,17,0,0.35);transform:translateY(-1px);animation:none;}
 .size-btn.active span{color:white;}
 .size-btn.active::after{content:'✓';position:absolute;top:-7px;right:-7px;width:20px;height:20px;background:var(--orange);color:white;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);}
 .size-btn:hover{border-color:var(--red);}
@@ -371,11 +373,11 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
 
 /* CUPOM */
-.cupom-banner{background:linear-gradient(135deg,var(--red),#ff4422);color:white;text-align:center;padding:14px 20px;position:relative;overflow:hidden;}
+.cupom-banner{background:linear-gradient(135deg,var(--red),#ff4422);color:white;text-align:center;padding:18px 20px;position:relative;overflow:hidden;box-shadow:0 0 0 3px rgba(255,68,34,0.35);}
 .cupom-banner::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 10px);}
-.cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;position:relative;}
+.cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;position:relative;}
 .cupom-banner p{font-size:14px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
-.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:4px;padding:7px 22px;border-radius:8px;margin:9px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;cursor:pointer;}
+.cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:4px;padding:10px 28px;border-radius:9px;margin:11px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;cursor:pointer;animation:cupom-blink 1.7s ease-in-out infinite;}
 .cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;}
 
 /* CAMPO CUPOM NO CHECKOUT */
@@ -822,7 +824,7 @@ async function loadCombos() {
         <div class="combo-desc">${c.descricao||''}</div>
         <div class="combo-bottom">
           <span class="combo-price">R$ ${c.preco.toFixed(2).replace('.',',')}</span>
-          <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">+ Adicionar</button>
+          <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>
         </div>
       </div>
     </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
@@ -863,7 +865,7 @@ async function loadDoces() {
         <div class="pizza-size">Tamanho: 25cm</div>
         <div class="pizza-bottom">
           <span class="pizza-price">R$ ${p.preco.toFixed(2).replace('.',',')}</span>
-          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">+ Adicionar</button>
+          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">🍕 Pedir Agora</button>
         </div>
       </div>
     </div>`).join('');
