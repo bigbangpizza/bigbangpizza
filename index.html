@@ -159,18 +159,29 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .cf-title{font-weight:800;font-size:16px;color:var(--black);}
 .loading{text-align:center;padding:40px;color:var(--gray);font-size:14.5px;}
 
-/* COMBOS */
-.combos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;}
-.combo-card{background:#141414;color:white;border-radius:var(--radius-card);overflow:hidden;transition:transform 0.2s,box-shadow 0.2s;box-shadow:var(--shadow-card);position:relative;}
-.combo-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-card-hover);}
-.combo-card img{width:100%;height:clamp(190px,32vw,260px);object-fit:cover;display:block;}
-.combo-no-img{height:clamp(190px,32vw,260px);background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:48px;}
-.combo-body{padding:18px;position:relative;}
+/* COMBOS — carrossel horizontal */
+.combos-carousel-wrap{position:relative;}
+.combos-grid{display:flex;gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 4px 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.combos-grid::-webkit-scrollbar{display:none;}
+.combo-nav-btn{position:absolute;top:38%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,0.55);color:white;border:1.5px solid rgba(255,255,255,0.15);font-size:22px;line-height:1;cursor:pointer;z-index:5;display:flex;align-items:center;justify-content:center;transition:background .15s;backdrop-filter:blur(4px);}
+.combo-nav-btn:hover{background:var(--red);}
+.combo-nav-prev{left:-6px;}
+.combo-nav-next{right:-6px;}
+.combos-dots{display:flex;justify-content:center;gap:8px;margin-top:14px;}
+.combo-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.18);cursor:pointer;transition:background .2s,transform .2s;padding:0;border:none;}
+.combo-dot.active{background:var(--orange);transform:scale(1.3);}
+@media(max-width:768px){.combo-nav-btn{display:none;}}
+.combo-card{background:#141414;color:white;border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card);position:relative;flex:0 0 clamp(250px,78vw,310px);scroll-snap-align:start;border:2px solid transparent;opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,box-shadow .2s,border-color .2s;}
+.combo-card.in-view{opacity:1;transform:translateY(0);}
+.combo-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-card-hover);border-color:rgba(255,107,0,0.45);}
+.combo-card img{width:100%;height:clamp(210px,42vw,300px);object-fit:cover;display:block;}
+.combo-no-img{height:clamp(210px,42vw,300px);background:#1a1a1a;display:flex;align-items:center;justify-content:center;font-size:48px;}
+.combo-body{padding:16px 18px 18px;position:relative;}
 .combo-tag{display:inline-block;background:var(--red);color:white;font-size:11px;font-weight:700;letter-spacing:2px;padding:5px 10px;border-radius:20px;margin-bottom:9px;}
 .combo-name{font-family:'Bebas Neue',sans-serif;font-size:23px;letter-spacing:1px;margin-bottom:5px;}
-.combo-desc{font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:14px;line-height:1.5;}
+.combo-desc{font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .combo-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.combo-price{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);}
+.combo-price{font-family:'Bebas Neue',sans-serif;font-size:34px;color:var(--orange);}
 
 /* PIZZA CARDS */
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
@@ -299,6 +310,11 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .aval-grid{display:flex;gap:14px;margin-top:6px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;}
 .aval-grid::-webkit-scrollbar{display:none;}
 .aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:20px;flex:0 0 280px;scroll-snap-align:start;}
+.aval-mais-wrap{max-height:0;opacity:0;overflow:hidden;transition:max-height .6s ease,opacity .4s ease;}
+.aval-mais-wrap.expandido{max-height:4000px;opacity:1;margin-top:14px;}
+.aval-mais-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+.btn-ver-mais-aval{display:block;margin:20px auto 0;background:transparent;color:var(--gold);border:1.5px solid rgba(232,168,0,0.4);padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;}
+.btn-ver-mais-aval:hover{background:rgba(232,168,0,0.08);border-color:var(--gold);}
 .aval-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .aval-avatar{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
 .aval-nome{font-weight:700;font-size:14.5px;color:white;}
@@ -489,7 +505,12 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <div class="sw" style="padding-top:0;padding-bottom:0;">
     <h2 class="section-title" style="color:white;">COMBOS <span>EM DESTAQUE</span></h2>
     <div class="divider"></div>
-    <div class="combos-grid" id="combos-grid"><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div></div>
+    <div class="combos-carousel-wrap">
+      <button class="combo-nav-btn combo-nav-prev" onclick="comboScroll(-1)" aria-label="Combo anterior">‹</button>
+      <div class="combos-grid" id="combos-grid" onmouseenter="pararComboAutoplay()" ontouchstart="pararComboAutoplay()"><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div></div>
+      <button class="combo-nav-btn combo-nav-next" onclick="comboScroll(1)" aria-label="Próximo combo">›</button>
+    </div>
+    <div class="combos-dots" id="combos-dots"></div>
   </div>
 </div>
 
@@ -548,6 +569,11 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="aval-grid" id="aval-grid">
       <div class="loading" style="color:rgba(255,255,255,0.3);">Carregando avaliações...</div>
     </div>
+
+    <div class="aval-mais-wrap" id="aval-mais-wrap">
+      <div class="aval-mais-grid" id="aval-mais-grid"></div>
+    </div>
+    <button class="btn-ver-mais-aval" id="btn-ver-mais-aval" onclick="toggleVerMaisAvaliacoes()" style="display:none;"></button>
 
     <div style="text-align:center;">
       <button class="btn-aval" onclick="openAval()">⭐ Deixar minha avaliação</button>
@@ -820,7 +846,7 @@ async function loadCombos() {
     <div class="combo-card">
       ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
       <div class="combo-body">
-        <span class="combo-tag">PROMOÇÃO</span>
+        <span class="combo-tag">${c.tag || 'PROMOÇÃO'}</span>
         <div class="combo-name">${c.nome}</div>
         <div class="combo-desc">${c.descricao||''}</div>
         <div class="combo-bottom">
@@ -829,6 +855,79 @@ async function loadCombos() {
         </div>
       </div>
     </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+  renderComboDots(data.length);
+  observarComboFadeIn();
+  iniciarComboAutoplay();
+}
+
+// CARROSSEL DE COMBOS — navegação por setas, bolinhas e autoplay
+let comboAutoplayTimer = null;
+function comboLarguraCard() {
+  const track = document.getElementById('combos-grid');
+  const card = track && track.querySelector('.combo-card');
+  return card ? card.getBoundingClientRect().width + 18 : 0;
+}
+function comboScroll(dir) {
+  pararComboAutoplay();
+  const track = document.getElementById('combos-grid');
+  const largura = comboLarguraCard();
+  if (track && largura) track.scrollBy({ left: dir * largura, behavior: 'smooth' });
+}
+function comboIrPara(i) {
+  pararComboAutoplay();
+  const track = document.getElementById('combos-grid');
+  const card = track && track.querySelectorAll('.combo-card')[i];
+  if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
+}
+function renderComboDots(total) {
+  const dotsEl = document.getElementById('combos-dots');
+  if (!dotsEl) return;
+  dotsEl.innerHTML = total > 1 ? Array.from({length: total}, (_, i) =>
+    `<button class="combo-dot${i===0?' active':''}" onclick="comboIrPara(${i})" aria-label="Ir para combo ${i+1}"></button>`
+  ).join('') : '';
+}
+let _comboDotsRaf = null;
+function atualizarComboDotsAtivo() {
+  if (_comboDotsRaf) return;
+  _comboDotsRaf = requestAnimationFrame(() => {
+    _comboDotsRaf = null;
+    const track = document.getElementById('combos-grid');
+    const cards = track ? [...track.querySelectorAll('.combo-card')] : [];
+    const dots = document.querySelectorAll('.combo-dot');
+    if (!cards.length || !dots.length) return;
+    const centro = track.scrollLeft + track.clientWidth / 2;
+    let maisProximo = 0, menorDist = Infinity;
+    cards.forEach((c, i) => {
+      const dist = Math.abs((c.offsetLeft + c.clientWidth / 2) - centro);
+      if (dist < menorDist) { menorDist = dist; maisProximo = i; }
+    });
+    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo));
+  });
+}
+document.getElementById('combos-grid').addEventListener('scroll', atualizarComboDotsAtivo);
+function iniciarComboAutoplay() {
+  pararComboAutoplay();
+  const track = document.getElementById('combos-grid');
+  if (!track || track.querySelectorAll('.combo-card').length < 2) return;
+  comboAutoplayTimer = setInterval(() => {
+    const largura = comboLarguraCard();
+    if (!largura) return;
+    const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10;
+    track.scrollTo({ left: noFim ? 0 : track.scrollLeft + largura, behavior: 'smooth' });
+  }, 4000);
+}
+function pararComboAutoplay() {
+  if (comboAutoplayTimer) { clearInterval(comboAutoplayTimer); comboAutoplayTimer = null; }
+}
+function observarComboFadeIn() {
+  const cards = document.querySelectorAll('#combos-grid .combo-card');
+  if (!('IntersectionObserver' in window)) { cards.forEach(c => c.classList.add('in-view')); return; }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) { entry.target.classList.add('in-view'); io.unobserve(entry.target); }
+    });
+  }, { threshold: 0.15 });
+  cards.forEach(c => io.observe(c));
 }
 
 let salgadasCache = [];
@@ -1472,8 +1571,30 @@ async function loadAvaliacoes() {
       fills[5 - i].style.width = pct + '%';
     }
 
-    // Carrossel mostra no máximo 25 cards, mesmo com mais avaliações no banco
-    document.getElementById('aval-grid').innerHTML = data.slice(0, 25).map(a => `
+    // Carrossel mostra as mais recentes; "ver mais" revela o restante, até o
+    // teto de 25 cards no total — a média e as barras acima já usam todas.
+    const AVAL_CARROSSEL = 8, AVAL_MAX_TOTAL = 25;
+    const visiveis = data.slice(0, AVAL_CARROSSEL);
+    const extras = data.slice(AVAL_CARROSSEL, AVAL_MAX_TOTAL);
+
+    document.getElementById('aval-grid').innerHTML = visiveis.map(avaliacaoCardHTML).join('');
+
+    const btnMais = document.getElementById('btn-ver-mais-aval');
+    const maisWrap = document.getElementById('aval-mais-wrap');
+    if (extras.length) {
+      document.getElementById('aval-mais-grid').innerHTML = extras.map(avaliacaoCardHTML).join('');
+      btnMais.dataset.labelFechado = `Ver mais avaliações (+${extras.length})`;
+      btnMais.textContent = btnMais.dataset.labelFechado;
+      btnMais.style.display = '';
+      maisWrap.classList.remove('expandido');
+    } else {
+      btnMais.style.display = 'none';
+    }
+  } catch(e) { console.log('Avaliacoes nao carregadas:', e); }
+}
+
+function avaliacaoCardHTML(a) {
+  return `
       <div class="aval-card">
         <div class="aval-header">
           <div class="aval-avatar">${esc(a.nome.charAt(0).toUpperCase())}</div>
@@ -1484,9 +1605,16 @@ async function loadAvaliacoes() {
         </div>
         <div class="stars">${'★'.repeat(a.estrelas)}${'☆'.repeat(5 - a.estrelas)}</div>
         <div class="aval-texto">${esc(a.texto)}</div>
-      </div>`).join('');
-  } catch(e) { console.log('Avaliacoes nao carregadas:', e); }
+      </div>`;
 }
+
+function toggleVerMaisAvaliacoes() {
+  const wrap = document.getElementById('aval-mais-wrap');
+  const btn = document.getElementById('btn-ver-mais-aval');
+  const expandido = wrap.classList.toggle('expandido');
+  btn.textContent = expandido ? 'Ver menos avaliações ▴' : btn.dataset.labelFechado;
+}
+
 loadAvaliacoes();
 
 // CONTATO
