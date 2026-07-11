@@ -102,6 +102,13 @@ tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);bord
 .sl::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:white;border-radius:50%;transition:.3s;}
 input:checked+.sl{background:var(--green2);}
 input:checked+.sl::before{transform:translateX(20px);}
+.bairro-grupo{margin-bottom:22px;border-radius:10px;transition:outline .15s;}
+.bairro-grupo-titulo{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);margin:0 0 9px;letter-spacing:1px;display:flex;align-items:center;gap:8px;}
+.bairro-grupo-count{background:var(--bg-subtle);color:var(--text-secondary);font-size:11px;font-family:'Inter',sans-serif;letter-spacing:0;padding:2px 9px;border-radius:20px;}
+.bairro-grupo-vazio{grid-column:1/-1;padding:14px;text-align:center;color:var(--text-faint);font-size:12px;border:1px dashed var(--border-color);border-radius:9px;}
+.bairro-grupo.drag-over{outline:2px dashed var(--orange);outline-offset:6px;}
+.bc2[draggable="true"]{cursor:grab;}
+.bc2[draggable="true"]:active{cursor:grabbing;}
 .loading{text-align:center;padding:36px;color:var(--text-faint);font-size:13px;}
 .sec-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;margin-left:12px;}
 
@@ -264,6 +271,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('estoque')"   id="nav-estoque">  <span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('cmv')"       id="nav-cmv">      <span class="ic">🧮</span> CMV</div>
       <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
+      <div class="nav-item" onclick="show('analytics')" id="nav-analytics"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia')" id="nav-aparencia"><span class="ic">🎨</span> Aparência</div>
     </div>
     <div class="sb-footer">
@@ -368,7 +376,14 @@ input:checked+.sl::before{transform:translateX(20px);}
     <!-- BAIRROS -->
     <div id="pg-bairros" class="hidden">
       <div class="page-title">BAIRROS</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:20px;"><div class="page-sub" style="margin:0;">Ative bairros quando contratar motoboy 🛵</div><button class="btn-new" onclick="publicarBairros()">🔄 Publicar Alterações no Site</button></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <div class="page-sub" style="margin:0;">Ative bairros quando contratar motoboy 🛵 — arraste um bairro entre os grupos para mudar o frete</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-new" onclick="openModBairro()">+ Novo Bairro</button>
+          <button class="btn-new" onclick="publicarBairros()">🔄 Publicar Alterações no Site</button>
+        </div>
+      </div>
+      <input type="text" id="bairro-busca" placeholder="🔍 Buscar bairro..." oninput="filtrarBairrosBusca(this.value)" style="width:100%;max-width:320px;padding:9px 12px;border-radius:7px;border:1.5px solid var(--border-input);background:var(--bg-input);color:var(--text-primary);font-size:13px;margin-bottom:18px;outline:none;">
       <div id="t-bairros"><div class="loading">Carregando...</div></div>
     </div>
 
@@ -474,6 +489,13 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div id="rel-content"><div class="loading">Carregando...</div></div>
     </div>
 
+    <!-- ANALYTICS -->
+    <div id="pg-analytics" class="hidden">
+      <div class="page-title">ANALYTICS</div>
+      <div class="page-sub">Dados do Google Analytics 4, via painel do Looker Studio — atualiza a cada 5 minutos</div>
+      <div id="analytics-content"><div class="loading">Carregando...</div></div>
+    </div>
+
     <!-- APARÊNCIA -->
     <div id="pg-aparencia" class="hidden">
       <div class="page-title">APARÊNCIA</div><div class="page-sub">Controle o visual do site — hero, cores, fotos e informações gerais</div>
@@ -571,6 +593,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('contatos');fecharMaisMenu()"><span class="ic">💬</span> Contatos</div>
       <div class="nav-item" onclick="show('cupons');fecharMaisMenu()"><span class="ic">🎟️</span> Cupons</div>
       <div class="nav-item" onclick="show('cmv');fecharMaisMenu()"><span class="ic">🧮</span> CMV</div>
+      <div class="nav-item" onclick="show('analytics');fecharMaisMenu()"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia');fecharMaisMenu()"><span class="ic">🎨</span> Aparência</div>
       <div class="nav-item" onclick="toggleTheme()"><span class="ic">🌙</span> Alternar tema</div>
       <button class="btn-logout" style="margin:8px 18px;width:calc(100% - 36px);" onclick="logout()">🚪 Sair</button>
@@ -629,6 +652,7 @@ let pedidoFiltroAtual = 'aguardando';
 let cmvFiltroAtual = 'tudo';
 let _pedidoTimer = null;
 let _cozinhaTimer = null;
+let _analyticsTimer = null;
 
 // ═══════════════════════════════════════════════════════
 // SEGURANÇA — Rate Limiting (5 tentativas → 5 min)
@@ -691,14 +715,46 @@ function startBlockTimer() {
 }
 
 // ═══════════════════════════════════════════════════════
-// AUTH — Supabase Auth com fallback btoa
+// AUTH — Supabase Auth (JWT), sessão persistida por 7 dias
+// via localStorage com renovação automática do token.
 // ═══════════════════════════════════════════════════════
-// Login exclusivo via Supabase Auth (JWT). Senha btoa removida.
+const SESSAO_DURACAO = 7 * 24 * 60 * 60 * 1000; // 7 dias
 
 function getToken() {
-  const expires = parseInt(sessionStorage.getItem('bb_expires') || '0');
-  if (Date.now() > expires) { sessionStorage.removeItem('bb_token'); return null; }
-  return sessionStorage.getItem('bb_token');
+  return localStorage.getItem('bb_token');
+}
+
+function sessaoExpirada() {
+  const loginTime = parseInt(localStorage.getItem('bb_login_time') || '0');
+  if (!loginTime) return true;
+  return (Date.now() - loginTime) > SESSAO_DURACAO;
+}
+
+function salvarSessao(data) {
+  localStorage.setItem('bb_token', data.access_token);
+  localStorage.setItem('bb_refresh_token', data.refresh_token || '');
+  localStorage.setItem('bb_expires_at', Date.now() + (data.expires_in * 1000));
+  localStorage.setItem('bb_login_time', Date.now());
+}
+
+async function refreshToken() {
+  const refresh_token = localStorage.getItem('bb_refresh_token');
+  if (!refresh_token) return false;
+  try {
+    const resp = await fetch(`${SB}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { 'apikey': SK, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token })
+    });
+    const data = await resp.json();
+    if (data.access_token) {
+      localStorage.setItem('bb_token', data.access_token);
+      localStorage.setItem('bb_refresh_token', data.refresh_token || refresh_token);
+      localStorage.setItem('bb_expires_at', Date.now() + (data.expires_in * 1000));
+      return true;
+    }
+  } catch (e) { console.error('Erro ao renovar token:', e); }
+  return false;
 }
 
 function getHeaders() {
@@ -732,11 +788,9 @@ async function doLogin() {
     const data = await resp.json();
 
     if (data.access_token) {
-      // Login via JWT — seguro
+      // Login via JWT — seguro, sessão persistida por 7 dias
       resetAttempts();
-      sessionStorage.setItem('bb_token', data.access_token);
-      sessionStorage.setItem('bb_expires', Date.now() + (data.expires_in * 1000));
-      sessionStorage.setItem('bb_auth_type', 'jwt');
+      salvarSessao(data);
       entrarApp('JWT');
       return;
     }
@@ -775,12 +829,16 @@ function entrarApp(tipo) {
   iniciarMonitorPedidos();
 }
 
-function checkAuth() {
-  // Verificar sessão JWT existente
-  const token = getToken();
-  if (token) { entrarApp('JWT'); return; }
-  // Verificar bloqueio
-  if (isBlocked()) startBlockTimer();
+async function checkAuth() {
+  const loginTime = parseInt(localStorage.getItem('bb_login_time') || '0');
+  if (!loginTime) { if (isBlocked()) startBlockTimer(); return; }
+  if (sessaoExpirada()) { logout(); return; }
+  const expiresAt = parseInt(localStorage.getItem('bb_expires_at') || '0');
+  if (Date.now() > expiresAt) {
+    const ok = await refreshToken();
+    if (!ok) { logout(); return; }
+  }
+  entrarApp('JWT');
 }
 
 function logout() {
@@ -792,31 +850,53 @@ function logout() {
       headers: { 'apikey': SK, 'Authorization': `Bearer ${token}` }
     }).catch(() => {});
   }
-  sessionStorage.clear();
+  ['bb_token','bb_refresh_token','bb_expires_at','bb_login_time'].forEach(k => localStorage.removeItem(k));
   location.reload();
 }
 
 // Verificar auth ao carregar
 checkAuth();
 
-// Auto-logout quando sessão JWT expirar
-setInterval(() => {
-  const token = sessionStorage.getItem('bb_token');
-  if (token && !getToken()) {
-    showToastAdmin('⚠️ Sessão expirada. Faça login novamente.');
+// A cada 30 minutos: encerra a sessão após 7 dias, ou renova o token
+// automaticamente quando estiver a menos de 1h de expirar.
+setInterval(async () => {
+  const loginTime = parseInt(localStorage.getItem('bb_login_time') || '0');
+  if (!loginTime) return;
+  if (sessaoExpirada()) {
+    showToastAdmin('⚠️ Sessão expirada (7 dias). Faça login novamente.');
     setTimeout(logout, 2000);
+    return;
   }
-}, 30000);
+  const expiresAt = parseInt(localStorage.getItem('bb_expires_at') || '0');
+  if (expiresAt - Date.now() < 60 * 60 * 1000) {
+    const ok = await refreshToken();
+    if (!ok && Date.now() > expiresAt) {
+      showToastAdmin('⚠️ Sessão expirada. Faça login novamente.');
+      setTimeout(logout, 2000);
+    }
+  }
+}, 30 * 60 * 1000);
 
 // ═══════════════════════════════════════════════════════
 // API SUPABASE (usa token JWT quando disponível)
 // ═══════════════════════════════════════════════════════
+// Em caso de 401, tenta renovar o token uma vez e refaz a chamada antes
+// de deslogar — evita derrubar a sessão por um access_token só vencido.
+async function authFetch(url, options = {}) {
+  let r = await fetch(url, { ...options, headers: { ...getHeaders(), ...options.headers } });
+  if (r.status === 401) {
+    const ok = await refreshToken();
+    if (ok) r = await fetch(url, { ...options, headers: { ...getHeaders(), ...options.headers } });
+  }
+  return r;
+}
+
 async function api(table, q = '', orderBy = 'id.asc') {
   const hasOrdem = ['combos','pizzas_salgadas','pizzas_doces','bebidas'].includes(table);
   const order = hasOrdem ? 'ordem.asc,id.asc' : orderBy;
   const sep = q ? '&' : '';
   try {
-    const r = await fetch(`${SB}/rest/v1/${table}?${q}${sep}order=${order}`, { headers: getHeaders() });
+    const r = await authFetch(`${SB}/rest/v1/${table}?${q}${sep}order=${order}`);
     if (r.status === 401) { showToastAdmin('⚠️ Sessão expirada!'); setTimeout(logout, 1500); return []; }
     if (!r.ok) { console.error('API error', table, r.status); return []; }
     return r.json();
@@ -824,27 +904,25 @@ async function api(table, q = '', orderBy = 'id.asc') {
 }
 
 async function ins(table, data) {
-  const r = await fetch(`${SB}/rest/v1/${table}`, {
+  const r = await authFetch(`${SB}/rest/v1/${table}`, {
     method: 'POST',
-    headers: { ...getHeaders(), 'Prefer': 'return=minimal' },
+    headers: { 'Prefer': 'return=minimal' },
     body: JSON.stringify(data)
   });
   return r.ok;
 }
 
 async function upd(table, id, data) {
-  const r = await fetch(`${SB}/rest/v1/${table}?id=eq.${id}`, {
+  const r = await authFetch(`${SB}/rest/v1/${table}?id=eq.${id}`, {
     method: 'PATCH',
-    headers: getHeaders(),
     body: JSON.stringify(data)
   });
   return r.ok;
 }
 
 async function del(table, id) {
-  const r = await fetch(`${SB}/rest/v1/${table}?id=eq.${id}`, {
-    method: 'DELETE',
-    headers: getHeaders()
+  const r = await authFetch(`${SB}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'DELETE'
   });
   return r.ok;
 }
@@ -1095,6 +1173,7 @@ function show(page) {
   fecharBuscaGlobal();
   if (page !== 'pedidos' && _pedidoTimer) { clearTimeout(_pedidoTimer); _pedidoTimer = null; }
   if (page !== 'cozinha' && _cozinhaTimer) { clearInterval(_cozinhaTimer); _cozinhaTimer = null; }
+  if (page !== 'analytics' && _analyticsTimer) { clearInterval(_analyticsTimer); _analyticsTimer = null; }
 
   // Bottom nav (mobile): só 4 páginas têm ícone próprio, o resto cai em "Mais"
   document.querySelectorAll('.bn-item').forEach(b => b.classList.remove('active'));
@@ -1114,6 +1193,7 @@ function show(page) {
     contatos: loadContatos,
     clientes: loadClientes,
     cupons: loadCupons,
+    analytics: loadAnalytics,
     aparencia: loadAparencia,
   };
   (map[page] || (() => loadTable(page)))();
@@ -1578,23 +1658,148 @@ document.addEventListener('pointercancel', (e) => {
 // ═══════════════════════════════════════════════════════
 // BAIRROS
 // ═══════════════════════════════════════════════════════
+let bairrosCache = [];
+let bairrosBusca = '';
+let _draggedBairroId = null;
+
 async function loadBairros() {
-  const data = await api('bairros');
-  const groups = {'0':'🟢 Frete Grátis — Lauro de Freitas','4.99':'🟡 Frete R$ 4,99','5.99':'🟠 Frete R$ 5,99','6.99':'🔴 Frete R$ 6,99','7.99':'🔴 Frete R$ 7,99','9.99':'🔴 Frete R$ 9,99'};
-  let html='';
-  for(const [fr,lb] of Object.entries(groups)){
-    const list=data.filter(b=>String(b.frete)==fr);
-    if(!list.length) continue;
-    html+=`<h3 style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);margin:18px 0 9px;letter-spacing:1px;">${lb}</h3><div class="bg">`;
-    list.forEach(b=>{
-      html+=`<div class="bc2"><div><div class="bn-nome">${b.nome}</div><div class="bn-frete">${b.frete==0?'Grátis':brl(b.frete)}</div></div>
-      <label class="ts"><input type="checkbox" ${b.ativo?'checked':''} onchange="togBairro(${b.id},this.checked)"><span class="sl"></span></label></div>`;
-    });
-    html+='</div>';
-  }
-  document.getElementById('t-bairros').innerHTML=html;
+  bairrosCache = await api('bairros');
+  renderBairros();
 }
-async function togBairro(id,ativo){ await upd('bairros',id,{ativo}); }
+
+function filtrarBairrosBusca(v) {
+  bairrosBusca = v.trim().toLowerCase();
+  renderBairros();
+}
+
+function grupoLabelFrete(frete) {
+  if (frete === 0) return '🟢 Frete Grátis';
+  if (frete === 4.99) return '🟡 Frete R$ 4,99';
+  if (frete === 5.99) return '🟠 Frete R$ 5,99';
+  if (frete === 6.99) return '🔴 Frete R$ 6,99';
+  return `🔴 Frete ${brl(frete)}`;
+}
+
+function bairroCardHTML(b) {
+  return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Grátis':brl(b.frete)}</div></div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
+      <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
+      <label class="ts"><input type="checkbox" ${b.ativo?'checked':''} onchange="togBairro(${b.id},this.checked)"><span class="sl"></span></label>
+    </div>
+  </div>`;
+}
+
+function grupoBairrosHTML(label, freteKey, items) {
+  return `<div class="bairro-grupo" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="onBairroDrop(event,'${freteKey}',this)">
+    <h3 class="bairro-grupo-titulo">${label} <span class="bairro-grupo-count">${items.length}</span></h3>
+    <div class="bg">${items.length ? items.map(bairroCardHTML).join('') : '<div class="bairro-grupo-vazio">Arraste um bairro para cá</div>'}</div>
+  </div>`;
+}
+
+function renderBairros() {
+  const data = bairrosBusca ? bairrosCache.filter(b => b.nome.toLowerCase().includes(bairrosBusca)) : bairrosCache;
+  if (!data.length) { document.getElementById('t-bairros').innerHTML = '<div class="loading">Nenhum bairro encontrado.</div>'; return; }
+  const ativos = data.filter(b => b.ativo);
+  const inativos = data.filter(b => !b.ativo);
+  const fretesUnicos = [...new Set(ativos.map(b => Number(b.frete)))].sort((a,b) => a-b);
+  let html = '';
+  fretesUnicos.forEach(f => {
+    html += grupoBairrosHTML(grupoLabelFrete(f), String(f), ativos.filter(b => Number(b.frete) === f));
+  });
+  html += grupoBairrosHTML('⚫ Inativos (aguardando motoboy)', 'inativo', inativos);
+  document.getElementById('t-bairros').innerHTML = html;
+}
+
+async function togBairro(id, ativo) {
+  const ok = await upd('bairros', id, { ativo });
+  if (ok) { const item = bairrosCache.find(b => b.id === id); if (item) item.ativo = ativo; renderBairros(); }
+  else showToastAdmin('⚠️ Erro ao atualizar bairro.');
+}
+
+function onBairroDragStart(e, id) {
+  _draggedBairroId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+async function onBairroDrop(e, freteKey, groupEl) {
+  e.preventDefault();
+  groupEl.classList.remove('drag-over');
+  if (_draggedBairroId == null) return;
+  const id = _draggedBairroId;
+  _draggedBairroId = null;
+  const item = bairrosCache.find(b => b.id === id);
+  if (!item) return;
+  const data = freteKey === 'inativo' ? { ativo: false } : { frete: parseFloat(freteKey), ativo: true };
+  const ok = await upd('bairros', id, data);
+  if (ok) { Object.assign(item, data); renderBairros(); showToastAdmin('✅ Bairro atualizado!'); }
+  else showToastAdmin('⚠️ Erro ao mover bairro.');
+}
+
+async function openModBairro(id = null) {
+  document.getElementById('mod-save-btn').onclick = saveBairro;
+  editId = id;
+  const item = id ? (bairrosCache.find(b => b.id === id) || {}) : { nome: '', frete: 0, ativo: true };
+  const presets = [0, 4.99, 5.99, 6.99];
+  const isPreset = presets.includes(Number(item.frete));
+  document.getElementById('mod-title').textContent = id ? 'Editar Bairro' : 'Novo Bairro';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg"><label>Nome do Bairro</label><input id="bai-nome" value="${esc(item.nome||'')}" placeholder="Ex: Centro"></div>
+    <div class="fg">
+      <label>Frete</label>
+      <select id="bai-frete-sel" onchange="atualizarFretePersonalizado()">
+        <option value="0" ${Number(item.frete)===0?'selected':''}>Grátis (R$ 0,00)</option>
+        <option value="4.99" ${Number(item.frete)===4.99?'selected':''}>R$ 4,99</option>
+        <option value="5.99" ${Number(item.frete)===5.99?'selected':''}>R$ 5,99</option>
+        <option value="6.99" ${Number(item.frete)===6.99?'selected':''}>R$ 6,99</option>
+        <option value="personalizado" ${!isPreset?'selected':''}>Personalizado</option>
+      </select>
+    </div>
+    <div class="fg" id="bai-frete-custom-wrap" style="${isPreset?'display:none;':''}">
+      <label>Valor do Frete (R$)</label>
+      <input id="bai-frete-custom" type="number" step="0.01" min="0" value="${!isPreset && item.frete!=null ? item.frete : ''}">
+    </div>
+    <div class="fg">
+      <label>Status</label>
+      <select id="bai-ativo">
+        <option value="true" ${item.ativo?'selected':''}>Ativo</option>
+        <option value="false" ${!item.ativo?'selected':''}>Inativo (aguardando motoboy)</option>
+      </select>
+    </div>`;
+  document.getElementById('modal').classList.add('open');
+}
+
+function atualizarFretePersonalizado() {
+  const sel = document.getElementById('bai-frete-sel').value;
+  document.getElementById('bai-frete-custom-wrap').style.display = sel === 'personalizado' ? '' : 'none';
+}
+
+async function saveBairro() {
+  const nome = document.getElementById('bai-nome').value.trim();
+  if (!nome) { alert('Digite o nome do bairro!'); return; }
+  const sel = document.getElementById('bai-frete-sel').value;
+  let frete;
+  if (sel === 'personalizado') {
+    frete = parseFloat(document.getElementById('bai-frete-custom').value);
+    if (isNaN(frete) || frete < 0) { alert('Digite um valor de frete válido!'); return; }
+  } else {
+    frete = parseFloat(sel);
+  }
+  const ativo = document.getElementById('bai-ativo').value === 'true';
+  const data = { nome, frete, ativo };
+  if (!editId) data.ordem = bairrosCache.length ? Math.max(...bairrosCache.map(b => b.ordem||0)) + 1 : 0;
+  const ok = editId ? await upd('bairros', editId, data) : await ins('bairros', data);
+  if (ok) { closeMod(); loadBairros(); showToastAdmin('✅ Bairro salvo!'); }
+  else alert('Erro ao salvar bairro!');
+}
+
+async function remBairro(id) {
+  if (!(await confirmCustom('Excluir este bairro? Essa ação não pode ser desfeita.'))) return;
+  const ok = await del('bairros', id);
+  if (ok) { loadBairros(); showToastAdmin('🗑️ Bairro excluído!'); }
+  else showToastAdmin('⚠️ Erro ao excluir bairro.');
+}
 
 async function publicarBairros(){
   const ok = await salvarConfigs({ bairros_updated_at: Date.now() });
@@ -2158,6 +2363,68 @@ async function salvarConfigs(obj){
     }).then(r => r.ok)
   ));
   return results.every(Boolean);
+}
+
+// ═══════════════════════════════════════════════════════
+// ANALYTICS — painel do Looker Studio (GA4) incorporado,
+// recarregado a cada 5 minutos
+// ═══════════════════════════════════════════════════════
+const ANALYTICS_REFRESH_MS = 5 * 60 * 1000;
+
+async function loadAnalytics() {
+  const configs = await carregarConfigs();
+  const url = configs['looker_studio_url'] || '';
+  if (url) renderAnalyticsPainel(url); else renderAnalyticsForm('');
+
+  if (_analyticsTimer) { clearInterval(_analyticsTimer); _analyticsTimer = null; }
+  if (url) {
+    _analyticsTimer = setInterval(() => {
+      const iframe = document.getElementById('analytics-iframe');
+      if (iframe) iframe.src = iframe.src;
+    }, ANALYTICS_REFRESH_MS);
+  }
+}
+
+function renderAnalyticsForm(prefill) {
+  document.getElementById('analytics-content').innerHTML = `
+    <div class="tw" style="padding:20px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:12px;">📊 Conectar Google Analytics</h3>
+      <p style="color:var(--text-secondary);font-size:13px;line-height:1.6;margin-bottom:14px;">
+        O GA4 não oferece um painel público incorporável diretamente. Para ver os dados aqui dentro do admin, crie um
+        relatório no <strong>Looker Studio</strong> conectado à propriedade GA4 do site e cole abaixo o link de incorporação.
+      </p>
+      <ol style="color:var(--text-secondary);font-size:13px;line-height:1.9;margin:0 0 18px 18px;padding:0;">
+        <li>Acesse <strong>lookerstudio.google.com</strong> e crie um novo relatório.</li>
+        <li>Em "Adicionar dados", escolha o conector <strong>Google Analytics</strong> e selecione a propriedade GA4 do site.</li>
+        <li>Monte os gráficos/tabelas que quiser acompanhar (usuários, sessões, páginas, conversões etc).</li>
+        <li>Clique em <strong>Compartilhar → Incorporar relatório</strong> e ative a incorporação.</li>
+        <li>Copie a URL exibida (algo como <code>https://lookerstudio.google.com/embed/reporting/...</code>) e cole abaixo.</li>
+      </ol>
+      <div class="fg"><label>URL de incorporação do Looker Studio</label>
+        <input id="analytics-url-input" placeholder="https://lookerstudio.google.com/embed/reporting/..." value="${esc(prefill)}">
+      </div>
+      <button class="btn-new" onclick="salvarAnalyticsUrl()">💾 Salvar</button>
+    </div>`;
+}
+
+function renderAnalyticsPainel(url) {
+  document.getElementById('analytics-content').innerHTML = `
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="bt" onclick="renderAnalyticsForm('${esc(url)}')">⚙️ Alterar link</button>
+      <button class="bt" onclick="loadAnalytics()">🔄 Atualizar agora</button>
+    </div>
+    <div style="width:100%;height:75vh;min-height:520px;border-radius:10px;overflow:hidden;border:1px solid var(--border-color);">
+      <iframe id="analytics-iframe" src="${esc(url)}" style="width:100%;height:100%;border:0;" loading="lazy"></iframe>
+    </div>
+    <div style="color:var(--text-faint);font-size:11px;margin-top:8px;">🔄 Atualiza automaticamente a cada 5 minutos</div>`;
+}
+
+async function salvarAnalyticsUrl() {
+  const url = document.getElementById('analytics-url-input').value.trim();
+  if (!url || !url.startsWith('http')) { alert('Cole uma URL válida do Looker Studio!'); return; }
+  const ok = await salvarConfigs({ looker_studio_url: url });
+  if (ok) { showToastAdmin('✅ Painel conectado!'); loadAnalytics(); }
+  else showToastAdmin('⚠️ Erro ao salvar URL.');
 }
 
 async function uploadImagem(file, pasta){
