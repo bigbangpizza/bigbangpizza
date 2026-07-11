@@ -296,8 +296,9 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .aval-bg{background:var(--black);padding:44px 0;}
 .aval-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
 .stars{color:var(--gold);font-size:20px;margin-bottom:6px;}
-.aval-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:6px;}
-.aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:20px;}
+.aval-grid{display:flex;gap:14px;margin-top:6px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;}
+.aval-grid::-webkit-scrollbar{display:none;}
+.aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:20px;flex:0 0 280px;scroll-snap-align:start;}
 .aval-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .aval-avatar{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
 .aval-nome{font-weight:700;font-size:14.5px;color:white;}
@@ -1453,7 +1454,7 @@ async function enviarAval() {
 
 async function loadAvaliacoes() {
   try {
-    const data = await api('avaliacoes', 'order=id.desc&limit=6');
+    const data = await api('avaliacoes', 'ativo=eq.true&order=id.desc');
     if (!data || !data.length) {
       document.getElementById('aval-grid').innerHTML = '<p style="color:rgba(255,255,255,0.3);font-size:13px;">Seja o primeiro a avaliar! 🍕</p>';
       return;
@@ -1463,7 +1464,7 @@ async function loadAvaliacoes() {
     document.getElementById('nota-geral').textContent = media.toFixed(1);
     document.getElementById('total-aval').textContent = total + (total === 1 ? ' avaliação' : ' avaliações');
 
-    // Barras
+    // Barras — calculadas com todas as avaliações ativas, não só as exibidas no carrossel
     for (let i = 5; i >= 1; i--) {
       const count = data.filter(a => a.estrelas === i).length;
       const pct = total > 0 ? (count / total * 100) : 0;
@@ -1471,7 +1472,8 @@ async function loadAvaliacoes() {
       fills[5 - i].style.width = pct + '%';
     }
 
-    document.getElementById('aval-grid').innerHTML = data.map(a => `
+    // Carrossel mostra no máximo 25 cards, mesmo com mais avaliações no banco
+    document.getElementById('aval-grid').innerHTML = data.slice(0, 25).map(a => `
       <div class="aval-card">
         <div class="aval-header">
           <div class="aval-avatar">${esc(a.nome.charAt(0).toUpperCase())}</div>
