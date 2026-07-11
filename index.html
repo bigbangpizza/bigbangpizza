@@ -307,14 +307,10 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .aval-bg{background:var(--black);padding:44px 0;}
 .aval-inner{max-width:1100px;margin:0 auto;padding:0 20px;}
 .stars{color:var(--gold);font-size:20px;margin-bottom:6px;}
+.aval-carousel-wrap{position:relative;}
 .aval-grid{display:flex;gap:14px;margin-top:6px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-width:none;}
 .aval-grid::-webkit-scrollbar{display:none;}
 .aval-card{background:#1a1a1a;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-card);padding:20px;flex:0 0 280px;scroll-snap-align:start;}
-.aval-mais-wrap{max-height:0;opacity:0;overflow:hidden;transition:max-height .6s ease,opacity .4s ease;}
-.aval-mais-wrap.expandido{max-height:4000px;opacity:1;margin-top:14px;}
-.aval-mais-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
-.btn-ver-mais-aval{display:block;margin:20px auto 0;background:transparent;color:var(--gold);border:1.5px solid rgba(232,168,0,0.4);padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;}
-.btn-ver-mais-aval:hover{background:rgba(232,168,0,0.08);border-color:var(--gold);}
 .aval-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
 .aval-avatar{width:42px;height:42px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:white;flex-shrink:0;}
 .aval-nome{font-weight:700;font-size:14.5px;color:white;}
@@ -566,14 +562,13 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
       </div>
     </div>
 
-    <div class="aval-grid" id="aval-grid">
-      <div class="loading" style="color:rgba(255,255,255,0.3);">Carregando avaliações...</div>
+    <div class="aval-carousel-wrap">
+      <button class="combo-nav-btn combo-nav-prev" onclick="avalScroll(-1)" aria-label="Avaliação anterior">‹</button>
+      <div class="aval-grid" id="aval-grid">
+        <div class="loading" style="color:rgba(255,255,255,0.3);">Carregando avaliações...</div>
+      </div>
+      <button class="combo-nav-btn combo-nav-next" onclick="avalScroll(1)" aria-label="Próxima avaliação">›</button>
     </div>
-
-    <div class="aval-mais-wrap" id="aval-mais-wrap">
-      <div class="aval-mais-grid" id="aval-mais-grid"></div>
-    </div>
-    <button class="btn-ver-mais-aval" id="btn-ver-mais-aval" onclick="toggleVerMaisAvaliacoes()" style="display:none;"></button>
 
     <div style="text-align:center;">
       <button class="btn-aval" onclick="openAval()">⭐ Deixar minha avaliação</button>
@@ -842,7 +837,33 @@ setTimeout(() => {
 async function loadCombos() {
   const data = await api('combos', 'ativo=eq.true');
   data.forEach(c => gtag('event', 'view_item', {item_name: c.nome, item_category: 'combo', price: c.preco}));
-  document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
+  const track = document.getElementById('combos-grid');
+  if (!data.length) {
+    track.innerHTML = '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+    renderComboDots(0);
+    return;
+  }
+  const setHtml = data.map(comboCardHTML).join('');
+  // Triplica o conjunto (clones antes/depois) para permitir o loop infinito:
+  // ao chegar numa ponta, o scroll salta instantaneamente para o mesmo
+  // ponto no conjunto do meio, que é visualmente idêntico ao clone.
+  track.innerHTML = data.length > 1 ? (setHtml + setHtml + setHtml) : setHtml;
+  renderComboDots(data.length);
+  observarComboFadeIn();
+  if (data.length > 1) {
+    // Desliga o scroll-snap por um instante: definir scrollLeft direto com o
+    // snap ativo faz o navegador reencaixar no ponto mais próximo (0),
+    // ignorando a posição pedida.
+    track.style.scrollSnapType = 'none';
+    track.scrollLeft = track.scrollWidth / 3;
+    void track.offsetHeight; // força reflow síncrono antes de reativar o snap
+    track.style.scrollSnapType = '';
+    iniciarComboAutoplay();
+  }
+}
+
+function comboCardHTML(c) {
+  return `
     <div class="combo-card">
       ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
       <div class="combo-body">
@@ -854,13 +875,10 @@ async function loadCombos() {
           <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>
         </div>
       </div>
-    </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
-  renderComboDots(data.length);
-  observarComboFadeIn();
-  iniciarComboAutoplay();
+    </div>`;
 }
 
-// CARROSSEL DE COMBOS — navegação por setas, bolinhas e autoplay
+// CARROSSEL DE COMBOS — loop infinito, navegação por setas, bolinhas e autoplay
 let comboAutoplayTimer = null;
 function comboLarguraCard() {
   const track = document.getElementById('combos-grid');
@@ -876,7 +894,10 @@ function comboScroll(dir) {
 function comboIrPara(i) {
   pararComboAutoplay();
   const track = document.getElementById('combos-grid');
-  const card = track && track.querySelectorAll('.combo-card')[i];
+  const cards = track && track.querySelectorAll('.combo-card');
+  if (!cards || !cards.length) return;
+  const n = cards.length / 3; // pula os clones do início e mira no conjunto do meio
+  const card = cards[n + i];
   if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
 }
 function renderComboDots(total) {
@@ -895,16 +916,36 @@ function atualizarComboDotsAtivo() {
     const cards = track ? [...track.querySelectorAll('.combo-card')] : [];
     const dots = document.querySelectorAll('.combo-dot');
     if (!cards.length || !dots.length) return;
+    const n = dots.length;
     const centro = track.scrollLeft + track.clientWidth / 2;
     let maisProximo = 0, menorDist = Infinity;
     cards.forEach((c, i) => {
       const dist = Math.abs((c.offsetLeft + c.clientWidth / 2) - centro);
       if (dist < menorDist) { menorDist = dist; maisProximo = i; }
     });
-    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo));
+    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo % n));
   });
 }
-document.getElementById('combos-grid').addEventListener('scroll', atualizarComboDotsAtivo);
+// Corrige a posição instantaneamente (sem animação) quando o scroll entra
+// num bloco clonado, devolvendo o carrossel ao conjunto real do meio —
+// como o clone é pixel-idêntico ao original, o "salto" é imperceptível.
+let _comboLoopCorrigirTimer = null;
+function corrigirComboLoop() {
+  const track = document.getElementById('combos-grid');
+  if (!track) return;
+  const setWidth = track.scrollWidth / 3;
+  if (!setWidth) return;
+  while (track.scrollLeft < setWidth) track.scrollLeft += setWidth;
+  while (track.scrollLeft >= setWidth * 2) track.scrollLeft -= setWidth;
+}
+function agendarCorrecaoComboLoop() {
+  clearTimeout(_comboLoopCorrigirTimer);
+  _comboLoopCorrigirTimer = setTimeout(corrigirComboLoop, 120);
+}
+document.getElementById('combos-grid').addEventListener('scroll', () => {
+  atualizarComboDotsAtivo();
+  agendarCorrecaoComboLoop();
+});
 function iniciarComboAutoplay() {
   pararComboAutoplay();
   const track = document.getElementById('combos-grid');
@@ -912,8 +953,7 @@ function iniciarComboAutoplay() {
   comboAutoplayTimer = setInterval(() => {
     const largura = comboLarguraCard();
     if (!largura) return;
-    const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10;
-    track.scrollTo({ left: noFim ? 0 : track.scrollLeft + largura, behavior: 'smooth' });
+    track.scrollBy({ left: largura, behavior: 'smooth' });
   }, 4000);
 }
 function pararComboAutoplay() {
@@ -1571,25 +1611,9 @@ async function loadAvaliacoes() {
       fills[5 - i].style.width = pct + '%';
     }
 
-    // Carrossel mostra as mais recentes; "ver mais" revela o restante, até o
-    // teto de 25 cards no total — a média e as barras acima já usam todas.
-    const AVAL_CARROSSEL = 8, AVAL_MAX_TOTAL = 25;
-    const visiveis = data.slice(0, AVAL_CARROSSEL);
-    const extras = data.slice(AVAL_CARROSSEL, AVAL_MAX_TOTAL);
-
-    document.getElementById('aval-grid').innerHTML = visiveis.map(avaliacaoCardHTML).join('');
-
-    const btnMais = document.getElementById('btn-ver-mais-aval');
-    const maisWrap = document.getElementById('aval-mais-wrap');
-    if (extras.length) {
-      document.getElementById('aval-mais-grid').innerHTML = extras.map(avaliacaoCardHTML).join('');
-      btnMais.dataset.labelFechado = `Ver mais avaliações (+${extras.length})`;
-      btnMais.textContent = btnMais.dataset.labelFechado;
-      btnMais.style.display = '';
-      maisWrap.classList.remove('expandido');
-    } else {
-      btnMais.style.display = 'none';
-    }
+    // Carrossel horizontal com todas as avaliações (até o teto de 25) —
+    // o cliente rola/arrasta pro lado para ver as demais.
+    document.getElementById('aval-grid').innerHTML = data.slice(0, 25).map(avaliacaoCardHTML).join('');
   } catch(e) { console.log('Avaliacoes nao carregadas:', e); }
 }
 
@@ -1608,11 +1632,12 @@ function avaliacaoCardHTML(a) {
       </div>`;
 }
 
-function toggleVerMaisAvaliacoes() {
-  const wrap = document.getElementById('aval-mais-wrap');
-  const btn = document.getElementById('btn-ver-mais-aval');
-  const expandido = wrap.classList.toggle('expandido');
-  btn.textContent = expandido ? 'Ver menos avaliações ▴' : btn.dataset.labelFechado;
+function avalScroll(dir) {
+  const track = document.getElementById('aval-grid');
+  const card = track && track.querySelector('.aval-card');
+  if (!track || !card) return;
+  const largura = card.getBoundingClientRect().width + 14;
+  track.scrollBy({ left: dir * largura, behavior: 'smooth' });
 }
 
 loadAvaliacoes();
