@@ -414,7 +414,28 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-avaliacoes" class="hidden">
       <div class="page-title">AVALIAÇÕES</div><div class="page-sub">Avaliações recebidas dos clientes</div>
       <div id="av-stats"></div>
-      <div class="tw"><div class="tw-head"><h3>Todas as Avaliações</h3></div><div id="t-avaliacoes"><div class="loading">Carregando...</div></div></div>
+      <div class="tw">
+        <div class="tw-head">
+          <h3>Todas as Avaliações</h3>
+          <button class="btn-new" onclick="openModAvaliacao()">+ Nova Avaliação</button>
+        </div>
+        <div style="padding:14px 18px 0;display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="av-filtro-estrelas">
+            <button class="be filtro-btn" onclick="filtrarAvaliacoes('estrelas','todas',this)">Todas</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('estrelas',5,this)">5★</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('estrelas',4,this)">4★</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('estrelas',3,this)">3★</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('estrelas',2,this)">2★</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('estrelas',1,this)">1★</button>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="av-filtro-status">
+            <button class="be filtro-btn" onclick="filtrarAvaliacoes('status','todas',this)">Todas</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('status','ativas',this)">Ativas</button>
+            <button class="bt filtro-btn" onclick="filtrarAvaliacoes('status','inativas',this)">Inativas</button>
+          </div>
+        </div>
+        <div id="t-avaliacoes" style="padding-top:14px;"><div class="loading">Carregando...</div></div>
+      </div>
     </div>
 
     <!-- CLIENTES -->
@@ -938,7 +959,7 @@ function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.', ','); }
 function esc(s) {
   const d = document.createElement('div');
   d.textContent = s === null || s === undefined ? '' : String(s);
-  return d.innerHTML;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function showToastAdmin(msg) {
@@ -2691,8 +2712,30 @@ async function exportarCSV(){
 // ═══════════════════════════════════════════════════════
 // AVALIAÇÕES — com card nota média e distribuição
 // ═══════════════════════════════════════════════════════
+let avaliacoesCache=[];
+let avFiltroEstrelas='todas';
+let avFiltroStatus='todas';
+let avEstrelasSelecionadas=5;
+
 async function loadAvaliacoes(){
-  const data=await api('avaliacoes');
+  avaliacoesCache=await api('avaliacoes');
+  renderAvaliacoes();
+}
+
+function filtrarAvaliacoes(tipo,valor,btnEl){
+  if(tipo==='estrelas'){
+    avFiltroEstrelas=valor;
+    document.querySelectorAll('#av-filtro-estrelas button').forEach(b=>b.className='bt filtro-btn');
+  } else {
+    avFiltroStatus=valor;
+    document.querySelectorAll('#av-filtro-status button').forEach(b=>b.className='bt filtro-btn');
+  }
+  btnEl.className='be filtro-btn';
+  renderAvaliacoes();
+}
+
+function renderAvaliacoes(){
+  const data=avaliacoesCache;
   const ativas=data.filter(a=>a.ativo!==false);
   const soma=ativas.reduce((s,a)=>s+(a.estrelas||0),0);
   const media=ativas.length?soma/ativas.length:0;
@@ -2721,18 +2764,88 @@ async function loadAvaliacoes(){
       </div>
     </div>`;
 
+  let lista=data;
+  if(avFiltroEstrelas!=='todas') lista=lista.filter(a=>a.estrelas===avFiltroEstrelas);
+  if(avFiltroStatus==='ativas') lista=lista.filter(a=>a.ativo!==false);
+  else if(avFiltroStatus==='inativas') lista=lista.filter(a=>a.ativo===false);
+
   const tipos={5:'⭐⭐⭐⭐⭐',4:'⭐⭐⭐⭐',3:'⭐⭐⭐',2:'⭐⭐',1:'⭐'};
-  const rows=data.map(a=>`<tr>
+  const rows=lista.map(a=>`<tr>
     <td data-label="Cliente"><strong>${esc(a.nome)}</strong></td>
     <td data-label="Nota">${tipos[a.estrelas]||''}</td>
     <td data-label="Comentário" style="max-width:280px;color:rgba(255,255,255,.6);font-size:12px;">${esc(a.texto||'')}</td>
     <td data-label="Data" style="color:rgba(255,255,255,.3);font-size:11px;white-space:nowrap;">${esc(a.data||'')}</td>
-    <td data-label="Ação"><button class="bd" onclick="remAvaliacao(${a.id})">🗑️</button></td>
+    <td data-label="Status">${a.ativo!==false?'<span class="bon">Ativa</span>':'<span class="boff">Inativa</span>'}</td>
+    <td data-label="Ações"><div class="acts">
+      <button class="be" onclick="openModAvaliacao(${a.id})">✏️</button>
+      <button class="bt" onclick="togAvaliacao(${a.id},${a.ativo!==false})">${a.ativo!==false?'⏸':'▶'}</button>
+      <button class="bd" onclick="remAvaliacao(${a.id})">🗑️</button>
+    </div></td>
   </tr>`).join('');
-  document.getElementById('t-avaliacoes').innerHTML=`<table><thead><tr><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th><th>Ação</th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3)">Nenhuma avaliação.</td></tr>'}</tbody></table>`;
+  document.getElementById('t-avaliacoes').innerHTML=`<table><thead><tr><th>Cliente</th><th>Nota</th><th>Comentário</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead>
+  <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3)">Nenhuma avaliação encontrada.</td></tr>'}</tbody></table>`;
 }
-async function remAvaliacao(id){ if(confirm('Remover avaliação?')){ await del('avaliacoes',id); loadAvaliacoes(); } }
+
+async function togAvaliacao(id,ativoAtual){
+  const ok=await upd('avaliacoes',id,{ativo:!ativoAtual});
+  if(ok){ const item=avaliacoesCache.find(a=>a.id===id); if(item) item.ativo=!ativoAtual; renderAvaliacoes(); }
+  else showToastAdmin('⚠️ Erro ao atualizar avaliação.');
+}
+
+async function remAvaliacao(id){
+  if(!(await confirmCustom('Excluir esta avaliação? Essa ação não pode ser desfeita.'))) return;
+  const ok=await del('avaliacoes',id);
+  if(ok){ avaliacoesCache=avaliacoesCache.filter(a=>a.id!==id); renderAvaliacoes(); showToastAdmin('🗑️ Avaliação excluída!'); }
+  else showToastAdmin('⚠️ Erro ao excluir avaliação.');
+}
+
+function avDataParaISO(brDate){
+  const m=(brDate||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(!m) return new Date().toISOString().split('T')[0];
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+function avDataParaBR(isoDate){
+  const m=(isoDate||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return isoDate;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function avRenderEstrelas(n){
+  let html='';
+  for(let i=1;i<=5;i++) html+=`<span onclick="avSelecionarEstrela(${i})" style="cursor:pointer;">${i<=n?'★':'☆'}</span>`;
+  return html;
+}
+function avSelecionarEstrela(n){
+  avEstrelasSelecionadas=n;
+  document.getElementById('av-estrelas-sel').innerHTML=avRenderEstrelas(n);
+}
+
+async function openModAvaliacao(id=null){
+  document.getElementById('mod-save-btn').onclick=saveAvaliacao;
+  editId=id;
+  const item=id?(avaliacoesCache.find(a=>a.id===id)||{}):{nome:'',estrelas:5,texto:'',data:''};
+  avEstrelasSelecionadas=item.estrelas||5;
+  document.getElementById('mod-title').textContent=id?'Editar Avaliação':'Nova Avaliação';
+  document.getElementById('mod-body').innerHTML=`
+    <div class="fg"><label>Nome do Cliente</label><input id="av-nome" value="${esc(item.nome||'')}" placeholder="Ex: Maria Silva"></div>
+    <div class="fg"><label>Estrelas</label><div id="av-estrelas-sel" style="font-size:30px;letter-spacing:6px;color:#facc15;">${avRenderEstrelas(avEstrelasSelecionadas)}</div></div>
+    <div class="fg"><label>Comentário</label><textarea id="av-texto" placeholder="Comentário do cliente...">${esc(item.texto||'')}</textarea></div>
+    <div class="fg"><label>Data</label><input id="av-data" type="date" value="${id?avDataParaISO(item.data):new Date().toISOString().split('T')[0]}"></div>`;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function saveAvaliacao(){
+  const nome=document.getElementById('av-nome').value.trim();
+  const texto=document.getElementById('av-texto').value.trim();
+  const dataIso=document.getElementById('av-data').value;
+  if(!nome){ alert('Digite o nome do cliente!'); return; }
+  if(!dataIso){ alert('Selecione a data!'); return; }
+  const data={ nome, estrelas:avEstrelasSelecionadas, texto, data:avDataParaBR(dataIso) };
+  if(!editId) data.ativo=true;
+  const ok=editId?await upd('avaliacoes',editId,data):await ins('avaliacoes',data);
+  if(ok){ closeMod(); loadAvaliacoes(); showToastAdmin('✅ Avaliação salva!'); }
+  else alert('Erro ao salvar avaliação!');
+}
 
 // ═══════════════════════════════════════════════════════
 // CONTATOS
