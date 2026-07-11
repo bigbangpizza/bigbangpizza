@@ -837,33 +837,7 @@ setTimeout(() => {
 async function loadCombos() {
   const data = await api('combos', 'ativo=eq.true');
   data.forEach(c => gtag('event', 'view_item', {item_name: c.nome, item_category: 'combo', price: c.preco}));
-  const track = document.getElementById('combos-grid');
-  if (!data.length) {
-    track.innerHTML = '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
-    renderComboDots(0);
-    return;
-  }
-  const setHtml = data.map(comboCardHTML).join('');
-  // Triplica o conjunto (clones antes/depois) para permitir o loop infinito:
-  // ao chegar numa ponta, o scroll salta instantaneamente para o mesmo
-  // ponto no conjunto do meio, que é visualmente idêntico ao clone.
-  track.innerHTML = data.length > 1 ? (setHtml + setHtml + setHtml) : setHtml;
-  renderComboDots(data.length);
-  observarComboFadeIn();
-  if (data.length > 1) {
-    // Desliga o scroll-snap por um instante: definir scrollLeft direto com o
-    // snap ativo faz o navegador reencaixar no ponto mais próximo (0),
-    // ignorando a posição pedida.
-    track.style.scrollSnapType = 'none';
-    track.scrollLeft = track.scrollWidth / 3;
-    void track.offsetHeight; // força reflow síncrono antes de reativar o snap
-    track.style.scrollSnapType = '';
-    iniciarComboAutoplay();
-  }
-}
-
-function comboCardHTML(c) {
-  return `
+  document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
     <div class="combo-card">
       ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
       <div class="combo-body">
@@ -875,10 +849,13 @@ function comboCardHTML(c) {
           <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>
         </div>
       </div>
-    </div>`;
+    </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+  renderComboDots(data.length);
+  observarComboFadeIn();
+  iniciarComboAutoplay();
 }
 
-// CARROSSEL DE COMBOS — loop infinito, navegação por setas, bolinhas e autoplay
+// CARROSSEL DE COMBOS — navegação por setas, bolinhas e autoplay
 let comboAutoplayTimer = null;
 function comboLarguraCard() {
   const track = document.getElementById('combos-grid');
@@ -894,10 +871,7 @@ function comboScroll(dir) {
 function comboIrPara(i) {
   pararComboAutoplay();
   const track = document.getElementById('combos-grid');
-  const cards = track && track.querySelectorAll('.combo-card');
-  if (!cards || !cards.length) return;
-  const n = cards.length / 3; // pula os clones do início e mira no conjunto do meio
-  const card = cards[n + i];
+  const card = track && track.querySelectorAll('.combo-card')[i];
   if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
 }
 function renderComboDots(total) {
@@ -916,36 +890,16 @@ function atualizarComboDotsAtivo() {
     const cards = track ? [...track.querySelectorAll('.combo-card')] : [];
     const dots = document.querySelectorAll('.combo-dot');
     if (!cards.length || !dots.length) return;
-    const n = dots.length;
     const centro = track.scrollLeft + track.clientWidth / 2;
     let maisProximo = 0, menorDist = Infinity;
     cards.forEach((c, i) => {
       const dist = Math.abs((c.offsetLeft + c.clientWidth / 2) - centro);
       if (dist < menorDist) { menorDist = dist; maisProximo = i; }
     });
-    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo % n));
+    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo));
   });
 }
-// Corrige a posição instantaneamente (sem animação) quando o scroll entra
-// num bloco clonado, devolvendo o carrossel ao conjunto real do meio —
-// como o clone é pixel-idêntico ao original, o "salto" é imperceptível.
-let _comboLoopCorrigirTimer = null;
-function corrigirComboLoop() {
-  const track = document.getElementById('combos-grid');
-  if (!track) return;
-  const setWidth = track.scrollWidth / 3;
-  if (!setWidth) return;
-  while (track.scrollLeft < setWidth) track.scrollLeft += setWidth;
-  while (track.scrollLeft >= setWidth * 2) track.scrollLeft -= setWidth;
-}
-function agendarCorrecaoComboLoop() {
-  clearTimeout(_comboLoopCorrigirTimer);
-  _comboLoopCorrigirTimer = setTimeout(corrigirComboLoop, 120);
-}
-document.getElementById('combos-grid').addEventListener('scroll', () => {
-  atualizarComboDotsAtivo();
-  agendarCorrecaoComboLoop();
-});
+document.getElementById('combos-grid').addEventListener('scroll', atualizarComboDotsAtivo);
 function iniciarComboAutoplay() {
   pararComboAutoplay();
   const track = document.getElementById('combos-grid');
@@ -953,7 +907,8 @@ function iniciarComboAutoplay() {
   comboAutoplayTimer = setInterval(() => {
     const largura = comboLarguraCard();
     if (!largura) return;
-    track.scrollBy({ left: largura, behavior: 'smooth' });
+    const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10;
+    track.scrollTo({ left: noFim ? 0 : track.scrollLeft + largura, behavior: 'smooth' });
   }, 4000);
 }
 function pararComboAutoplay() {
