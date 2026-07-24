@@ -39,7 +39,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 
 <!-- Open Graph / compartilhamento (WhatsApp, Instagram, redes sociais) -->
 <meta property="og:title" content="Big Bang Pizza — Explosão de Sabor em Lauro de Freitas">
-<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. Peça pelo site e ganhe 15% OFF com o cupom BIGBANG15!">
+<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. Peça pelo site e ganhe 10% OFF com o cupom BIGBANG10!">
 <meta property="og:image" content="https://static-images.ifood.com.br/pratos/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9/202606110927_665A_i.jpg">
 <meta property="og:url" content="https://bigbangpizza.com.br">
 <meta property="og:type" content="restaurant">
@@ -491,9 +491,9 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 <!-- BANNER CUPOM -->
 <div class="cupom-banner" id="cupom-banner">
-  <h3>🎉 OFERTA DE LANÇAMENTO — USE O CUPOM E GANHE 15% OFF!</h3>
+  <h3>🎉 OFERTA DE LANÇAMENTO — USE O CUPOM E GANHE 10% OFF!</h3>
   <p>Válido para os primeiros 50 pedidos pelo site</p>
-  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG15'})">BIGBANG15</div>
+  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG10'})">BIGBANG10</div>
   <div class="cupom-restantes" id="cupom-restantes">Carregando vagas...</div>
 </div>
 
@@ -1645,9 +1645,9 @@ function filtrarPizzas(termo) {
 let cupomAplicado = null; // { codigo, tipo, desconto } vindo da tabela cupons, ou null
 
 async function loadCupomRestantes() {
-  // Só esconde o banner se o BIGBANG15 (cupom em destaque) estiver esgotado/inativo
+  // Só esconde o banner se o BIGBANG10 (cupom em destaque) estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG15&select=usos_max,usos_atuais,ativo`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG10&select=usos_max,usos_atuais,ativo`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
@@ -1776,14 +1776,14 @@ function toast(msg) {
   obs.observe(secaoMapa);
 })();
 
-// Registra view_promotion quando o banner do cupom BIGBANG15 aparece na tela
+// Registra view_promotion quando o banner do cupom BIGBANG10 aparece na tela
 (() => {
   const banner = document.getElementById('cupom-banner');
   if (!banner) return;
   const obsPromo = new IntersectionObserver((entries) => {
     if (!entries.some(e => e.isIntersecting)) return;
     obsPromo.disconnect();
-    gtag('event', 'view_promotion', {promotion_name: 'BIGBANG15', creative_name: 'banner_cupom'});
+    gtag('event', 'view_promotion', {promotion_name: 'BIGBANG10', creative_name: 'banner_cupom'});
   }, { threshold: 0.5 });
   obsPromo.observe(banner);
 })();
