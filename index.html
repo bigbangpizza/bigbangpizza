@@ -260,6 +260,18 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .qty-btn{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 .qty-btn:hover{border-color:var(--red);color:var(--red);}
 .qty-num{font-weight:700;font-size:14px;min-width:20px;text-align:center;}
+.upsell-section{padding:14px;border-top:1px solid var(--cream-dark);border-bottom:1px solid var(--cream-dark);background:var(--cream);}
+.upsell-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--red);margin-bottom:10px;}
+.upsell-grid{display:flex;flex-direction:column;gap:9px;}
+.upsell-card{display:flex;align-items:center;gap:10px;background:white;border:1px solid var(--cream-dark);border-radius:10px;padding:9px 10px;box-shadow:var(--shadow-card);}
+.upsell-card img{width:44px;height:44px;object-fit:cover;border-radius:7px;flex-shrink:0;}
+.upsell-emoji{width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--cream-dark);border-radius:7px;flex-shrink:0;}
+.upsell-info{flex:1;min-width:0;}
+.upsell-name{font-weight:700;font-size:13px;line-height:1.3;}
+.upsell-price{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--red);}
+.btn-upsell-add{background:var(--red);color:white;border:none;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:background .15s,transform .1s;}
+.btn-upsell-add:hover{background:var(--red-dark);}
+.btn-upsell-add:active{transform:scale(0.97);}
 .checkout-form{padding:16px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:10px;background:var(--cream);}
 .checkout-form-label{font-size:15px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--red);margin-top:20px;padding:10px 12px;background:var(--cream-dark);border-radius:8px;border-left:4px solid var(--red);display:flex;align-items:center;gap:8px;}
 .checkout-form-label:first-child{margin-top:0;}
@@ -644,6 +656,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <div class="cart-scroll">
   <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
+  <div class="upsell-section" id="upsell-section" style="display:none;"></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
     <div class="checkout-form-label"><span class="cfl-icon">📍</span> Dados de entrega</div>
     <input type="text" id="f-nome" placeholder="Nome completo *">
@@ -925,7 +938,8 @@ function observarComboFadeIn() {
   cards.forEach(c => io.observe(c));
 }
 
-let salgadasCache = [];
+let salgadasCache = [], docesCache = [], bebidasCache = [];
+const UPSELL_BEBIDAS = ['Coca-Cola 1L Tradicional', 'Coca-Cola 1L Zero', 'Guaraná Antarctica 1L'];
 function renderPizzaCard(p) {
   const temFamilia = p.preco_familia != null;
   return `
@@ -950,6 +964,7 @@ async function loadSalgadas() {
 
 async function loadDoces() {
   const data = await api('pizzas_doces', 'ativo=eq.true');
+  docesCache = data;
   data.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_doce', price: p.preco}));
   document.getElementById('doces-grid').innerHTML = data.map(p => `
     <div class="pizza-card">
@@ -968,6 +983,7 @@ async function loadDoces() {
 
 async function loadBebidas() {
   const data = await api('bebidas', 'ativo=eq.true');
+  bebidasCache = data;
   data.forEach(b => gtag('event', 'view_item', {item_name: b.nome, item_category: 'bebida', price: b.preco}));
   document.getElementById('bebidas-grid').innerHTML = data.map(b => `
     <div class="bebida-card">
@@ -1291,9 +1307,49 @@ function updateCount() {
     document.getElementById('sb-total').textContent = brl(sub);
   }
 }
+function renderUpsell() {
+  const sec = document.getElementById('upsell-section');
+  if (!sec) return;
+  const temPizzaSalgada = cart.some(i => i.tipo === 'pizza');
+  if (!temPizzaSalgada) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
+
+  const nomesNoCarrinho = new Set(cart.map(i => i.nomeExibicao));
+  const temBebida = cart.some(i => bebidasCache.some(b => b.nome === i.nomeExibicao));
+  const temDoce = cart.some(i => i.nomeExibicao.startsWith('Doce '));
+
+  let sugestoes = [];
+  if (!temBebida) {
+    sugestoes.push(...bebidasCache
+      .filter(b => UPSELL_BEBIDAS.includes(b.nome) && !nomesNoCarrinho.has(b.nome))
+      .map(b => ({ addNome: b.nome, nome: b.nome, preco: b.preco, foto: b.foto_url })));
+  }
+  if (!temDoce) {
+    sugestoes.push(...docesCache
+      .filter(d => !nomesNoCarrinho.has('Doce ' + d.nome))
+      .slice(0, 2)
+      .map(d => ({ addNome: 'Doce ' + d.nome, nome: d.nome, preco: d.preco, foto: d.foto_url })));
+  }
+
+  if (!sugestoes.length) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
+
+  sec.style.display = '';
+  sec.innerHTML = `
+    <div class="upsell-title">✨ Aproveite e leve também</div>
+    <div class="upsell-grid">
+      ${sugestoes.map(s => `
+        <div class="upsell-card">
+          ${s.foto ? `<img src="${s.foto}" alt="${s.nome}" loading="lazy">` : '<div class="upsell-emoji">🍕</div>'}
+          <div class="upsell-info">
+            <div class="upsell-name">${s.nome}</div>
+            <div class="upsell-price">${brl(s.preco)}</div>
+          </div>
+          <button class="btn-upsell-add" onclick="addItem('${s.addNome.replace(/'/g,"\\'")}',${s.preco})">+ Adicionar</button>
+        </div>`).join('')}
+    </div>`;
+}
 function renderCart() {
-  const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form');
-  if (!cart.length) { body.innerHTML='<div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!</p></div>'; form.style.display='none'; return; }
+  const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form'), upsell = document.getElementById('upsell-section');
+  if (!cart.length) { body.innerHTML='<div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!</p></div>'; form.style.display='none'; upsell.style.display='none'; upsell.innerHTML=''; return; }
   form.style.display='flex';
   body.innerHTML = cart.map((item,i) => `
     <div class="cart-item">
@@ -1311,6 +1367,7 @@ function renderCart() {
         <div class="cart-item-price">${brl(item.precoUnitario*item.qty)}</div>
       </div>
     </div>`).join('');
+  renderUpsell();
   updateTotals();
 }
 function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); persistCart(); updateCount(); renderCart(); }
