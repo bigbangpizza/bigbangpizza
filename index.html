@@ -267,16 +267,16 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .qty-btn{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 .qty-btn:hover{border-color:var(--red);color:var(--red);}
 .qty-num{font-weight:700;font-size:14px;min-width:20px;text-align:center;}
-.upsell-section{padding:14px;border-top:1px solid var(--cream-dark);border-bottom:1px solid var(--cream-dark);background:var(--cream);}
+.upsell-section{padding:12px 0;border-top:1px solid var(--cream-dark);border-bottom:1px solid var(--cream-dark);}
 .upsell-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--red);margin-bottom:10px;}
-.upsell-grid{display:flex;flex-direction:column;gap:9px;}
-.upsell-card{display:flex;align-items:center;gap:10px;background:white;border:1px solid var(--cream-dark);border-radius:10px;padding:9px 10px;box-shadow:var(--shadow-card);}
-.upsell-card img{width:44px;height:44px;object-fit:cover;border-radius:7px;flex-shrink:0;}
-.upsell-emoji{width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--cream-dark);border-radius:7px;flex-shrink:0;}
-.upsell-info{flex:1;min-width:0;}
-.upsell-name{font-weight:700;font-size:13px;line-height:1.3;}
-.upsell-price{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--red);}
-.btn-upsell-add{background:var(--red);color:white;border:none;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:background .15s,transform .1s;}
+.upsell-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.upsell-card{display:flex;flex-direction:column;align-items:center;text-align:center;background:white;border:1px solid var(--cream-dark);border-radius:10px;padding:10px;box-shadow:var(--shadow-card);}
+.upsell-card img{width:56px;height:56px;object-fit:cover;border-radius:8px;margin-bottom:7px;}
+.upsell-emoji{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--cream-dark);border-radius:8px;margin-bottom:7px;}
+.upsell-info{width:100%;}
+.upsell-name{font-weight:700;font-size:12.5px;line-height:1.3;}
+.upsell-price{font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--red);margin-top:2px;margin-bottom:8px;}
+.btn-upsell-add{width:100%;background:var(--red);color:white;border:none;padding:8px 6px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;transition:background .15s,transform .1s;}
 .btn-upsell-add:hover{background:var(--red-dark);}
 .btn-upsell-add:active{transform:scale(0.97);}
 .checkout-form{padding:16px;border-top:2px solid var(--cream-dark);display:flex;flex-direction:column;gap:10px;background:var(--cream);}
@@ -663,7 +663,6 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <div class="cart-scroll">
   <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
-  <div class="upsell-section" id="upsell-section" style="display:none;"></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
     <div class="checkout-form-label"><span class="cfl-icon">📍</span> Dados de entrega</div>
     <input type="text" id="f-nome" placeholder="Nome completo *">
@@ -682,6 +681,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
       <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
     </div>
     <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..."></textarea>
+    <div class="upsell-section" id="upsell-section" style="display:none;"></div>
     <div class="checkout-form-label"><span class="cfl-icon">🧾</span> Resumo</div>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
