@@ -81,7 +81,7 @@ tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);bord
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
 
 /* KANBAN DE PEDIDOS */
-.kanban-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start;}
+.kanban-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start;}
 .kanban-col{background:var(--bg-input);border:1px solid var(--border-color);border-radius:12px;display:flex;flex-direction:column;min-width:0;max-height:calc(100vh - 210px);}
 .kanban-col-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--bg-card);border-bottom:3px solid;border-radius:12px 12px 0 0;}
 .kanban-col-title{font-size:13px;font-weight:700;flex:1;white-space:nowrap;}
@@ -164,7 +164,7 @@ input:checked+.sl::before{transform:translateX(20px);}
 .cozinha-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;}
 .cozinha-card{background:#151515;border:3px solid #333;border-radius:14px;padding:20px;}
 .cozinha-card.aguardando{border-color:#ff4444;}
-.cozinha-card.preparando{border-color:#facc15;}
+.cozinha-card.aceito_preparando{border-color:#facc15;}
 .cozinha-num{font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--orange);}
 .cozinha-item{font-size:20px;font-weight:700;padding:6px 0;border-bottom:1px solid #2a2a2a;}
 .cozinha-obs{background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:8px;padding:10px;margin-top:10px;font-size:17px;font-weight:700;color:#facc15;}
@@ -413,19 +413,12 @@ input:checked+.sl::before{transform:translateX(20px);}
           </div>
           <div class="kanban-col-body" id="t-pedidos-aguardando"><div class="loading">Carregando...</div></div>
         </div>
-        <div class="kanban-col" data-status="aceito">
-          <div class="kanban-col-head" style="border-color:#a78bfa;">
-            <span class="kanban-col-title">✅ Aceito</span>
-            <span class="kanban-col-count" id="kc-aceito">0</span>
-          </div>
-          <div class="kanban-col-body" id="t-pedidos-aceito"><div class="loading">Carregando...</div></div>
-        </div>
-        <div class="kanban-col" data-status="preparando">
+        <div class="kanban-col" data-status="aceito_preparando">
           <div class="kanban-col-head" style="border-color:#facc15;">
-            <span class="kanban-col-title">🟡 Preparando</span>
-            <span class="kanban-col-count" id="kc-preparando">0</span>
+            <span class="kanban-col-title">✅🔥 Aceito/Preparando</span>
+            <span class="kanban-col-count" id="kc-aceito_preparando">0</span>
           </div>
-          <div class="kanban-col-body" id="t-pedidos-preparando"><div class="loading">Carregando...</div></div>
+          <div class="kanban-col-body" id="t-pedidos-aceito_preparando"><div class="loading">Carregando...</div></div>
         </div>
         <div class="kanban-col" data-status="saiu">
           <div class="kanban-col-head" style="border-color:#60a5fa;">
@@ -1317,17 +1310,14 @@ async function loadDash() {
     api('avaliacoes'), api('contatos'), api('pedidos','','created_at.desc'), api('estoque','ativo=eq.true')
   ]);
   const ag = pedidos.filter(p=>p.status==='aguardando').length;
-  const ac = pedidos.filter(p=>p.status==='aceito').length;
-  const pr = pedidos.filter(p=>p.status==='preparando').length;
+  const ap = pedidos.filter(p=>statusBucket(p.status)==='aceito_preparando').length;
   const sa = pedidos.filter(p=>p.status==='saiu').length;
   const eb = est.filter(e=>e.quantidade<=e.estoque_minimo).length;
   document.getElementById('stats').innerHTML += `
     <div class="stat" style="border-top:3px solid #ff4444;cursor:pointer;" onclick="show('pedidos')">
       <div class="stat-n" style="color:#ff4444">${ag}</div><div class="stat-l">⏳ Aguardando</div></div>
-    <div class="stat" style="border-top:3px solid #a78bfa;">
-      <div class="stat-n" style="color:#a78bfa">${ac}</div><div class="stat-l">✅ Aceito</div></div>
     <div class="stat" style="border-top:3px solid #facc15;">
-      <div class="stat-n" style="color:#facc15">${pr}</div><div class="stat-l">🟡 Preparando</div></div>
+      <div class="stat-n" style="color:#facc15">${ap}</div><div class="stat-l">✅🔥 Aceito/Preparando</div></div>
     <div class="stat" style="border-top:3px solid #60a5fa;">
       <div class="stat-n" style="color:#60a5fa">${sa}</div><div class="stat-l">🛵 Na rua</div></div>
     <div class="stat" style="border-top:3px solid ${eb>0?'#ff4444':'#4ade80'};cursor:pointer;" onclick="show('estoque')">
@@ -1877,8 +1867,17 @@ async function publicarBairros(){
 // ═══════════════════════════════════════════════════════
 // PEDIDOS + IMPRIMIR
 // ═══════════════════════════════════════════════════════
-const CORES_STATUS_PEDIDO = {aguardando:'#ff4444',aceito:'#a78bfa',preparando:'#facc15',saiu:'#60a5fa',entregue:'#4ade80'};
-const COLUNAS_KANBAN_PEDIDOS = ['aguardando','aceito','preparando','saiu','entregue'];
+// "aceito" e "preparando" foram unificados em "aceito_preparando" — pedidos antigos
+// gravados com os status separados continuam existindo no banco (histórico
+// preservado) e são tratados aqui como pertencentes ao mesmo status/coluna.
+const CORES_STATUS_PEDIDO = {aguardando:'#ff4444',aceito_preparando:'#facc15',aceito:'#facc15',preparando:'#facc15',saiu:'#60a5fa',entregue:'#4ade80'};
+const COLUNAS_KANBAN_PEDIDOS = ['aguardando','aceito_preparando','saiu','entregue'];
+const STATUS_LEGACY_ALIASES = {aceito_preparando:['aceito_preparando','aceito','preparando']};
+function statusBucket(status){ return (status==='aceito'||status==='preparando') ? 'aceito_preparando' : status; }
+function statusFiltroQuery(bucket){
+  const valores = STATUS_LEGACY_ALIASES[bucket];
+  return valores ? `status=in.(${valores.join(',')})` : `status=eq.${bucket}`;
+}
 
 function toggleEntregues(){
   entreguesVisiveis = !entreguesVisiveis;
@@ -1890,10 +1889,11 @@ function toggleEntregues(){
 function renderPedidoCard(p){
   const dt=new Date(p.created_at);
   const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const bucket=statusBucket(p.status);
   const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
   const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
-  const mostrarTimer=(p.status==='aguardando'||p.status==='aceito');
-  return `<div class="pedido-card" data-id="${p.id}" data-status="${p.status}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
+  const mostrarTimer=(bucket==='aguardando'||bucket==='aceito_preparando');
+  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
@@ -1920,14 +1920,13 @@ function renderPedidoCard(p){
     ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — ${brl(p.desconto||0)} de desconto</div>` : ''}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <select onchange="atualizarStatus(${p.id},this.value,this.closest('.pedido-card'))" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
-        <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
-        <option value="aceito"     ${p.status==='aceito'?'selected':''}>    ✅ Aceito</option>
-        <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
-        <option value="saiu"       ${p.status==='saiu'?'selected':''}>      🛵 Saiu para entrega</option>
-        <option value="entregue"   ${p.status==='entregue'?'selected':''}>  🏁 Entregue</option>
+        <option value="aguardando"       ${bucket==='aguardando'?'selected':''}>⏳ Aguardando</option>
+        <option value="aceito_preparando" ${bucket==='aceito_preparando'?'selected':''}>✅🔥 Aceito/Preparando</option>
+        <option value="saiu"             ${bucket==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
+        <option value="entregue"         ${bucket==='entregue'?'selected':''}>🏁 Entregue</option>
       </select>
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
-      ${p.status!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
+      ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
     </div>
   </div>`;
@@ -1936,7 +1935,7 @@ function renderPedidoCard(p){
 async function loadPedidos(){
   if(_pedidoTimer) clearTimeout(_pedidoTimer);
   const statusParaCarregar = entreguesVisiveis ? COLUNAS_KANBAN_PEDIDOS : COLUNAS_KANBAN_PEDIDOS.filter(s=>s!=='entregue');
-  const resultados = await Promise.all(statusParaCarregar.map(s=>api('pedidos', `status=eq.${s}`, 'created_at.desc')));
+  const resultados = await Promise.all(statusParaCarregar.map(s=>api('pedidos', statusFiltroQuery(s), 'created_at.desc')));
   const porStatus = {};
   statusParaCarregar.forEach((s,i)=>{ porStatus[s]=resultados[i]; });
 
@@ -1987,15 +1986,15 @@ async function copiarLinkRastreio(id){
     .catch(()=>showToastAdmin('⚠️ Não foi possível copiar o link automaticamente.'));
 }
 
-const STATUS_LABEL = {aguardando:'Aguardando',aceito:'Aceito',preparando:'Preparando',saiu:'Saiu para entrega',entregue:'Entregue'};
+const STATUS_LABEL = {aguardando:'Aguardando',aceito_preparando:'Aceito/Preparando',saiu:'Saiu para entrega',entregue:'Entregue'};
 
 // Mensagens de confirmação automática via WhatsApp — disparadas ao mudar o status
 // de um pedido por qualquer botão de ação (dropdown do kanban, modo cozinha, swipe).
+// "aceito" e "preparando" viraram um único status/mensagem (aceito_preparando).
 const STATUS_WPP_MSGS = {
-  aceito:     nome => `Oi ${nome}! Seu pedido foi aceito e já está sendo preparado 🍕🔥 Previsão: 35-60 min. Explosão de Sabor a caminho!`,
-  preparando: () => `🔥 Seu pedido está no forno! Já já sai quentinho pra você.`,
-  saiu:       () => `🛵 Saiu pra entrega! Chega em instantes 🍕`,
-  entregue:   () => `🎉 Pedido entregue! Bom apetite e obrigado por escolher a Big Bang. Explosão de Sabor! Se puder, deixa sua avaliação aqui, ajuda muito a gente: https://g.page/r/CU3K37525rpHEAE/review`
+  aceito_preparando: nome => `Oi ${nome}! Seu pedido foi aceito e já está no forno 🍕🔥 Previsão: 35-60 min. Explosão de Sabor a caminho!`,
+  saiu:              () => `🛵 Saiu pra entrega! Chega em instantes 🍕`,
+  entregue:          () => `🎉 Pedido entregue! Bom apetite e obrigado por escolher a Big Bang. Explosão de Sabor! Se puder, deixa sua avaliação aqui, ajuda muito a gente: https://g.page/r/CU3K37525rpHEAE/review`
 };
 
 // Normaliza o campo pedidos.whatsapp (texto livre, sem máscara na origem) para o
@@ -2169,15 +2168,16 @@ document.addEventListener('keydown', (e) => {
 async function loadCozinha(){
   const grid = document.getElementById('cozinha-grid');
   if(!grid) return;
-  const data = await api('pedidos', 'status=in.(aguardando,preparando)', 'created_at.asc');
+  const data = await api('pedidos', 'status=in.(aguardando,aceito_preparando,aceito,preparando)', 'created_at.asc');
   if(!data.length){ grid.innerHTML = '<div class="cozinha-vazio">🎉 Nenhum pedido em preparo no momento.</div>'; return; }
   grid.innerHTML = data.map(p=>{
+    const bucket = statusBucket(p.status);
     const itensHtml = (p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="cozinha-item">🍕 ${esc(i)}</div>`).join('');
     const {texto} = calcTempoEspera(p.created_at);
-    const avanco = p.status === 'aguardando'
-      ? {status:'preparando', label:'🔥 Iniciar Preparo'}
+    const avanco = bucket === 'aguardando'
+      ? {status:'aceito_preparando', label:'✅🔥 Aceitar e Preparar'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
-    return `<div class="cozinha-card ${p.status}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
+    return `<div class="cozinha-card ${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
       <div class="cozinha-num">#${p.id}</div>
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
@@ -2194,7 +2194,7 @@ async function avancarStatusCozinha(id, novoStatus, cardEl){
 // ═══════════════════════════════════════════════════════
 // SWIPE NOS CARDS DE PEDIDO (mobile) — direita avança, esquerda volta
 // ═══════════════════════════════════════════════════════
-const ORDEM_STATUS = ['aguardando','aceito','preparando','saiu','entregue'];
+const ORDEM_STATUS = ['aguardando','aceito_preparando','saiu','entregue'];
 let _swipeState = null;
 document.addEventListener('touchstart', (e) => {
   const card = e.target.closest('.pedido-card');
