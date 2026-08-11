@@ -1,6 +1,7 @@
 import { temServiceRoleConfigurada, selectComoAdmin, inserirComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
-import { parseComoUTC, diasEntre, normalizarWhatsapp } from './dataUtils.js';
+import { parseComoUTC, diasEntre, normalizarWhatsapp, getAgoraNoBrasil } from './dataUtils.js';
+import { obterConfigBotAdmin } from './botConfig.js';
 
 // Cliente "entra em risco" 15 dias sem pedido (mesmo critério do admin.html:
 // classificarSegmentoCliente). A janela vai até 21 dias — não é só o dia
@@ -18,8 +19,8 @@ const JANELA_MAX_DIAS = 21;
 // continue em risco por várias semanas seguidas.
 const DEDUP_DIAS = 30;
 
-const mensagemReativacao = (primeiroNome) =>
-  `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕 Que tal matar a saudade com 10% OFF no seu próximo pedido? Usa o cupom VOLTEI10 e vem sentir a Explosão de Sabor de novo!`;
+const mensagemReativacao = (primeiroNome, cupomCodigo, cupomPercentual) =>
+  `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕 Que tal matar a saudade com ${cupomPercentual}% OFF no seu próximo pedido? Usa o cupom ${cupomCodigo} e vem sentir a Explosão de Sabor de novo!`;
 
 async function buscarClientesRecemEmRisco() {
   const pedidos = await selectComoAdmin('pedidos', 'select=whatsapp,nome,created_at&whatsapp=not.is.null');
@@ -55,11 +56,19 @@ async function jaRecebeuReativacaoRecente(whatsapp) {
 }
 
 /**
- * Rotina diária de reativação automática — identifica clientes que
- * entraram no segmento "em risco" recentemente (15-21 dias sem pedido),
- * ainda não reativados nos últimos 30 dias, e envia a mensagem via
- * Evolution API (chamada direta, não wa.me). Erros em clientes individuais
- * são logados e não interrompem o processamento dos demais.
+ * Rotina de reativação automática — chamada a cada hora (ver server.js),
+ * mas só executa a lógica pesada quando o dia da semana e a hora batem com
+ * o configurado na aba "Configurações do Bot" do admin.html (tabela
+ * `configuracoes`, padrão: todos os dias às 15h — mesmo horário fixo de
+ * antes). Rodar a cada hora em vez de agendar direto no dia/hora
+ * configurado é o que permite trocar esses valores pelo admin e ver efeito
+ * já na próxima hora, sem precisar reiniciar o bot.
+ *
+ * Quando bate a janela, identifica clientes que entraram no segmento "em
+ * risco" recentemente (15-21 dias sem pedido), ainda não reativados nos
+ * últimos 30 dias, e envia a mensagem via Evolution API (chamada direta,
+ * não wa.me). Erros em clientes individuais são logados e não interrompem
+ * o processamento dos demais.
  */
 export async function rodarReativacaoDiaria() {
   if (!temServiceRoleConfigurada()) {
@@ -67,6 +76,12 @@ export async function rodarReativacaoDiaria() {
       '[reactivationJob] SUPABASE_SERVICE_ROLE_KEY não configurada — pulando rotina de reativação automática.'
     );
     return { pulado: true };
+  }
+
+  const cfg = await obterConfigBotAdmin();
+  const { diaSemana, hora } = getAgoraNoBrasil();
+  if (!cfg.reativacaoDiasSemana.includes(diaSemana) || hora !== cfg.reativacaoHora) {
+    return { pulado: true, foraDaJanela: true };
   }
 
   console.log('[reactivationJob] iniciando rotina diária de reativação de clientes...');
@@ -98,7 +113,7 @@ export async function rodarReativacaoDiaria() {
       }
 
       const primeiroNome = (cliente.nome || '').trim().split(/\s+/)[0] || '';
-      await enviarTexto(numero, mensagemReativacao(primeiroNome));
+      await enviarTexto(numero, mensagemReativacao(primeiroNome, cfg.reativacaoCupomCodigo, cfg.reativacaoCupomPercentual));
       await inserirComoAdmin('reativacoes_enviadas', {
         whatsapp: cliente.whatsapp,
         nome: cliente.nome,

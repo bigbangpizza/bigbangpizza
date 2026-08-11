@@ -1,6 +1,6 @@
-import { config } from './config.js';
 import { temServiceRoleConfigurada, selectComoAdmin, atualizarComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
+import { obterConfigBotAdmin } from './botConfig.js';
 
 const NOTA_MAXIMA_ALERTA = 3; // nota <= 3 (de 1 a 5) dispara alerta
 
@@ -18,8 +18,12 @@ export async function verificarAvaliacoesRuins() {
     return { pulado: true };
   }
 
-  if (!config.gabrielWhatsappNumber) {
-    console.warn('[badReviewsJob] GABRIEL_WHATSAPP_NUMBER não configurado — pulando verificação de avaliações.');
+  // Número configurável na aba "Configurações do Bot" do admin.html
+  // (tabela `configuracoes`), com fallback pra GABRIEL_WHATSAPP_NUMBER
+  // enquanto o campo não é preenchido por lá.
+  const { alertaWhatsappNumero } = await obterConfigBotAdmin();
+  if (!alertaWhatsappNumero) {
+    console.warn('[badReviewsJob] Nenhum número de alerta configurado (admin ou GABRIEL_WHATSAPP_NUMBER) — pulando verificação de avaliações.');
     return { pulado: true };
   }
 
@@ -40,7 +44,7 @@ export async function verificarAvaliacoesRuins() {
   for (const avaliacao of avaliacoes) {
     try {
       const msg = `⭐ Avaliação baixa recebida: nota ${avaliacao.estrelas}, cliente ${avaliacao.nome}, comentário: '${avaliacao.texto}'.`;
-      await enviarTexto(config.gabrielWhatsappNumber, msg);
+      await enviarTexto(alertaWhatsappNumero, msg);
       await atualizarComoAdmin('avaliacoes', avaliacao.id, { alerta_enviado: true });
       alertados++;
     } catch (err) {

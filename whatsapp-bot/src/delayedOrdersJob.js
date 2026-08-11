@@ -1,7 +1,7 @@
-import { config } from './config.js';
 import { temServiceRoleConfigurada, selectComoAdmin, atualizarComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
 import { parseComoUTC, minutosEntre } from './dataUtils.js';
+import { obterConfigBotAdmin } from './botConfig.js';
 
 // Só esses 2 status contam como "em andamento" pra fins de atraso — "saiu" e
 // "entregue" já passaram da etapa que importa aqui, e "aguardando"/
@@ -16,7 +16,8 @@ const STATUS_LABEL = {
 
 /**
  * Rotina periódica (a cada 10 min) que identifica pedidos parados há mais
- * de `PEDIDO_ATRASO_MINUTOS` (padrão 40) em "aguardando" ou
+ * do que o limite configurado (padrão 40 min, ajustável na aba
+ * "Configurações do Bot" do admin.html) em "aguardando" ou
  * "aceito_preparando" e avisa o Gabriel — uma única vez por pedido
  * (marca `alerta_atraso_enviado=true` depois de enviar). Erros em pedidos
  * individuais são logados e não interrompem os demais.
@@ -29,8 +30,13 @@ export async function verificarPedidosAtrasados() {
     return { pulado: true };
   }
 
-  if (!config.gabrielWhatsappNumber) {
-    console.warn('[delayedOrdersJob] GABRIEL_WHATSAPP_NUMBER não configurado — pulando verificação de pedidos atrasados.');
+  // Número e limiar configuráveis na aba "Configurações do Bot" do
+  // admin.html (tabela `configuracoes`), com fallback pros valores atuais
+  // (GABRIEL_WHATSAPP_NUMBER / PEDIDO_ATRASO_MINUTOS) enquanto os campos
+  // não são preenchidos por lá.
+  const { alertaWhatsappNumero, pedidoAtrasoMinutos } = await obterConfigBotAdmin();
+  if (!alertaWhatsappNumero) {
+    console.warn('[delayedOrdersJob] Nenhum número de alerta configurado (admin ou GABRIEL_WHATSAPP_NUMBER) — pulando verificação de pedidos atrasados.');
     return { pulado: true };
   }
 
@@ -54,7 +60,7 @@ export async function verificarPedidosAtrasados() {
     try {
       const criadoEm = parseComoUTC(pedido.created_at);
       const minutosParado = minutosEntre(criadoEm, agora);
-      if (minutosParado < config.pedidoAtrasoMinutos) continue;
+      if (minutosParado < pedidoAtrasoMinutos) continue;
 
       const itensResumo = pedido.itens || '(itens não informados)';
       const statusLabel = STATUS_LABEL[pedido.status] || pedido.status;
@@ -62,7 +68,7 @@ export async function verificarPedidosAtrasados() {
         `⚠️ Pedido atrasado: ${pedido.nome}, ${itensResumo}, aguardando há ${minutosParado} min. ` +
         `Status atual: ${statusLabel}.`;
 
-      await enviarTexto(config.gabrielWhatsappNumber, msg);
+      await enviarTexto(alertaWhatsappNumero, msg);
       await atualizarComoAdmin('pedidos', pedido.id, { alerta_atraso_enviado: true });
       alertados++;
     } catch (err) {

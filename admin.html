@@ -288,6 +288,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
       <div class="nav-item" onclick="show('analytics')" id="nav-analytics"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia')" id="nav-aparencia"><span class="ic">🎨</span> Aparência</div>
+      <div class="nav-item" onclick="show('bot')" id="nav-bot"><span class="ic">🤖</span> Configurações do Bot</div>
     </div>
     <div class="sb-footer">
       <a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a>
@@ -627,6 +628,57 @@ input:checked+.sl::before{transform:translateX(20px);}
       </div>
     </div>
 
+    <div id="pg-bot" class="hidden">
+      <div class="page-title">CONFIGURAÇÕES DO BOT</div>
+      <div class="page-sub">Ajuste o atendente automático do WhatsApp e as rotinas agendadas — sem mexer em código nem no Railway. Chaves de API (Claude, Evolution, Supabase) continuam só nas variáveis de ambiente, por segurança.</div>
+
+      <!-- SEÇÃO 1: PIX -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">💳 Pagamento Pix</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Usado pelo bot quando o cliente escolhe pagar via Pix no WhatsApp.</p>
+        <div class="fg"><label>Chave Pix</label><input type="text" id="bot-pix-chave" placeholder="ex: 71999999999 ou email@exemplo.com"></div>
+        <div class="fg"><label>Nome do titular</label><input type="text" id="bot-pix-titular" placeholder="ex: Gabriel Silva"></div>
+        <button class="btn-new" onclick="salvarBotPix()">💾 Salvar Pix</button>
+      </div>
+
+      <!-- SEÇÃO 2: ALERTAS -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🔔 Alertas para você</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Esse número recebe 3 tipos de aviso automático: pedido atrasado, avaliação com nota baixa e pedido aguardando link de pagamento (Ton).</p>
+        <div class="fg"><label>WhatsApp para alertas (DDI+DDD+número)</label><input type="text" id="bot-alerta-whatsapp" placeholder="5571999999999"></div>
+        <div class="fg"><label>Considerar pedido atrasado após quantos minutos?</label><input type="number" id="bot-pedido-atraso-minutos" min="5" max="240" placeholder="40"></div>
+        <button class="btn-new" onclick="salvarBotAlertas()">💾 Salvar Alertas</button>
+      </div>
+
+      <!-- SEÇÃO 3: REATIVAÇÃO AUTOMÁTICA -->
+      <div class="tw" style="padding:20px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🔁 Reativação automática de clientes</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Manda uma mensagem com cupom de desconto pra clientes que sumiram há 15-21 dias — no máximo 1x a cada 30 dias por cliente.</p>
+        <div class="fg">
+          <label>Dias da semana em que a rotina pode disparar</label>
+          <div id="bot-dias-container" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+        <div class="fg"><label>Horário de disparo</label>
+          <select id="bot-reativacao-hora">
+            <option value="0">00:00</option><option value="1">01:00</option><option value="2">02:00</option>
+            <option value="3">03:00</option><option value="4">04:00</option><option value="5">05:00</option>
+            <option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option>
+            <option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option>
+            <option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option>
+            <option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option>
+            <option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option>
+            <option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option>
+          </select>
+        </div>
+        <div class="fr" style="grid-template-columns:2fr 1fr;gap:14px;">
+          <div class="fg"><label>Código do cupom</label><input type="text" id="bot-cupom-codigo" placeholder="VOLTEI10" style="text-transform:uppercase;"></div>
+          <div class="fg"><label>Desconto (%)</label><input type="number" id="bot-cupom-percentual" min="1" max="100" placeholder="10"></div>
+        </div>
+        <p style="color:var(--text-faint);font-size:12px;margin:-4px 0 14px;">⚠️ Esse código só funciona de verdade se existir um cupom ativo com o mesmo código na aba <strong>Cupons</strong> — atualize os dois juntos.</p>
+        <button class="btn-new" onclick="salvarBotReativacao()">💾 Salvar Reativação</button>
+      </div>
+    </div>
+
   </div><!-- /main -->
 
   <!-- BOTTOM NAVIGATION MOBILE -->
@@ -655,6 +707,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('cmv');fecharMaisMenu()"><span class="ic">🧮</span> CMV</div>
       <div class="nav-item" onclick="show('analytics');fecharMaisMenu()"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia');fecharMaisMenu()"><span class="ic">🎨</span> Aparência</div>
+      <div class="nav-item" onclick="show('bot');fecharMaisMenu()"><span class="ic">🤖</span> Configurações do Bot</div>
       <div class="nav-item" onclick="toggleTheme()"><span class="ic">🌙</span> Alternar tema</div>
       <button class="btn-logout" style="margin:8px 18px;width:calc(100% - 36px);" onclick="logout()">🚪 Sair</button>
     </div>
@@ -1255,6 +1308,7 @@ function show(page) {
     cupons: loadCupons,
     analytics: loadAnalytics,
     aparencia: loadAparencia,
+    bot: loadConfigBot,
   };
   (map[page] || (() => loadTable(page)))();
 }
@@ -2479,6 +2533,82 @@ async function salvarConfigs(obj){
     }).then(r => r.ok)
   ));
   return results.every(Boolean);
+}
+
+// ═══════════════════════════════════════════════════════
+// CONFIGURAÇÕES DO BOT — Pix, alertas e reativação automática
+// (mesma tabela `configuracoes`, mesmo padrão de carregarConfigs/salvarConfigs
+// acima; o whatsapp-bot lê essas chaves com fallback pros valores padrão
+// atuais enquanto os campos não são preenchidos aqui)
+// ═══════════════════════════════════════════════════════
+const BOT_DIAS_LABELS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+let botDiasSelecionados = new Set([0,1,2,3,4,5,6]);
+
+async function loadConfigBot(){
+  const cfg = await carregarConfigs();
+
+  document.getElementById('bot-pix-chave').value = cfg.pix_chave || '';
+  document.getElementById('bot-pix-titular').value = cfg.pix_titular || '';
+
+  document.getElementById('bot-alerta-whatsapp').value = cfg.alerta_whatsapp_numero || '';
+  document.getElementById('bot-pedido-atraso-minutos').value = cfg.pedido_atraso_minutos || 40;
+
+  const diasValidos = cfg.reativacao_dias_semana ? cfg.reativacao_dias_semana.split(',').map(Number).filter(n => n>=0 && n<=6 && Number.isInteger(n)) : [];
+  botDiasSelecionados = new Set(diasValidos.length ? diasValidos : [0,1,2,3,4,5,6]);
+  renderBotDias();
+
+  document.getElementById('bot-reativacao-hora').value = cfg.reativacao_hora || '15';
+  document.getElementById('bot-cupom-codigo').value = cfg.reativacao_cupom_codigo || 'VOLTEI10';
+  document.getElementById('bot-cupom-percentual').value = cfg.reativacao_cupom_percentual || 10;
+}
+
+function renderBotDias(){
+  const wrap = document.getElementById('bot-dias-container');
+  wrap.innerHTML = BOT_DIAS_LABELS.map((label,i) =>
+    `<button type="button" class="${botDiasSelecionados.has(i)?'be':'bt'} filtro-btn" onclick="toggleBotDia(${i})">${label}</button>`
+  ).join('');
+}
+
+function toggleBotDia(i){
+  if (botDiasSelecionados.has(i)) botDiasSelecionados.delete(i); else botDiasSelecionados.add(i);
+  renderBotDias();
+}
+
+async function salvarBotPix(){
+  const ok = await salvarConfigs({
+    pix_chave: document.getElementById('bot-pix-chave').value.trim(),
+    pix_titular: document.getElementById('bot-pix-titular').value.trim(),
+  });
+  showToastAdmin(ok ? '✅ Dados do Pix salvos!' : '⚠️ Erro ao salvar.');
+}
+
+async function salvarBotAlertas(){
+  const numero = document.getElementById('bot-alerta-whatsapp').value.replace(/\D/g,'');
+  const minutos = parseInt(document.getElementById('bot-pedido-atraso-minutos').value, 10);
+  if (numero && numero.length < 10) { alert('Número de WhatsApp inválido!'); return; }
+  if (!minutos || minutos < 5) { alert('Informe um limite de minutos válido (mínimo 5)!'); return; }
+  const ok = await salvarConfigs({
+    alerta_whatsapp_numero: numero,
+    pedido_atraso_minutos: minutos,
+  });
+  showToastAdmin(ok ? '✅ Alertas atualizados!' : '⚠️ Erro ao salvar.');
+}
+
+async function salvarBotReativacao(){
+  const hora = parseInt(document.getElementById('bot-reativacao-hora').value, 10);
+  const codigo = document.getElementById('bot-cupom-codigo').value.trim().toUpperCase();
+  const percentual = parseFloat(document.getElementById('bot-cupom-percentual').value);
+  if (!botDiasSelecionados.size) { alert('Selecione pelo menos um dia da semana!'); return; }
+  if (!codigo) { alert('Informe o código do cupom!'); return; }
+  if (!percentual || percentual <= 0 || percentual > 100) { alert('Informe um percentual de desconto válido!'); return; }
+  const dias = [...botDiasSelecionados].sort((a,b)=>a-b).join(',');
+  const ok = await salvarConfigs({
+    reativacao_dias_semana: dias,
+    reativacao_hora: hora,
+    reativacao_cupom_codigo: codigo,
+    reativacao_cupom_percentual: percentual,
+  });
+  showToastAdmin(ok ? '✅ Reativação automática atualizada!' : '⚠️ Erro ao salvar.');
 }
 
 // ═══════════════════════════════════════════════════════

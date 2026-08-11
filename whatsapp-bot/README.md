@@ -62,19 +62,25 @@ espera o cache expirar (ou reinicia o processo).
 
 ## Reativação automática de clientes "em risco"
 
-Todo dia às 15h (horário de Lauro de Freitas/BA — antes da loja abrir às
-18h), `src/reactivationJob.js` roda automaticamente (via `node-cron`,
-agendado em `server.js`) e:
+`src/reactivationJob.js` roda a cada hora (via `node-cron`, agendado em
+`server.js`) mas só executa de verdade quando o dia da semana e a hora
+batem com o configurado na aba **Configurações do Bot** do admin.html
+(padrão: todos os dias às 15h — horário de Lauro de Freitas/BA, antes da
+loja abrir às 18h). Rodar a cada hora e checar dia/hora por dentro — em vez
+de agendar direto no horário certo — é o que permite mudar isso pelo admin
+e ver efeito já na próxima hora, sem precisar reiniciar o bot (ver
+"Configurações do Bot" abaixo). Quando a janela bate:
 
 1. Busca, direto no Supabase, quem está a **15-21 dias sem pedido** (a
    mesma regra de "em risco" do admin.html, mas numa janela — não o dia 15
-   cravado — pra tolerar o cron eventualmente não rodar num dia sem deixar
-   de notificar quem entrou em risco naquela semana).
+   cravado — pra tolerar o cron eventualmente não rodar numa hora sem
+   deixar de notificar quem entrou em risco naquela semana).
 2. Pula quem já recebeu uma reativação (manual ou automática) nos últimos
    30 dias — consulta a tabela `reativacoes_enviadas`.
 3. Envia a mensagem via **Evolution API direto** (não é um link `wa.me`
-   manual) e registra o envio em `reativacoes_enviadas` com
-   `origem: 'automatico'`.
+   manual), com o código do cupom e o percentual configurados no admin
+   (padrão `VOLTEI10` / 10%), e registra o envio em `reativacoes_enviadas`
+   com `origem: 'automatico'`.
 4. Erro num cliente (WhatsApp inválido, falha pontual da Evolution API
    etc.) é logado e não interrompe os demais.
 
@@ -101,13 +107,20 @@ infraestrutura nova fora do repositório, com endpoint público próprio, só
 pra trocar "a cada alguns minutos" por "instantâneo" — não compensa aqui):
 
 - **`delayedOrdersJob.js`** — a cada 10 min, verifica pedidos em
-  `aguardando`/`aceito_preparando` há mais de `PEDIDO_ATRASO_MINUTOS`
-  (padrão 40, ajustável no `.env`) e avisa o Gabriel. Marca
+  `aguardando`/`aceito_preparando` há mais do que o limite configurado
+  (padrão 40 min) e avisa o Gabriel. Marca
   `pedidos.alerta_atraso_enviado = true` depois de avisar, pra não repetir
   o alerta do mesmo pedido a cada execução.
 - **`badReviewsJob.js`** — a cada 5 min, verifica avaliações com nota ≤ 3
   ainda não avisadas e manda o resumo pro Gabriel. Marca
   `avaliacoes.alerta_enviado = true` depois de avisar.
+
+O número que recebe os dois alertas (e o de "Cartão via link Ton", ver
+diagrama acima) e o limite de minutos de `delayedOrdersJob.js` são lidos da
+aba **Configurações do Bot** do admin.html a cada execução, com fallback
+pras variáveis de ambiente `GABRIEL_WHATSAPP_NUMBER` / `PEDIDO_ATRASO_MINUTOS`
+enquanto os campos não são preenchidos por lá (ver "Configurações do Bot"
+abaixo).
 
 Como as duas rotinas usam a service_role key (única forma de ler `pedidos`
 fora do checkout público, e de marcar `avaliacoes` como já avisada — essa
@@ -138,6 +151,46 @@ pra cada carrinho ainda não convertido/expirado:
 
 Mesma regra das outras rotinas: exige `SUPABASE_SERVICE_ROLE_KEY`, sem ela o
 cron não é agendado.
+
+## Configurações do Bot (aba no admin.html)
+
+A aba **"Configurações do Bot"** do admin.html edita, direto na tabela
+`configuracoes` do Supabase (a mesma que já guarda `modo_loja`, cores do
+site etc.), os valores operacionais que antes só davam pra mudar editando
+`.env` no Railway e fazendo redeploy:
+
+| Chave (`configuracoes.chave`)   | Usado em                          | Padrão (se vazio)              |
+|----------------------------------|------------------------------------|---------------------------------|
+| `pix_chave` / `pix_titular`      | `systemPrompt.js` (mensagem de pagamento Pix) | — (avisa "vai confirmar em instantes") |
+| `alerta_whatsapp_numero`         | `delayedOrdersJob.js`, `badReviewsJob.js`, `orderTool.js` (link Ton) | `GABRIEL_WHATSAPP_NUMBER` (env) |
+| `pedido_atraso_minutos`          | `delayedOrdersJob.js`              | `PEDIDO_ATRASO_MINUTOS` (env, 40) |
+| `reativacao_dias_semana`         | `reactivationJob.js`               | todos os dias (`0,1,2,3,4,5,6`) |
+| `reativacao_hora`                | `reactivationJob.js`               | `15` (15h)                      |
+| `reativacao_cupom_codigo`        | `reactivationJob.js` (texto da mensagem) | `VOLTEI10`                |
+| `reativacao_cupom_percentual`    | `reactivationJob.js` (texto da mensagem) | `10`                       |
+
+Duas leituras diferentes, cada uma pelo caminho já usado por quem consome o
+dado (nenhuma rotina nova de acesso ao banco foi criada pra isso):
+
+- **`pix_chave`/`pix_titular`/`alerta_whatsapp_numero` no fluxo do webhook**
+  (`systemPrompt.js`, `orderTool.js`) — via `getMenuData()`
+  (`supabaseData.js`), chave pública (`anon`), já cacheada por
+  `MENU_CACHE_TTL_SECONDS`. A tabela `configuracoes` tem `SELECT` público
+  (é assim que o site lê `modo_loja`/cores/etc.), então não precisa de
+  privilégio nenhum extra — mantém o webhook só com a chave pública, de
+  propósito (ver "Sobre a leitura/escrita no Supabase" abaixo).
+- **Todo o resto, nas rotinas agendadas** (`delayedOrdersJob.js`,
+  `badReviewsJob.js`, `reactivationJob.js`) — via `src/botConfig.js`
+  (`obterConfigBotAdmin()`), que lê a tabela inteira com a service_role key
+  (`supabaseAdmin.js`) a cada execução do cron e já resolve os fallbacks da
+  tabela acima. Essas rotinas já usam a service_role pra outras coisas
+  (ler `pedidos`, marcar `avaliacoes` como avisada etc.), então não é
+  privilégio novo — só mais uma leitura na mesma chamada.
+
+Nenhum campo é obrigatório: enquanto a aba não é preenchida, tudo continua
+funcionando exatamente como antes (valores da coluna "Padrão" acima). As
+chaves de API (Claude, Evolution, Supabase) **não** estão nessa aba —
+continuam só nas variáveis de ambiente do Railway, por segurança.
 
 ### Sobre a leitura/escrita no Supabase
 

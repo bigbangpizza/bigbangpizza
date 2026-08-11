@@ -1,22 +1,7 @@
 import { getMenuData } from './supabaseData.js';
+import { getAgoraNoBrasil } from './dataUtils.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
-
-// Pega dia da semana e hora corrigidos para o horário de Lauro de Freitas (BA),
-// independente do fuso horário onde o servidor do bot estiver rodando
-// (Railway/Render costumam rodar em UTC ou horário dos EUA por padrão).
-function getAgoraNoBrasil() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Bahia',
-    weekday: 'short',
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date());
-  const weekdayShort = parts.find((p) => p.type === 'weekday').value;
-  const hora = Number(parts.find((p) => p.type === 'hour').value);
-  const mapaDia = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  return { diaSemana: mapaDia[weekdayShort], hora };
-}
 
 function estaAbertoAgora(modoLoja) {
   if (modoLoja === 'aberta') return true;

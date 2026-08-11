@@ -199,10 +199,10 @@ function processarItens(itensInput, menuData) {
   return { itensProcessados, erros };
 }
 
-async function notificarGabriel({ pedidoId, nomeCliente, telefone, itensTexto, total }) {
-  if (!config.gabrielWhatsappNumber) {
+async function notificarGabriel({ pedidoId, nomeCliente, telefone, itensTexto, total, alertaWhatsappNumero }) {
+  if (!alertaWhatsappNumero) {
     console.warn(
-      `[orderTool] GABRIEL_WHATSAPP_NUMBER não configurado — não foi possível avisar sobre o pedido #${pedidoId} (aguardando link Ton).`
+      `[orderTool] Nenhum número de alerta configurado (admin ou GABRIEL_WHATSAPP_NUMBER) — não foi possível avisar sobre o pedido #${pedidoId} (aguardando link Ton).`
     );
     return;
   }
@@ -214,7 +214,7 @@ async function notificarGabriel({ pedidoId, nomeCliente, telefone, itensTexto, t
     `Itens: ${itensTexto}\n` +
     `Valor total: ${brl(total)}\n\n` +
     `Gera o link no app da Ton e envia pro cliente 🙏`;
-  await enviarTexto(config.gabrielWhatsappNumber, msg);
+  await enviarTexto(alertaWhatsappNumero, msg);
 }
 
 /**
@@ -287,7 +287,11 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
     }
 
     if (input.forma_pagamento === 'cartao_link') {
-      notificarGabriel({ pedidoId, nomeCliente: pedido.nome, telefone: numero, itensTexto, total }).catch((err) => {
+      // Número configurável na aba "Configurações do Bot" do admin.html
+      // (tabela `configuracoes`, já cacheada em menuData), com fallback pro
+      // GABRIEL_WHATSAPP_NUMBER enquanto o campo não é preenchido por lá.
+      const alertaWhatsappNumero = menuData.configuracoes.alerta_whatsapp_numero || config.gabrielWhatsappNumber;
+      notificarGabriel({ pedidoId, nomeCliente: pedido.nome, telefone: numero, itensTexto, total, alertaWhatsappNumero }).catch((err) => {
         console.error('[orderTool] falha ao notificar Gabriel sobre pedido aguardando link Ton:', err);
       });
     }

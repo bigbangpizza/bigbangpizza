@@ -138,27 +138,31 @@ app.listen(config.port, () => {
   console.log(`🍕 Big Bang Pizza WhatsApp bot rodando na porta ${config.port}`);
 });
 
-// Reativação automática de clientes "em risco" — todo dia às 15h (horário
-// de Lauro de Freitas/BA), antes da abertura da loja às 18h. Só agenda se a
+// Reativação automática de clientes "em risco" — roda a cada hora (horário
+// de Lauro de Freitas/BA); o próprio rodarReativacaoDiaria() decide se o
+// dia/hora batem com o configurado na aba "Configurações do Bot" do
+// admin.html (padrão: todos os dias às 15h, antes da abertura da loja às
+// 18h). Disparar a cada hora em vez de num horário fixo é o que permite
+// mudar dia/hora pelo admin sem precisar reiniciar o bot. Só agenda se a
 // service_role key estiver configurada; sem ela, a rotina não tem como
 // ler o histórico de pedidos (RLS bloqueia a chave pública) e ficaria só
-// gerando erro todo dia à toa.
+// gerando erro à toa.
 if (temServiceRoleConfigurada()) {
-  cron.schedule('0 15 * * *', () => {
+  cron.schedule('0 * * * *', () => {
     rodarReativacaoDiaria().catch((err) => {
       console.error('[reactivationJob] erro inesperado na execução agendada:', err);
     });
   }, { timezone: 'America/Bahia' });
-  console.log('🕒 Reativação automática de clientes agendada para 15h (America/Bahia).');
+  console.log('🕒 Reativação automática de clientes: checagem a cada hora (dia/hora configuráveis no admin, padrão 15h).');
 
   // Pedido atrasado — verifica a cada 10 min se algum pedido está parado em
-  // "aguardando"/"aceito_preparando" há mais que PEDIDO_ATRASO_MINUTOS.
+  // "aguardando"/"aceito_preparando" há mais que o limiar configurado.
   cron.schedule('*/10 * * * *', () => {
     verificarPedidosAtrasados().catch((err) => {
       console.error('[delayedOrdersJob] erro inesperado na execução agendada:', err);
     });
   });
-  console.log(`🕒 Verificação de pedidos atrasados agendada a cada 10 min (limiar: ${config.pedidoAtrasoMinutos} min).`);
+  console.log(`🕒 Verificação de pedidos atrasados agendada a cada 10 min (limiar padrão: ${config.pedidoAtrasoMinutos} min, ajustável no admin).`);
 
   // Avaliação ruim — verifica a cada 5 min se alguma avaliação com nota ≤ 3
   // chegou e ainda não foi avisada ao Gabriel.

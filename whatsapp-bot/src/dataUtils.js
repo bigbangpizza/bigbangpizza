@@ -32,3 +32,22 @@ export function normalizarWhatsapp(raw) {
   if (digits.length === 10 || digits.length === 11) return '55' + digits;
   return digits;
 }
+
+/**
+ * Dia da semana (0=domingo...6=sábado, mesma convenção do JS Date#getDay) e
+ * hora atual no horário de Lauro de Freitas (BA), independente do fuso
+ * horário onde o servidor do bot estiver rodando (Railway/Render costumam
+ * rodar em UTC ou horário dos EUA por padrão).
+ */
+export function getAgoraNoBrasil() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bahia',
+    weekday: 'short',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const weekdayShort = parts.find((p) => p.type === 'weekday').value;
+  const hora = Number(parts.find((p) => p.type === 'hour').value);
+  const mapaDia = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { diaSemana: mapaDia[weekdayShort], hora };
+}
