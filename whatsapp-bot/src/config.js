@@ -31,15 +31,20 @@ export const config = {
   supabase: {
     url: required('SUPABASE_URL').replace(/\/+$/, ''),
     anonKey: required('SUPABASE_ANON_KEY'),
-    // ATENÇÃO: chave privilegiada (bypassa RLS por completo) — usada SÓ pela
-    // rotina de reativação (src/reactivationJob.js / src/supabaseAdmin.js),
-    // nunca no fluxo público do webhook. Não é obrigatória pra subir o
-    // servidor: sem ela, o bot funciona normalmente, só a reativação
-    // automática fica desativada (loga um aviso e não agenda o cron).
+    // ATENÇÃO: chave privilegiada (bypassa RLS por completo) — usada SÓ pelas
+    // rotinas agendadas (reactivationJob.js, delayedOrdersJob.js,
+    // badReviewsJob.js, via src/supabaseAdmin.js), nunca no fluxo público do
+    // webhook. Não é obrigatória pra subir o servidor: sem ela, o bot
+    // funciona normalmente, só essas 3 rotinas ficam desativadas (loga um
+    // aviso e não agenda os crons).
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
 
   menuCacheTtlSeconds: Number(process.env.MENU_CACHE_TTL_SECONDS || 300),
+
+  // Minutos sem sair de "aguardando"/"aceito_preparando" pra um pedido ser
+  // considerado atrasado e alertar o Gabriel (delayedOrdersJob.js).
+  pedidoAtrasoMinutos: Number(process.env.PEDIDO_ATRASO_MINUTOS || 40),
 
   // Número (só dígitos, com DDI 55, ex: 5571999999999) que recebe o aviso
   // quando um pedido escolhe "Cartão via link (Ton)" — não é obrigatório pra

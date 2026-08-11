@@ -7,6 +7,8 @@ import { transcreverAudio } from './transcribe.js';
 import { enviarTexto, baixarMediaBase64 } from './evolutionApi.js';
 import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
+import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
+import { verificarAvaliacoesRuins } from './badReviewsJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 
 const app = express();
@@ -147,6 +149,27 @@ if (temServiceRoleConfigurada()) {
     });
   }, { timezone: 'America/Bahia' });
   console.log('🕒 Reativação automática de clientes agendada para 15h (America/Bahia).');
+
+  // Pedido atrasado — verifica a cada 10 min se algum pedido está parado em
+  // "aguardando"/"aceito_preparando" há mais que PEDIDO_ATRASO_MINUTOS.
+  cron.schedule('*/10 * * * *', () => {
+    verificarPedidosAtrasados().catch((err) => {
+      console.error('[delayedOrdersJob] erro inesperado na execução agendada:', err);
+    });
+  });
+  console.log(`🕒 Verificação de pedidos atrasados agendada a cada 10 min (limiar: ${config.pedidoAtrasoMinutos} min).`);
+
+  // Avaliação ruim — verifica a cada 5 min se alguma avaliação com nota ≤ 3
+  // chegou e ainda não foi avisada ao Gabriel.
+  cron.schedule('*/5 * * * *', () => {
+    verificarAvaliacoesRuins().catch((err) => {
+      console.error('[badReviewsJob] erro inesperado na execução agendada:', err);
+    });
+  });
+  console.log('🕒 Verificação de avaliações baixas agendada a cada 5 min.');
 } else {
-  console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY não configurada — reativação automática de clientes desativada.');
+  console.warn(
+    '⚠️ SUPABASE_SERVICE_ROLE_KEY não configurada — reativação automática de clientes, alerta de pedido ' +
+      'atrasado e alerta de avaliação baixa estão todos desativados.'
+  );
 }

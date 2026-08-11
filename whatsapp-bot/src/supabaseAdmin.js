@@ -5,9 +5,10 @@ import { config } from './config.js';
 // privilegiada que ignora RLS por completo (lê/escreve qualquer tabela,
 // de qualquer cliente). É INTENCIONALMENTE separado de supabaseData.js
 // (que usa a chave pública/anon, segura para o fluxo do webhook que lida
-// com mensagens de clientes). Só a rotina de reativação (reactivationJob.js)
-// deve importar deste arquivo — nunca use isso para responder uma ação
-// disparada diretamente por uma mensagem do cliente.
+// com mensagens de clientes). Só as rotinas agendadas (reactivationJob.js,
+// delayedOrdersJob.js, badReviewsJob.js) devem importar deste arquivo —
+// nunca use isso para responder uma ação disparada diretamente por uma
+// mensagem do cliente.
 // ═══════════════════════════════════════════════════════════════════════
 
 function headers() {
@@ -45,5 +46,18 @@ export async function inserirComoAdmin(table, row) {
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
     throw new Error(`Falha ao inserir em ${table} (service_role) (${r.status}): ${errBody}`);
+  }
+}
+
+/** UPDATE genérico (por id) com a service_role key — só para uso interno do cron. */
+export async function atualizarComoAdmin(table, id, dados) {
+  const r = await fetch(`${config.supabase.url}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...headers(), prefer: 'return=minimal' },
+    body: JSON.stringify(dados),
+  });
+  if (!r.ok) {
+    const errBody = await r.text().catch(() => '');
+    throw new Error(`Falha ao atualizar ${table}#${id} (service_role) (${r.status}): ${errBody}`);
   }
 }

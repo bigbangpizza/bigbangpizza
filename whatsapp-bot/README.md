@@ -86,9 +86,34 @@ quando a última reativação (de qualquer origem) foi enviada.
 
 **Essa rotina exige a `SUPABASE_SERVICE_ROLE_KEY`** (ver `.env.example`) —
 sem ela, o cron simplesmente não é agendado (log de aviso na subida do
-servidor), o resto do bot continua funcionando normal. É a única parte do
-projeto que usa essa chave privilegiada; todo o resto (webhook, pedidos)
-usa a chave pública, de propósito, pra manter o blast radius pequeno.
+servidor), o resto do bot continua funcionando normal. Junto com as duas
+rotinas abaixo, são as únicas partes do projeto que usam essa chave
+privilegiada; todo o resto (webhook, pedidos) usa a chave pública, de
+propósito, pra manter o blast radius pequeno.
+
+## Alertas em tempo real para o Gabriel (pedido atrasado / avaliação ruim)
+
+Duas rotinas periódicas — mesma infra de `node-cron`, mesmo motivo de
+escolha (o projeto inteiro já é construído em cima de polling: o site
+reconsulta `modo_loja` a cada 30s, o admin repolla `pedidos` a cada 30s;
+criar um Database Webhook do Supabase só pra isso adicionaria uma peça de
+infraestrutura nova fora do repositório, com endpoint público próprio, só
+pra trocar "a cada alguns minutos" por "instantâneo" — não compensa aqui):
+
+- **`delayedOrdersJob.js`** — a cada 10 min, verifica pedidos em
+  `aguardando`/`aceito_preparando` há mais de `PEDIDO_ATRASO_MINUTOS`
+  (padrão 40, ajustável no `.env`) e avisa o Gabriel. Marca
+  `pedidos.alerta_atraso_enviado = true` depois de avisar, pra não repetir
+  o alerta do mesmo pedido a cada execução.
+- **`badReviewsJob.js`** — a cada 5 min, verifica avaliações com nota ≤ 3
+  ainda não avisadas e manda o resumo pro Gabriel. Marca
+  `avaliacoes.alerta_enviado = true` depois de avisar.
+
+Como as duas rotinas usam a service_role key (única forma de ler `pedidos`
+fora do checkout público, e de marcar `avaliacoes` como já avisada — essa
+tabela tem leitura pública mas não permite UPDATE anônimo), elas seguem a
+mesma regra das outras: sem `SUPABASE_SERVICE_ROLE_KEY`, os crons não são
+agendados e o resto do bot continua normal.
 
 ### Sobre a leitura/escrita no Supabase
 

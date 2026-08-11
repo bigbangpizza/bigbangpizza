@@ -1,5 +1,6 @@
 import { temServiceRoleConfigurada, selectComoAdmin, inserirComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
+import { parseComoUTC, diasEntre } from './dataUtils.js';
 
 // Cliente "entra em risco" 15 dias sem pedido (mesmo critério do admin.html:
 // classificarSegmentoCliente). A janela vai até 21 dias — não é só o dia
@@ -28,22 +29,6 @@ function normalizarWhatsapp(raw) {
   if (digits.length >= 12 && digits.startsWith('55')) return digits;
   if (digits.length === 10 || digits.length === 11) return '55' + digits;
   return digits;
-}
-
-// `pedidos.created_at` é "timestamp without time zone" no Postgres, mas o
-// valor gravado pelo site vem de `toISOString()` (sempre UTC) sem o sufixo
-// "Z". Se a gente deixar o JS interpretar essa string "nua" como horário
-// local do servidor, o cálculo de dias fica errado em servidores que não
-// rodam em UTC (Railway/Render podem rodar em qualquer fuso). Forçamos UTC
-// explicitamente aqui — mesmo cuidado já tomado em systemPrompt.js.
-function parseComoUTC(valor) {
-  if (!valor) return null;
-  const iso = valor.includes('T') ? valor : valor.replace(' ', 'T');
-  return new Date(iso.endsWith('Z') ? iso : iso + 'Z');
-}
-
-function diasEntre(dataAntiga, dataRecente) {
-  return Math.floor((dataRecente.getTime() - dataAntiga.getTime()) / 86400000);
 }
 
 async function buscarClientesRecemEmRisco() {
