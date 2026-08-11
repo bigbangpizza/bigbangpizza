@@ -79,6 +79,17 @@ tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);bord
 .btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
 .btn-csv{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
+
+/* KANBAN DE PEDIDOS */
+.kanban-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start;}
+.kanban-col{background:var(--bg-input);border:1px solid var(--border-color);border-radius:12px;display:flex;flex-direction:column;min-width:0;max-height:calc(100vh - 210px);}
+.kanban-col-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;background:var(--bg-card);border-bottom:3px solid;border-radius:12px 12px 0 0;}
+.kanban-col-title{font-size:13px;font-weight:700;flex:1;white-space:nowrap;}
+.kanban-col-count{background:var(--bg-subtle);color:var(--text-secondary);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;min-width:20px;text-align:center;}
+.kanban-toggle{width:100%;background:var(--bg-subtle);color:var(--text-secondary);border:none;padding:5px 9px;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;}
+.kanban-toggle:hover{color:var(--text-primary);}
+.kanban-col-body{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;flex:1;}
+.kanban-col-empty{text-align:center;color:var(--text-faint);font-size:12px;padding:30px 10px;}
 .mo{position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:900;display:none;align-items:center;justify-content:center;padding:20px;}
 .mo.open{display:flex;}
 .md{background:var(--bg-card);border:1px solid var(--border-input);border-radius:11px;width:min(480px,100%);max-height:88vh;overflow-y:auto;padding:22px;color:var(--text-primary);}
@@ -227,6 +238,10 @@ input:checked+.sl::before{transform:translateX(20px);}
 
   /* Cozinha ocupa a tela toda mesmo com sidebar escondida */
   .cozinha-grid{grid-template-columns:1fr;}
+
+  /* KANBAN DE PEDIDOS — vira scroll horizontal entre colunas no mobile */
+  .kanban-board{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:85vw;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:6px;-webkit-overflow-scrolling:touch;}
+  .kanban-col{scroll-snap-align:start;max-height:calc(100vh - 260px);}
 }
 </style>
 </head>
@@ -390,15 +405,46 @@ input:checked+.sl::before{transform:translateX(20px);}
     <!-- PEDIDOS -->
     <div id="pg-pedidos" class="hidden">
       <div class="page-title">PEDIDOS</div><div class="page-sub">Pedidos recebidos em tempo real — autorefresh 30s 🍕</div>
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="pedidos-filtros">
-        <button class="be filtro-btn" onclick="filtrarPedidos('aguardando')" id="f-aguardando">⏳ Aguardando</button>
-        <button class="bt filtro-btn" onclick="filtrarPedidos('aceito')"     id="f-aceito">    ✅ Aceito</button>
-        <button class="bt filtro-btn" onclick="filtrarPedidos('preparando')" id="f-preparando">🟡 Preparando</button>
-        <button class="bt filtro-btn" onclick="filtrarPedidos('saiu')"       id="f-saiu">      🛵 Saiu</button>
-        <button class="bt filtro-btn" onclick="filtrarPedidos('entregue')"   id="f-entregue">  🏁 Entregue</button>
-        <button class="bt filtro-btn" onclick="filtrarPedidos('todos')"      id="f-todos">     📋 Todos</button>
+      <div class="kanban-board" id="kanban-board">
+        <div class="kanban-col" data-status="aguardando">
+          <div class="kanban-col-head" style="border-color:#ff4444;">
+            <span class="kanban-col-title">⏳ Aguardando</span>
+            <span class="kanban-col-count" id="kc-aguardando">0</span>
+          </div>
+          <div class="kanban-col-body" id="t-pedidos-aguardando"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="kanban-col" data-status="aceito">
+          <div class="kanban-col-head" style="border-color:#a78bfa;">
+            <span class="kanban-col-title">✅ Aceito</span>
+            <span class="kanban-col-count" id="kc-aceito">0</span>
+          </div>
+          <div class="kanban-col-body" id="t-pedidos-aceito"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="kanban-col" data-status="preparando">
+          <div class="kanban-col-head" style="border-color:#facc15;">
+            <span class="kanban-col-title">🟡 Preparando</span>
+            <span class="kanban-col-count" id="kc-preparando">0</span>
+          </div>
+          <div class="kanban-col-body" id="t-pedidos-preparando"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="kanban-col" data-status="saiu">
+          <div class="kanban-col-head" style="border-color:#60a5fa;">
+            <span class="kanban-col-title">🛵 Saiu</span>
+            <span class="kanban-col-count" id="kc-saiu">0</span>
+          </div>
+          <div class="kanban-col-body" id="t-pedidos-saiu"><div class="loading">Carregando...</div></div>
+        </div>
+        <div class="kanban-col" data-status="entregue">
+          <div class="kanban-col-head" style="border-color:#4ade80;flex-direction:column;align-items:stretch;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="kanban-col-title">🏁 Entregue</span>
+              <span class="kanban-col-count" id="kc-entregue">—</span>
+            </div>
+            <button class="kanban-toggle" id="btn-toggle-entregue" onclick="toggleEntregues()">👁️ Mostrar entregues</button>
+          </div>
+          <div class="kanban-col-body" id="t-pedidos-entregue"><div class="kanban-col-empty">Ocultos — clique em "Mostrar entregues" para exibir.</div></div>
+        </div>
       </div>
-      <div id="t-pedidos"><div class="loading">Carregando...</div></div>
     </div>
 
     <!-- MODO COZINHA -->
@@ -669,8 +715,8 @@ function toggleTheme() {
 aplicarTema(localStorage.getItem('bb_theme') || 'dark');
 
 let curTable = '', editId = null;
-let pedidoFiltroAtual = 'aguardando';
 let cmvFiltroAtual = 'tudo';
+let entreguesVisiveis = false;
 let _pedidoTimer = null;
 let _cozinhaTimer = null;
 let _analyticsTimer = null;
@@ -1159,7 +1205,7 @@ async function verificarPedidosNovos() {
     if (novos.length) {
       novos.forEach(p => notificarNovoPedido(p));
       sessionStorage.setItem(LAST_PEDIDO_KEY, maiorId);
-      if (!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos(pedidoFiltroAtual);
+      if (!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos();
       if (!document.getElementById('pg-dashboard').classList.contains('hidden')) loadDash();
     }
   } catch (e) { console.error('Erro ao verificar novos pedidos:', e); }
@@ -1205,7 +1251,7 @@ function show(page) {
   const map = {
     dashboard: () => { loadDash(); loadModoLoja(); },
     bairros: loadBairros,
-    pedidos: () => filtrarPedidos('aguardando'),
+    pedidos: () => loadPedidos(),
     cozinha: () => { loadCozinha(); _cozinhaTimer = setInterval(loadCozinha, 15000); },
     estoque: loadEstoque,
     cmv: () => { loadIngredientes('tudo'); loadReceitas('tudo'); },
@@ -1831,71 +1877,86 @@ async function publicarBairros(){
 // ═══════════════════════════════════════════════════════
 // PEDIDOS + IMPRIMIR
 // ═══════════════════════════════════════════════════════
-function filtrarPedidos(status){
-  pedidoFiltroAtual=status;
-  document.querySelectorAll('#pedidos-filtros button').forEach(b=>b.className='bt filtro-btn');
-  const el=document.getElementById('f-'+status);
-  if(el) el.className='be filtro-btn';
-  if(_pedidoTimer) clearTimeout(_pedidoTimer);
-  loadPedidos(status);
+const CORES_STATUS_PEDIDO = {aguardando:'#ff4444',aceito:'#a78bfa',preparando:'#facc15',saiu:'#60a5fa',entregue:'#4ade80'};
+const COLUNAS_KANBAN_PEDIDOS = ['aguardando','aceito','preparando','saiu','entregue'];
+
+function toggleEntregues(){
+  entreguesVisiveis = !entreguesVisiveis;
+  const btn = document.getElementById('btn-toggle-entregue');
+  if(btn) btn.textContent = entreguesVisiveis ? '🙈 Ocultar entregues' : '👁️ Mostrar entregues';
+  loadPedidos();
 }
 
-async function loadPedidos(status='aguardando'){
-  const q=status==='todos'?'':(`status=eq.${status}`);
-  const data=await api('pedidos',q,'created_at.desc');
-  const cores={aguardando:'#ff4444',aceito:'#a78bfa',preparando:'#facc15',saiu:'#60a5fa',entregue:'#4ade80'};
-  if(!data.length){
-    document.getElementById('t-pedidos').innerHTML='<div class="loading">Nenhum pedido.</div>';
-  } else {
-    document.getElementById('t-pedidos').innerHTML=data.map(p=>{
-      const dt=new Date(p.created_at);
-      const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      const cor=cores[p.status]||'#fff';
-      const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
-      const mostrarTimer=(p.status==='aguardando'||p.status==='aceito');
-      return `<div class="pedido-card" data-id="${p.id}" data-status="${p.status}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;margin-bottom:14px;color:var(--text-primary);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
-            <div>
-              <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
-              <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
-              ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
-              ${mostrarTimer?`<div class="pedido-timer" data-created="${p.created_at}" style="font-size:12px;font-weight:700;margin-top:2px;"></div>`:''}
-            </div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);">${brl(p.total||0)}</div>
-            <div style="font-size:12px;color:var(--text-secondary);">${esc(p.pagamento||'')}</div>
-          </div>
+function renderPedidoCard(p){
+  const dt=new Date(p.created_at);
+  const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
+  const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
+  const mostrarTimer=(p.status==='aguardando'||p.status==='aceito');
+  return `<div class="pedido-card" data-id="${p.id}" data-status="${p.status}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
+        <div>
+          <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
+          <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
+          ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
+          ${mostrarTimer?`<div class="pedido-timer" data-created="${p.created_at}" style="font-size:12px;font-weight:700;margin-top:2px;"></div>`:''}
         </div>
-        <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
-          <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
-          ${itensHtml}
-        </div>
-        ${p.observacao?`<div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:10px;">
-          <div style="font-size:10px;font-weight:700;color:#facc15;margin-bottom:3px;">⚠️ OBSERVAÇÃO</div>
-          <div style="font-size:13px;font-weight:600;">${esc(p.observacao)}</div></div>`:''}
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
-        ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — ${brl(p.desconto||0)} de desconto</div>` : ''}
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <select onchange="atualizarStatus(${p.id},this.value)" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
-            <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
-            <option value="aceito"     ${p.status==='aceito'?'selected':''}>    ✅ Aceito</option>
-            <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
-            <option value="saiu"       ${p.status==='saiu'?'selected':''}>      🛵 Saiu para entrega</option>
-            <option value="entregue"   ${p.status==='entregue'?'selected':''}>  🏁 Entregue</option>
-          </select>
-          <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
-          ${p.status!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
-          <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
-        </div>
-      </div>`;
-    }).join('');
-  }
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);">${brl(p.total||0)}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">${esc(p.pagamento||'')}</div>
+      </div>
+    </div>
+    <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
+      ${itensHtml}
+    </div>
+    ${p.observacao?`<div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:700;color:#facc15;margin-bottom:3px;">⚠️ OBSERVAÇÃO</div>
+      <div style="font-size:13px;font-weight:600;">${esc(p.observacao)}</div></div>`:''}
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
+    ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — ${brl(p.desconto||0)} de desconto</div>` : ''}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <select onchange="atualizarStatus(${p.id},this.value,this.closest('.pedido-card'))" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
+        <option value="aguardando" ${p.status==='aguardando'?'selected':''}>⏳ Aguardando</option>
+        <option value="aceito"     ${p.status==='aceito'?'selected':''}>    ✅ Aceito</option>
+        <option value="preparando" ${p.status==='preparando'?'selected':''}>🟡 Preparando</option>
+        <option value="saiu"       ${p.status==='saiu'?'selected':''}>      🛵 Saiu para entrega</option>
+        <option value="entregue"   ${p.status==='entregue'?'selected':''}>  🏁 Entregue</option>
+      </select>
+      <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
+      ${p.status!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
+      <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
+    </div>
+  </div>`;
+}
+
+async function loadPedidos(){
+  if(_pedidoTimer) clearTimeout(_pedidoTimer);
+  const statusParaCarregar = entreguesVisiveis ? COLUNAS_KANBAN_PEDIDOS : COLUNAS_KANBAN_PEDIDOS.filter(s=>s!=='entregue');
+  const resultados = await Promise.all(statusParaCarregar.map(s=>api('pedidos', `status=eq.${s}`, 'created_at.desc')));
+  const porStatus = {};
+  statusParaCarregar.forEach((s,i)=>{ porStatus[s]=resultados[i]; });
+
+  COLUNAS_KANBAN_PEDIDOS.forEach(status=>{
+    const corpo = document.getElementById('t-pedidos-'+status);
+    const contagem = document.getElementById('kc-'+status);
+    if(!corpo || !contagem) return;
+    if(status==='entregue' && !entreguesVisiveis){
+      corpo.innerHTML = '<div class="kanban-col-empty">Ocultos — clique em "Mostrar entregues" para exibir.</div>';
+      contagem.textContent = '—';
+      return;
+    }
+    const data = porStatus[status]||[];
+    contagem.textContent = data.length;
+    corpo.innerHTML = data.length ? data.map(renderPedidoCard).join('') : '<div class="kanban-col-empty">Nenhum pedido.</div>';
+  });
+
   atualizarTemporizadoresPedidos();
   _pedidoTimer=setTimeout(()=>{
-    if(!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos(pedidoFiltroAtual);
+    if(!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos();
   }, 30000);
 }
 
@@ -1927,11 +1988,45 @@ async function copiarLinkRastreio(id){
 }
 
 const STATUS_LABEL = {aguardando:'Aguardando',aceito:'Aceito',preparando:'Preparando',saiu:'Saiu para entrega',entregue:'Entregue'};
-async function atualizarStatus(id,status){
+
+// Mensagens de confirmação automática via WhatsApp — disparadas ao mudar o status
+// de um pedido por qualquer botão de ação (dropdown do kanban, modo cozinha, swipe).
+const STATUS_WPP_MSGS = {
+  aceito:     nome => `Oi ${nome}! Seu pedido foi aceito e já está sendo preparado 🍕🔥 Previsão: 35-60 min. Explosão de Sabor a caminho!`,
+  preparando: () => `🔥 Seu pedido está no forno! Já já sai quentinho pra você.`,
+  saiu:       () => `🛵 Saiu pra entrega! Chega em instantes 🍕`,
+  entregue:   () => `🎉 Pedido entregue! Bom apetite e obrigado por escolher a Big Bang. Explosão de Sabor! Se puder, deixa sua avaliação aqui, ajuda muito a gente: https://g.page/r/CU3K37525rpHEAE/review`
+};
+
+// Normaliza o campo pedidos.whatsapp (texto livre, sem máscara na origem) para o
+// formato que o wa.me espera: só dígitos, com DDI 55. Se já vier com 55 (12-13
+// dígitos), mantém; se vier só DDD+número (10-11 dígitos), prefixa 55.
+function normalizarWhatsapp(raw){
+  const digits = (raw||'').replace(/\D/g,'');
+  if(!digits) return null;
+  if(digits.length>=12 && digits.startsWith('55')) return digits;
+  if(digits.length===10 || digits.length===11) return '55'+digits;
+  return digits;
+}
+
+function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw){
+  const gerarMsg = STATUS_WPP_MSGS[status];
+  if(!gerarMsg) return;
+  const numero = normalizarWhatsapp(whatsappRaw);
+  if(!numero){ showToastAdmin('⚠️ Pedido sem WhatsApp cadastrado — status atualizado, mensagem não enviada.'); return; }
+  const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(gerarMsg(primeiroNome))}`, '_blank');
+}
+
+async function atualizarStatus(id,status,cardEl){
+  // Dispara o wa.me ANTES de qualquer await — se não, o navegador deixa de
+  // considerar a abertura da aba como resultado direto do gesto do usuário
+  // (clique/swipe) e bloqueia o pop-up. Mesmo cuidado do checkout em index.html.
+  if(STATUS_WPP_MSGS[status]) enviarWhatsAppStatus(status, cardEl?.dataset?.nome, cardEl?.dataset?.whatsapp);
   await upd('pedidos',id,{status});
   if(status==='entregue') { await baixarEstoquePedido(id); await incrementarUsoCupom(id); }
   registrarHistorico(`Pedido #${id} marcado como ${STATUS_LABEL[status]||status}`);
-  loadPedidos(pedidoFiltroAtual);
+  loadPedidos();
 }
 
 async function incrementarUsoCupom(id){
@@ -1944,7 +2039,7 @@ async function incrementarUsoCupom(id){
   await upd('cupons', cupom.id, { usos_atuais: (cupom.usos_atuais||0) + 1 });
 }
 
-async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(pedidoFiltroAtual); } }
+async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(); } }
 
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
@@ -2082,17 +2177,17 @@ async function loadCozinha(){
     const avanco = p.status === 'aguardando'
       ? {status:'preparando', label:'🔥 Iniciar Preparo'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
-    return `<div class="cozinha-card ${p.status}">
+    return `<div class="cozinha-card ${p.status}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
       <div class="cozinha-num">#${p.id}</div>
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
       <div class="cozinha-tempo">${texto}</div>
-      <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}')">${avanco.label}</button>
+      <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}',this.closest('.cozinha-card'))">${avanco.label}</button>
     </div>`;
   }).join('');
 }
-async function avancarStatusCozinha(id, novoStatus){
-  await atualizarStatus(id, novoStatus);
+async function avancarStatusCozinha(id, novoStatus, cardEl){
+  await atualizarStatus(id, novoStatus, cardEl);
   loadCozinha();
 }
 
@@ -2138,7 +2233,7 @@ document.addEventListener('touchend', () => {
   const novoIdx = dx > 0 ? idx+1 : idx-1;
   if(novoIdx < 0 || novoIdx >= ORDEM_STATUS.length) return;
   const novoStatus = ORDEM_STATUS[novoIdx];
-  atualizarStatus(parseInt(card.dataset.id), novoStatus);
+  atualizarStatus(parseInt(card.dataset.id), novoStatus, card);
   showToastAdmin(`Status atualizado para ${STATUS_LABEL[novoStatus]}`);
 });
 
