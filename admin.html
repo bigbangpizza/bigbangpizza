@@ -2990,10 +2990,28 @@ function enviarReativacao(btnEl){
   const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
   const msg = `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕💛 Que tal matar a saudade da Big Bang Pizza? Use o cupom VOLTEI10 e ganhe 10% OFF no seu próximo pedido! Peça em https://bigbangpizza.com.br`;
   window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+
+  // Registra o envio manual — a rotina automática (whatsapp-bot) e este
+  // botão compartilham a mesma janela de "não repetir em menos de 30 dias".
+  ins('reativacoes_enviadas', { whatsapp: whatsappRaw, nome: nomeCompleto, origem: 'manual' })
+    .then((ok) => { if(!ok) console.error('Falha ao registrar reativação manual'); })
+    .catch((err) => console.error('Falha ao registrar reativação manual:', err));
 }
 
 async function loadClientes() {
-  const data = await api('pedidos','','created_at.desc');
+  const [data, reativacoes] = await Promise.all([
+    api('pedidos','','created_at.desc'),
+    api('reativacoes_enviadas','','enviado_em.desc'),
+  ]);
+
+  // Última reativação (qualquer origem — manual ou automática do
+  // whatsapp-bot) por número, pra não sugerir mandar de novo sem necessidade
+  // e pra bater com a mesma janela de 30 dias que o cron respeita.
+  const ultimaReativacaoPorWhatsapp = new Map();
+  for (const r of reativacoes) {
+    if (!r.whatsapp || ultimaReativacaoPorWhatsapp.has(r.whatsapp)) continue; // já vem ordenado desc
+    ultimaReativacaoPorWhatsapp.set(r.whatsapp, r.enviado_em);
+  }
 
   // Deduplicate by whatsapp or nome — como "data" vem ordenado por created_at.desc,
   // o primeiro registro encontrado para cada cliente é o pedido MAIS RECENTE dele.
@@ -3014,6 +3032,10 @@ async function loadClientes() {
     const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
     const segmento = classificarSegmentoCliente(pedidosCliente.length, diasDesdeUltimo);
     const seg = SEGMENTO_INFO[segmento];
+    const ultimaReativacao = p.whatsapp ? ultimaReativacaoPorWhatsapp.get(p.whatsapp) : null;
+    const avisoReativacao = ultimaReativacao
+      ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">✅ Reativação enviada em ${new Date(ultimaReativacao).toLocaleDateString('pt-BR')}</div>`
+      : '';
     return `<tr>
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
       <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
@@ -3022,9 +3044,12 @@ async function loadClientes() {
       <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
       <td data-label="Último Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
-      <td data-label="Ação" style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
-        ${segmento==='em_risco' && p.whatsapp ? `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="enviarReativacao(this)" style="background:${seg.cor};color:white;border:none;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">🎟️ Enviar reativação</button>` : ''}
+      <td data-label="Ação">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
+          ${segmento==='em_risco' && p.whatsapp ? `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="enviarReativacao(this)" style="background:${seg.cor};color:white;border:none;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">🎟️ Enviar reativação</button>` : ''}
+        </div>
+        ${avisoReativacao}
       </td>
     </tr>`;
   }).join('');

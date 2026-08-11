@@ -31,6 +31,12 @@ export const config = {
   supabase: {
     url: required('SUPABASE_URL').replace(/\/+$/, ''),
     anonKey: required('SUPABASE_ANON_KEY'),
+    // ATENÇÃO: chave privilegiada (bypassa RLS por completo) — usada SÓ pela
+    // rotina de reativação (src/reactivationJob.js / src/supabaseAdmin.js),
+    // nunca no fluxo público do webhook. Não é obrigatória pra subir o
+    // servidor: sem ela, o bot funciona normalmente, só a reativação
+    // automática fica desativada (loga um aviso e não agenda o cron).
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
 
   menuCacheTtlSeconds: Number(process.env.MENU_CACHE_TTL_SECONDS || 300),

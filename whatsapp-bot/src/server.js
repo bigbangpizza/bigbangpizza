@@ -1,10 +1,13 @@
 import express from 'express';
+import cron from 'node-cron';
 import { config } from './config.js';
 import { buildSystemPrompt } from './systemPrompt.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { enviarTexto, baixarMediaBase64 } from './evolutionApi.js';
 import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
+import { rodarReativacaoDiaria } from './reactivationJob.js';
+import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -131,3 +134,19 @@ async function obterMedia(mediaMessage, messageId) {
 app.listen(config.port, () => {
   console.log(`🍕 Big Bang Pizza WhatsApp bot rodando na porta ${config.port}`);
 });
+
+// Reativação automática de clientes "em risco" — todo dia às 15h (horário
+// de Lauro de Freitas/BA), antes da abertura da loja às 18h. Só agenda se a
+// service_role key estiver configurada; sem ela, a rotina não tem como
+// ler o histórico de pedidos (RLS bloqueia a chave pública) e ficaria só
+// gerando erro todo dia à toa.
+if (temServiceRoleConfigurada()) {
+  cron.schedule('0 15 * * *', () => {
+    rodarReativacaoDiaria().catch((err) => {
+      console.error('[reactivationJob] erro inesperado na execução agendada:', err);
+    });
+  }, { timezone: 'America/Bahia' });
+  console.log('🕒 Reativação automática de clientes agendada para 15h (America/Bahia).');
+} else {
+  console.warn('⚠️ SUPABASE_SERVICE_ROLE_KEY não configurada — reativação automática de clientes desativada.');
+}

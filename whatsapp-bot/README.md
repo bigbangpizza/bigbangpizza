@@ -60,6 +60,36 @@ Pra trocar/consultar a chave Pix, edite a tabela `configuracoes` no Supabase
 (chaves `pix_chave` e `pix_titular`) — não precisa redeploy do bot, só
 espera o cache expirar (ou reinicia o processo).
 
+## Reativação automática de clientes "em risco"
+
+Todo dia às 15h (horário de Lauro de Freitas/BA — antes da loja abrir às
+18h), `src/reactivationJob.js` roda automaticamente (via `node-cron`,
+agendado em `server.js`) e:
+
+1. Busca, direto no Supabase, quem está a **15-21 dias sem pedido** (a
+   mesma regra de "em risco" do admin.html, mas numa janela — não o dia 15
+   cravado — pra tolerar o cron eventualmente não rodar num dia sem deixar
+   de notificar quem entrou em risco naquela semana).
+2. Pula quem já recebeu uma reativação (manual ou automática) nos últimos
+   30 dias — consulta a tabela `reativacoes_enviadas`.
+3. Envia a mensagem via **Evolution API direto** (não é um link `wa.me`
+   manual) e registra o envio em `reativacoes_enviadas` com
+   `origem: 'automatico'`.
+4. Erro num cliente (WhatsApp inválido, falha pontual da Evolution API
+   etc.) é logado e não interrompe os demais.
+
+O botão manual de reativação no admin.html continua existindo (pra mandar
+antes das 15h ou pra um cliente específico) e agora também grava em
+`reativacoes_enviadas` (`origem: 'manual'`) — as duas origens compartilham a
+mesma janela de 30 dias de "não repetir", e o admin mostra um aviso de
+quando a última reativação (de qualquer origem) foi enviada.
+
+**Essa rotina exige a `SUPABASE_SERVICE_ROLE_KEY`** (ver `.env.example`) —
+sem ela, o cron simplesmente não é agendado (log de aviso na subida do
+servidor), o resto do bot continua funcionando normal. É a única parte do
+projeto que usa essa chave privilegiada; todo o resto (webhook, pedidos)
+usa a chave pública, de propósito, pra manter o blast radius pequeno.
+
 ### Sobre a leitura/escrita no Supabase
 
 O bot usa a mesma chave pública (`anon`/publishable) do site. A tabela
