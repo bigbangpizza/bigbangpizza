@@ -6,9 +6,11 @@ bairros de entrega puxados em tempo real do mesmo Supabase que alimenta o site
 e o admin.
 
 **Escopo desta versão:** responder dúvidas do cliente (cardápio, horário,
-bairros atendidos, como pedir). **Não** registra pedidos pelo WhatsApp — isso
-fica para uma etapa seguinte. Quando o cliente quer pedir, o bot direciona
-para o site.
+bairros atendidos) **e fechar o pedido inteiro dentro da própria conversa**
+— itens, endereço, bairro (validado contra a área de entrega real) e forma
+de pagamento (presencial, Pix ou cartão via link/Ton), gravando direto na
+mesma tabela `pedidos` do site/admin. Cancelamento/edição de pedido ainda
+não existe (só criação) — ver "Próximos passos".
 
 ## Como funciona
 
@@ -19,18 +21,57 @@ WhatsApp → Evolution API → POST /webhook → este servidor
                               áudio → Groq Whisper (transcreve) ──┤
                               imagem ─────────┤
                                               ↓
-                                   Claude API (Anthropic)
+                                   Claude API (Anthropic, com tool use)
                                    system prompt montado com dados
-                                   ao vivo do Supabase (cardápio/bairros)
+                                   ao vivo do Supabase (cardápio/bairros/Pix)
+                                              │
+                              se o cliente confirmar o pedido:
+                              Claude chama a tool `criar_pedido`
                                               ↓
-                              Evolution API (sendText) → WhatsApp
+                              src/orderTool.js revalida itens e bairro contra
+                              o cardápio real, recalcula os preços (nunca
+                              confia em número que a IA tenha dito) e grava
+                              em `pedidos` (Supabase) com status "aguardando"
+                                              │
+                              pagamento "Cartão via link" → avisa o Gabriel
+                              por WhatsApp pra gerar o link na Ton
+                                              ↓
+                              Evolution API (sendText) → WhatsApp do cliente
 ```
 
-- O cardápio/bairros ficam em cache em memória por `MENU_CACHE_TTL_SECONDS`
-  (padrão 5 min) — não bate no Supabase a cada mensagem, mas reflete
-  alterações feitas no admin em poucos minutos, sem precisar reiniciar o bot.
+- O cardápio/bairros/config (incluindo a chave Pix) ficam em cache em
+  memória por `MENU_CACHE_TTL_SECONDS` (padrão 5 min) — não bate no Supabase
+  a cada mensagem, mas reflete alterações feitas no admin em poucos minutos,
+  sem precisar reiniciar o bot.
 - O histórico de conversa por número fica em memória (`HISTORY_MAX_MESSAGES`
   últimas mensagens) — some se o processo reiniciar. Ver "Próximos passos".
+  Isso inclui o "rastro" de quando um pedido já foi criado na conversa, pra
+  evitar que a Claude tente registrar o mesmo pedido duas vezes.
+
+### Formas de pagamento
+
+| Opção | O que acontece |
+|---|---|
+| Presencial | Só confirma e registra — dinheiro/cartão são acertados na entrega. |
+| Pix | O bot informa a chave Pix (lida de `configuracoes.pix_chave`/`pix_titular` no Supabase — **não** fica em variável de ambiente nem em código, pra não versionar um dado financeiro real). Pedido é gravado com `pagamento: "Pix (aguardando pagamento)"`. |
+| Cartão via link (Ton) | O bot avisa que o link chega em instantes, registra o pedido com `pagamento: "Cartão via link Ton (aguardando envio do link)"` e manda um WhatsApp pro número em `GABRIEL_WHATSAPP_NUMBER` com o resumo do pedido — o link em si é gerado manualmente no app da Ton, não é automatizado. |
+
+Pra trocar/consultar a chave Pix, edite a tabela `configuracoes` no Supabase
+(chaves `pix_chave` e `pix_titular`) — não precisa redeploy do bot, só
+espera o cache expirar (ou reinicia o processo).
+
+### Sobre a leitura/escrita no Supabase
+
+O bot usa a mesma chave pública (`anon`/publishable) do site. A tabela
+`pedidos` tem uma policy de RLS que permite **INSERT** anônimo (mesma usada
+pelo checkout do site) mas **não** permite leitura (`SELECT`) anônima — é
+proposital, protege dados de outros clientes. Por isso, depois de inserir um
+pedido, o bot não lê a linha de volta diretamente: ele gera o
+`rastreio_token` (UUID) antes de inserir e usa a função `rastrear_pedido`
+(RPC do Postgres, a mesma que a página `rastreio.html` já usa) pra buscar o
+`id` gerado de forma segura e pontual — sem precisar abrir uma policy de
+SELECT geral em `pedidos`. Se algum dia mudar essa RPC no banco, revise
+`src/supabaseData.js#inserirPedido`.
 
 ## Setup local (para testes)
 
@@ -112,10 +153,15 @@ retornar `{"ok":true}`) antes de configurar o webhook de verdade.
 
 ## Próximos passos (fora do escopo desta versão)
 
-- Registro de pedidos pelo próprio WhatsApp (hoje o bot só orienta a pedir
-  pelo site).
+- Cancelamento/edição de pedido já criado pelo WhatsApp (hoje só existe
+  criação — pra mudar ou cancelar, ainda precisa falar direto ou usar o
+  admin).
 - Persistir o histórico de conversa em banco (hoje é em memória e some a
   cada deploy/restart) — dá pra usar a própria tabela `contatos`/`pedidos`
-  do Supabase ou um Redis, dependendo do volume.
+  do Supabase ou um Redis, dependendo do volume. Isso também evitaria o
+  cliente ter que recomeçar o pedido do zero se o servidor reiniciar no meio
+  da conversa.
 - Validação/normalização mais robusta do número de telefone (mesmo padrão
   já usado no admin.html, `normalizarWhatsapp`).
+- Aplicar cupom de desconto pelo WhatsApp (hoje a tool `criar_pedido` sempre
+  grava `cupom: null` — o site continua sendo a única forma de usar cupom).

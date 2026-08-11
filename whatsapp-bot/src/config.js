@@ -35,6 +35,12 @@ export const config = {
 
   menuCacheTtlSeconds: Number(process.env.MENU_CACHE_TTL_SECONDS || 300),
 
+  // Número (só dígitos, com DDI 55, ex: 5571999999999) que recebe o aviso
+  // quando um pedido escolhe "Cartão via link (Ton)" — não é obrigatório pra
+  // subir o servidor: sem ele, o bot ainda funciona normalmente, só não
+  // consegue avisar ninguém sobre pedidos aguardando link Ton (loga um erro).
+  gabrielWhatsappNumber: process.env.GABRIEL_WHATSAPP_NUMBER || '',
+
   // Segredo simples opcional: se definido, o webhook exige ?secret=... na URL.
   // Configure a mesma URL (com o secret) como webhook na Evolution API.
   webhookSecret: process.env.WEBHOOK_SECRET || '',

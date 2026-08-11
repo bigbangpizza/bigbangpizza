@@ -1,16 +1,18 @@
 import express from 'express';
 import { config } from './config.js';
 import { buildSystemPrompt } from './systemPrompt.js';
-import { askClaude, textBlock, imageBlock } from './claude.js';
+import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { enviarTexto, baixarMediaBase64 } from './evolutionApi.js';
+import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
 
 // Histórico de conversa em memória, por número de telefone. Suficiente pra
-// dar contexto num primeiro atendimento; some quando o processo reinicia
-// (ver README.md — "Próximos passos" — pra evoluir isso pra um banco/Redis).
+// dar contexto num primeiro atendimento (inclusive lembrar que um pedido já
+// foi criado na mesma conversa); some quando o processo reinicia (ver
+// README.md — "Próximos passos" — pra evoluir isso pra um banco/Redis).
 const historico = new Map();
 
 function getHistorico(numero) {
@@ -18,11 +20,16 @@ function getHistorico(numero) {
   return historico.get(numero);
 }
 
-function guardarNoHistorico(numero, role, content) {
+function guardarMensagensNoHistorico(numero, mensagens) {
   const h = getHistorico(numero);
-  h.push({ role, content });
+  h.push(...mensagens);
   const limite = config.historyMaxMessages;
   if (h.length > limite) h.splice(0, h.length - limite);
+  // Evita deixar um tool_result "órfão" (sem o tool_use correspondente) logo
+  // no início do histórico depois do corte — a Claude API rejeita isso.
+  while (h.length && Array.isArray(h[0].content) && h[0].content.some((b) => b.type === 'tool_result')) {
+    h.shift();
+  }
 }
 
 app.get('/health', (req, res) => res.json({ ok: true }));
@@ -51,6 +58,7 @@ async function processarWebhook(body) {
   if (!remoteJid || !remoteJid.endsWith('@s.whatsapp.net')) return; // ignora grupos/status/broadcast
 
   const numero = remoteJid.split('@')[0];
+  const nomeContato = data.pushName || '';
   const mensagem = data.message || {};
 
   let userContent;
@@ -67,13 +75,21 @@ async function processarWebhook(body) {
 
   if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
 
-  guardarNoHistorico(numero, 'user', userContent);
+  guardarMensagensNoHistorico(numero, [{ role: 'user', content: userContent }]);
 
   const systemPrompt = await buildSystemPrompt();
-  const resposta = await askClaude(systemPrompt, getHistorico(numero));
+  const tools = [CRIAR_PEDIDO_TOOL];
+  const toolExecutors = { criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }) };
 
-  guardarNoHistorico(numero, 'assistant', [textBlock(resposta)]);
-  await enviarTexto(numero, resposta);
+  const { textoResposta, novasMensagens } = await conversarComFerramentas(
+    systemPrompt,
+    getHistorico(numero),
+    tools,
+    toolExecutors
+  );
+
+  guardarMensagensNoHistorico(numero, novasMensagens);
+  await enviarTexto(numero, textoResposta);
 }
 
 /** Converte a mensagem recebida da Evolution API em content blocks pra Claude. */
