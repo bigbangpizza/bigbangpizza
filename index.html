@@ -419,6 +419,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .btn-cupom{background:var(--black);color:white;border:none;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .cupom-ok{color:#1a7a3c;font-size:12px;font-weight:600;margin-top:4px;display:none;}
 .cupom-erro{color:var(--red);font-size:12px;font-weight:600;margin-top:4px;display:none;}
+.campo-hint{font-size:11px;color:var(--gray);margin:-6px 0 2px 2px;}
 .desconto-row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;color:#1a7a3c;font-weight:600;}
 
 /* SKELETON LOADING */
@@ -628,7 +629,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
         <button class="tipo-btn" onclick="setTipo('reclamacao',this)">⚠️ Reclamação</button>
       </div>
       <input type="text" id="c-nome" placeholder="Seu nome *">
-      <input type="tel" id="c-telefone" placeholder="WhatsApp (opcional)">
+      <input type="tel" id="c-telefone" placeholder="WhatsApp (opcional)" inputmode="numeric" maxlength="16" oninput="formatarTelefoneInput(this)">
+      <div class="campo-hint">Digite DDD + número, ex: 71991234567</div>
       <textarea id="c-mensagem" placeholder="Sua mensagem *"></textarea>
       <button class="btn-contato" onclick="enviarContato()">📨 ENVIAR MENSAGEM</button>
     </div>
@@ -668,7 +670,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <input type="text" id="f-nome" placeholder="Nome completo *">
     <input type="text" id="f-endereco" placeholder="Rua e número *">
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
-    <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)">
+    <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)" inputmode="numeric" maxlength="16" oninput="formatarTelefoneInput(this)">
+    <div class="campo-hint">Digite DDD + número, ex: 71991234567</div>
     <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
     <div class="checkout-form-label"><span class="cfl-icon">💳</span> Pagamento</div>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
@@ -727,6 +730,26 @@ function novoId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now()+
 function persistCart() { try { sessionStorage.setItem('bb_cart', JSON.stringify(cart)); } catch(e) {} }
 function restoreCart() { try { const raw = sessionStorage.getItem('bb_cart'); cart = raw ? JSON.parse(raw) : []; } catch(e) { cart = []; } }
 function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
+
+// TELEFONE — máscara e validação compartilhadas por todo campo de telefone
+// de cliente (checkout #f-whatsapp e contato #c-telefone). Sem DDI: o
+// sistema já infere o 55 automaticamente em outros pontos (ex: whatsapp-bot
+// normalizarWhatsapp), então aqui só cabe DDD + número.
+function formatarTelefoneInput(el) {
+  const digits = el.value.replace(/\D/g, '').slice(0, 11);
+  let out = digits;
+  if (digits.length > 10) out = digits.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, '($1) $2-$3');
+  else if (digits.length > 6) out = digits.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+  else if (digits.length > 2) out = digits.replace(/^(\d{2})(\d{0,4}).*/, '($1) $2');
+  else if (digits.length > 0) out = digits.replace(/^(\d{0,2}).*/, '($1');
+  el.value = out;
+}
+// Campo é opcional em todo lugar — só valida se algo foi digitado. 10
+// dígitos = fixo (DDD+8), 11 = celular (DDD+9+8).
+function telefoneEhValido(valor) {
+  const d = (valor || '').replace(/\D/g, '');
+  return d.length === 10 || d.length === 11;
+}
 
 async function api(table, q='') {
   const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=ordem.asc,id.asc`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
@@ -1389,7 +1412,7 @@ let carrinhoAbandonadoRegistrado = false;
 async function registrarCarrinhoAbandonado() {
   if (carrinhoAbandonadoRegistrado || !cart.length) return;
   const telefone = document.getElementById('f-whatsapp').value.replace(/\D/g, '');
-  if (telefone.length < 10) return;
+  if (telefone.length !== 10 && telefone.length !== 11) return;
   carrinhoAbandonadoRegistrado = true; // uma tentativa por carrinho, mesmo se a chamada falhar
   const nome = document.getElementById('f-nome').value.trim();
   const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
@@ -1440,6 +1463,11 @@ async function finalizarPedido() {
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
   if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); return; }
+  const wppRaw = document.getElementById('f-whatsapp').value;
+  if (wppRaw.trim() && !telefoneEhValido(wppRaw)) {
+    alert('WhatsApp inválido! Digite DDD + número (10 ou 11 dígitos), ex: 71991234567.');
+    return;
+  }
   const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'', fr=getFrete();
   const sub=cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0), tot=sub+(fr||0);
   const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
@@ -1706,6 +1734,10 @@ async function enviarContato() {
   const telefone = document.getElementById('c-telefone').value.trim();
   const mensagem = document.getElementById('c-mensagem').value.trim();
   if (!nome || !mensagem) { alert('Preencha nome e mensagem!'); return; }
+  if (telefone && !telefoneEhValido(telefone)) {
+    alert('WhatsApp inválido! Digite DDD + número (10 ou 11 dígitos), ex: 71991234567.');
+    return;
+  }
   const data = { nome, telefone, mensagem, tipo: tipoContato, data: new Date().toLocaleDateString('pt-BR') };
   const r = await fetch(`${SB}/rest/v1/contatos`, {
     method: 'POST',
