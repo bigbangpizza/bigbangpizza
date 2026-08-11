@@ -46,6 +46,10 @@ export const config = {
   // considerado atrasado e alertar o Gabriel (delayedOrdersJob.js).
   pedidoAtrasoMinutos: Number(process.env.PEDIDO_ATRASO_MINUTOS || 40),
 
+  // Minutos parado desde a criação do carrinho (sem finalizar o pedido)
+  // antes do abandonedCartJob.js mandar a mensagem de recuperação.
+  abandonedCartMinutos: Number(process.env.ABANDONED_CART_MINUTOS || 25),
+
   // Número (só dígitos, com DDI 55, ex: 5571999999999) que recebe o aviso
   // quando um pedido escolhe "Cartão via link (Ton)" — não é obrigatório pra
   // subir o servidor: sem ele, o bot ainda funciona normalmente, só não

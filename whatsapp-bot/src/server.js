@@ -9,6 +9,7 @@ import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
 import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
+import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 
 const app = express();
@@ -167,9 +168,20 @@ if (temServiceRoleConfigurada()) {
     });
   });
   console.log('🕒 Verificação de avaliações baixas agendada a cada 5 min.');
+
+  // Carrinho abandonado — verifica a cada 10 min carrinhos registrados pelo
+  // site (com telefone) parados há mais de ABANDONED_CART_MINUTOS sem
+  // finalizar o pedido, envia a mensagem de recuperação e cuida da
+  // conversão/expiração de cada carrinho.
+  cron.schedule('*/10 * * * *', () => {
+    verificarCarrinhosAbandonados().catch((err) => {
+      console.error('[abandonedCartJob] erro inesperado na execução agendada:', err);
+    });
+  });
+  console.log(`🕒 Verificação de carrinhos abandonados agendada a cada 10 min (limiar: ${config.abandonedCartMinutos} min).`);
 } else {
   console.warn(
     '⚠️ SUPABASE_SERVICE_ROLE_KEY não configurada — reativação automática de clientes, alerta de pedido ' +
-      'atrasado e alerta de avaliação baixa estão todos desativados.'
+      'atrasado, alerta de avaliação baixa e recuperação de carrinho abandonado estão todos desativados.'
   );
 }

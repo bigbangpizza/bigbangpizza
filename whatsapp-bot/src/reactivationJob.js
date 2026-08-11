@@ -1,6 +1,6 @@
 import { temServiceRoleConfigurada, selectComoAdmin, inserirComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
-import { parseComoUTC, diasEntre } from './dataUtils.js';
+import { parseComoUTC, diasEntre, normalizarWhatsapp } from './dataUtils.js';
 
 // Cliente "entra em risco" 15 dias sem pedido (mesmo critério do admin.html:
 // classificarSegmentoCliente). A janela vai até 21 dias — não é só o dia
@@ -20,16 +20,6 @@ const DEDUP_DIAS = 30;
 
 const mensagemReativacao = (primeiroNome) =>
   `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕 Que tal matar a saudade com 10% OFF no seu próximo pedido? Usa o cupom VOLTEI10 e vem sentir a Explosão de Sabor de novo!`;
-
-// Mesma lógica de normalização usada no admin.html (normalizarWhatsapp) —
-// texto livre digitado pelo cliente no checkout, sem máscara na origem.
-function normalizarWhatsapp(raw) {
-  const digits = (raw || '').replace(/\D/g, '');
-  if (!digits) return null;
-  if (digits.length >= 12 && digits.startsWith('55')) return digits;
-  if (digits.length === 10 || digits.length === 11) return '55' + digits;
-  return digits;
-}
 
 async function buscarClientesRecemEmRisco() {
   const pedidos = await selectComoAdmin('pedidos', 'select=whatsapp,nome,created_at&whatsapp=not.is.null');

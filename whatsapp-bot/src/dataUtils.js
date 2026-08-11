@@ -22,3 +22,13 @@ export function diasEntre(dataAntiga, dataRecente) {
 export function minutosEntre(dataAntiga, dataRecente) {
   return Math.floor((dataRecente.getTime() - dataAntiga.getTime()) / 60000);
 }
+
+// Mesma lógica de normalização usada no admin.html (normalizarWhatsapp) —
+// texto livre digitado pelo cliente no checkout, sem máscara na origem.
+export function normalizarWhatsapp(raw) {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length >= 12 && digits.startsWith('55')) return digits;
+  if (digits.length === 10 || digits.length === 11) return '55' + digits;
+  return digits;
+}

@@ -115,6 +115,30 @@ tabela tem leitura pública mas não permite UPDATE anônimo), elas seguem a
 mesma regra das outras: sem `SUPABASE_SERVICE_ROLE_KEY`, os crons não são
 agendados e o resto do bot continua normal.
 
+## Recuperação de carrinho abandonado
+
+O checkout do site grava um registro em `carrinhos_abandonados` (INSERT
+anônimo, mesma policy de `pedidos`/`contatos`) assim que o cliente digita um
+WhatsApp válido no campo opcional do formulário — esse é o único ponto do
+fluxo em que o telefone fica disponível antes de o pedido ser finalizado
+(o campo só é lido de novo, pra valer, no clique de "Enviar pelo WhatsApp").
+
+`src/abandonedCartJob.js` roda a cada 10 min (mesma infra de `node-cron`) e,
+pra cada carrinho ainda não convertido/expirado:
+
+1. Cruza o telefone com `pedidos.whatsapp` — se já existe um pedido
+   concluído (pelo site ou pelo bot) criado depois do carrinho, marca
+   `convertido_em` e não manda nada.
+2. Se passou de 24h sem converter, marca `expirado = true` (fica no banco,
+   só para de contar como pendente).
+3. Se passou de `ABANDONED_CART_MINUTOS` (padrão 25, ajustável no `.env`) e
+   ainda não foi notificado, manda a mensagem de recuperação via
+   **Evolution API direto** e marca `notificado_em` — uma única vez por
+   carrinho.
+
+Mesma regra das outras rotinas: exige `SUPABASE_SERVICE_ROLE_KEY`, sem ela o
+cron não é agendado.
+
 ### Sobre a leitura/escrita no Supabase
 
 O bot usa a mesma chave pública (`anon`/publishable) do site. A tabela

@@ -1143,6 +1143,7 @@ loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
 checkBairrosAtualizados(true);
 setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 segundos
 updateCount();
+document.getElementById('f-whatsapp').addEventListener('blur', registrarCarrinhoAbandonado);
 
 // CART
 function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); gtag('event', 'view_cart'); }
@@ -1378,6 +1379,37 @@ function renderCart() {
   updateTotals();
 }
 function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); persistCart(); updateCount(); renderCart(); }
+
+// CARRINHO ABANDONADO
+// Único ponto do fluxo onde o telefone fica disponível antes do cliente
+// finalizar o pedido: o campo é opcional e só é lido em finalizarPedido(),
+// no clique final — sem capturar aqui no blur, não haveria como avisar
+// quem preencheu o WhatsApp mas nunca chegou a concluir a compra.
+let carrinhoAbandonadoRegistrado = false;
+async function registrarCarrinhoAbandonado() {
+  if (carrinhoAbandonadoRegistrado || !cart.length) return;
+  const telefone = document.getElementById('f-whatsapp').value.replace(/\D/g, '');
+  if (telefone.length < 10) return;
+  carrinhoAbandonadoRegistrado = true; // uma tentativa por carrinho, mesmo se a chamada falhar
+  const nome = document.getElementById('f-nome').value.trim();
+  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
+  const fr = getFrete()||0;
+  const desconto = calcDesconto(sub);
+  const total = +(sub - desconto + fr).toFixed(2);
+  try {
+    await fetch(`${SB}/rest/v1/carrinhos_abandonados`, {
+      method: 'POST',
+      headers: { 'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        telefone,
+        nome: nome || null,
+        itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
+        itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
+        total
+      })
+    });
+  } catch(e) { console.error('Erro ao registrar carrinho abandonado:', e); }
+}
 function calcFrete() { updateTotals(); }
 function getFrete() { const v=document.getElementById('f-bairro').value; return v?parseFloat(v.split('|')[1]):null; }
 function updateTotals() {
