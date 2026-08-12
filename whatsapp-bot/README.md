@@ -61,9 +61,10 @@ WhatsApp → Evolution API → POST /webhook → este servidor
   memória por `MENU_CACHE_TTL_SECONDS` (padrão 5 min) — não bate no Supabase
   a cada mensagem, mas reflete alterações feitas no admin em poucos minutos,
   sem precisar reiniciar o bot.
-- O histórico de conversa por número fica em memória (`HISTORY_MAX_MESSAGES`
-  últimas mensagens) — some se o processo reiniciar. Ver "Próximos passos".
-  Isso inclui o "rastro" de quando um pedido já foi criado na conversa, pra
+- O histórico de conversa por número (`HISTORY_MAX_MESSAGES` últimas
+  mensagens) é persistido no Redis — sobrevive a um redeploy/restart do bot
+  no meio de uma conversa. Ver "Histórico de conversa (Redis)" abaixo. Isso
+  inclui o "rastro" de quando um pedido já foi criado na conversa, pra
   evitar que a Claude tente registrar o mesmo pedido duas vezes.
 
 ### Formas de pagamento
@@ -77,6 +78,55 @@ WhatsApp → Evolution API → POST /webhook → este servidor
 Pra trocar/consultar a chave Pix, edite a tabela `configuracoes` no Supabase
 (chaves `pix_chave` e `pix_titular`) — não precisa redeploy do bot, só
 espera o cache expirar (ou reinicia o processo).
+
+## Histórico de conversa (Redis)
+
+`src/historicoRedis.js` guarda o histórico de cada conversa (por telefone)
+no Redis já provisionado no Railway junto com a Evolution API, em vez de só
+num `Map` em memória — antes, um redeploy ou crash do bot no meio de uma
+conversa apagava o contexto e o cliente tinha que recomeçar do zero.
+
+- **Leitura**: a cada mensagem recebida, `server.js` busca o histórico
+  desse telefone com `obterHistorico(numero)` antes de chamar a Claude.
+- **Escrita**: depois de anexar a mensagem do cliente E depois de anexar a
+  resposta da Claude — duas escritas por mensagem recebida, não uma —
+  `salvarHistorico(numero, historico)` grava o array inteiro de novo (já
+  cortado em `HISTORY_MAX_MESSAGES` mensagens). Persistir a mensagem do
+  cliente **antes** de chamar a Claude é proposital: se a chamada à Claude
+  falhar por qualquer motivo, o que o cliente disse não se perde.
+- **TTL**: 24h, renovado a cada escrita (`SET ... EX 86400`) — dá folga de
+  sobra pra sobreviver a um restart no meio de uma conversa ativa, sem
+  guardar histórico de clientes inativos indefinidamente.
+- **Namespace**: chaves `bbpizza:conversa:<telefone>` — prefixo deliberado
+  porque esse Redis é compartilhado com a própria Evolution API (que guarda
+  sessão/cache dela ali também).
+
+**Degradação graciosa:** se `REDIS_URL` não estiver configurada, ou se
+qualquer operação de leitura/escrita falhar (Redis fora do ar, timeout,
+credencial errada), `historicoRedis.js` nunca lança erro — só loga e
+retorna `null`/não faz nada. `server.js` mantém um `Map` local
+(`historicoLocal`) como fallback: sempre que o Redis não devolve nada, cai
+pra esse `Map`; sempre que salva, grava nos dois lugares. Na prática:
+- Sem `REDIS_URL`: funciona 100% em memória, igual ao comportamento antigo
+  (histórico some a cada restart).
+- Com `REDIS_URL` mas o Redis cai no meio da operação: continua atendendo
+  normalmente, só perde a persistência entre restarts enquanto durar a
+  instabilidade — nunca quebra uma conversa em andamento.
+
+**Como configurar no Railway:** o Redis precisa já existir como serviço no
+mesmo projeto (o mesmo provisionado junto com a Evolution API). No serviço
+**whatsapp-bot** → aba *Variables*, adicione `REDIS_URL` como uma
+"Variable Reference" apontando pro serviço Redis (algo como
+`${{Redis.REDIS_URL}}` — o nome exato da variável de referência aparece na
+aba *Variables* do próprio serviço Redis, pode copiar de lá). Não precisa
+redeploy manual: o Railway reinicia o serviço sozinho quando uma variável
+muda.
+
+Testado simulando um restart de processo (nova instância do cliente Redis,
+mesma conexão) no meio de uma conversa multi-turno — o histórico salvo pela
+"instância antiga" foi lido corretamente pela "instância nova"; também
+testados os dois caminhos de degradação graciosa (sem `REDIS_URL`, e com
+erro em toda operação) sem lançar exceção em nenhum dos dois.
 
 ## Cancelamento e edição de pedido
 
@@ -395,11 +445,6 @@ retornar `{"ok":true}`) antes de configurar o webhook de verdade.
   aplicado — hoje `editar_pedido` mantém o valor absoluto do desconto
   original mesmo se o subtotal mudar (ex: cupom percentual não é
   reajustado pro novo valor).
-- Persistir o histórico de conversa em banco (hoje é em memória e some a
-  cada deploy/restart) — dá pra usar a própria tabela `contatos`/`pedidos`
-  do Supabase ou um Redis, dependendo do volume. Isso também evitaria o
-  cliente ter que recomeçar o pedido do zero se o servidor reiniciar no meio
-  da conversa.
 - Validação/normalização mais robusta do número de telefone (mesmo padrão
   já usado no admin.html, `normalizarWhatsapp`).
 - Aplicar cupom de desconto pelo WhatsApp (hoje `criar_pedido` sempre grava

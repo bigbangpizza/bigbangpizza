@@ -13,31 +13,42 @@ import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
 import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
+import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
 
-// Histórico de conversa em memória, por número de telefone. Suficiente pra
-// dar contexto num primeiro atendimento (inclusive lembrar que um pedido já
-// foi criado na mesma conversa); some quando o processo reinicia (ver
-// README.md — "Próximos passos" — pra evoluir isso pra um banco/Redis).
-const historico = new Map();
+// Fallback em memória, por número de telefone — usado quando o Redis não
+// está configurado ou está indisponível no momento (ver historicoRedis.js).
+// Nesse modo degradado, o histórico some a cada restart, igual ao
+// comportamento antigo (antes do Redis existir).
+const historicoLocal = new Map();
 
-function getHistorico(numero) {
-  if (!historico.has(numero)) historico.set(numero, []);
-  return historico.get(numero);
+/** Sempre tenta o Redis primeiro; cai pro fallback em memória se não vier nada de lá. */
+async function carregarHistorico(numero) {
+  const doRedis = await obterHistoricoRedis(numero);
+  if (doRedis) {
+    historicoLocal.set(numero, doRedis); // mantém o fallback local em dia, caso o Redis caia no meio da conversa
+    return doRedis;
+  }
+  if (!historicoLocal.has(numero)) historicoLocal.set(numero, []);
+  return historicoLocal.get(numero);
 }
 
-function guardarMensagensNoHistorico(numero, mensagens) {
-  const h = getHistorico(numero);
-  h.push(...mensagens);
+function aplicarLimiteHistorico(mensagens) {
   const limite = config.historyMaxMessages;
-  if (h.length > limite) h.splice(0, h.length - limite);
+  if (mensagens.length > limite) mensagens.splice(0, mensagens.length - limite);
   // Evita deixar um tool_result "órfão" (sem o tool_use correspondente) logo
   // no início do histórico depois do corte — a Claude API rejeita isso.
-  while (h.length && Array.isArray(h[0].content) && h[0].content.some((b) => b.type === 'tool_result')) {
-    h.shift();
+  while (mensagens.length && Array.isArray(mensagens[0].content) && mensagens[0].content.some((b) => b.type === 'tool_result')) {
+    mensagens.shift();
   }
+}
+
+/** Grava no fallback local (sempre) e tenta persistir no Redis (best-effort). */
+async function persistirHistorico(numero, mensagens) {
+  historicoLocal.set(numero, mensagens);
+  await salvarHistoricoRedis(numero, mensagens);
 }
 
 app.get('/health', (req, res) => res.json({ ok: true }));
@@ -83,7 +94,13 @@ async function processarWebhook(body) {
 
   if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
 
-  guardarMensagensNoHistorico(numero, [{ role: 'user', content: userContent }]);
+  const historico = await carregarHistorico(numero);
+  historico.push({ role: 'user', content: userContent });
+  aplicarLimiteHistorico(historico);
+  // Persiste a mensagem do cliente ANTES de chamar a Claude — se a chamada
+  // falhar lá na frente, a mensagem já não se perde (o cliente pode mandar
+  // de novo sem repetir o que já disse, e o contexto sobrevive mesmo assim).
+  await persistirHistorico(numero, historico);
 
   const systemPrompt = await buildSystemPrompt();
   const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];
@@ -93,14 +110,12 @@ async function processarWebhook(body) {
     editar_pedido: criarExecutorEditarPedido({ numero }),
   };
 
-  const { textoResposta, novasMensagens } = await conversarComFerramentas(
-    systemPrompt,
-    getHistorico(numero),
-    tools,
-    toolExecutors
-  );
+  const { textoResposta, novasMensagens } = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
 
-  guardarMensagensNoHistorico(numero, novasMensagens);
+  historico.push(...novasMensagens);
+  aplicarLimiteHistorico(historico);
+  await persistirHistorico(numero, historico);
+
   await enviarTexto(numero, textoResposta);
 }
 

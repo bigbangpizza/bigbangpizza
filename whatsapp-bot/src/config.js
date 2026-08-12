@@ -60,7 +60,16 @@ export const config = {
   // Configure a mesma URL (com o secret) como webhook na Evolution API.
   webhookSecret: process.env.WEBHOOK_SECRET || '',
 
-  // Quantas mensagens (pares usuário/assistente) manter em memória por
-  // contato, para dar contexto de conversa sem precisar de banco de dados.
+  // Quantas mensagens (pares usuário/assistente) manter por contato, pra dar
+  // contexto de conversa. Vale tanto pro histórico em Redis quanto pro
+  // fallback em memória (ver historicoRedis.js).
   historyMaxMessages: Number(process.env.HISTORY_MAX_MESSAGES || 12),
+
+  redis: {
+    // URL de conexão do Redis já provisionado no Railway junto com a
+    // Evolution API (redis://... ou rediss://... se usar TLS). Não é
+    // obrigatória pra subir o servidor: sem ela, o histórico de conversa
+    // funciona só em memória (some a cada restart) — ver historicoRedis.js.
+    url: process.env.REDIS_URL || '',
+  },
 };
