@@ -727,6 +727,17 @@ let modalState = null;
 let WPP_NUMBER = '5571993738823';
 function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
 function novoId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2); }
+// Precisa ser um UUID de verdade (a coluna pedidos.rastreio_token é uuid no
+// Postgres, ao contrário dos ids de item do carrinho acima) — usa o mesmo
+// crypto.randomUUID(), mas com um fallback que ainda gera formato de UUID
+// válido em vez do formato livre de novoId().
+function gerarRastreioToken() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
 function persistCart() { try { sessionStorage.setItem('bb_cart', JSON.stringify(cart)); } catch(e) {} }
 function restoreCart() { try { const raw = sessionStorage.getItem('bb_cart'); cart = raw ? JSON.parse(raw) : []; } catch(e) { cart = []; } }
 function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
@@ -1482,8 +1493,15 @@ async function finalizarPedido() {
     const pct = cupomAplicado.tipo === 'fixo' ? '' : ` (${cupomAplicado.desconto}%)`;
     linhaDesconto = `\n\n🎟️ Cupom aplicado: ${cupomAplicado.codigo}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto${pct}: - R$ ${desconto.toFixed(2).replace('.',',')}`;
   }
-  
-  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\nAguardo confirmação!`;
+
+  // Gerado aqui (não pelo banco) porque o insert abaixo usa Prefer:
+  // return=minimal — sem isso não teria como saber o token gerado e incluir
+  // o link de acompanhamento na mensagem do WhatsApp, que é montada e
+  // aberta antes do insert terminar (ver comentário mais abaixo).
+  const rastreioToken = gerarRastreioToken();
+  const linkRastreio = `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}`;
+
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\n📲 Acompanhe seu pedido em tempo real: ${linkRastreio}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
   let estaAberto;
@@ -1527,6 +1545,7 @@ async function finalizarPedido() {
       bairro: bNome,
       complemento: comp || null,
       pagamento: pag,
+      rastreio_token: rastreioToken,
       whatsapp: wpp || null,
       observacao: obs || null,
       status: 'aguardando',

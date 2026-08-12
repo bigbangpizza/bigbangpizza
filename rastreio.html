@@ -55,6 +55,16 @@ h1,h2{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 
 .atualizado{text-align:center;font-size:11px;color:rgba(255,255,255,0.25);}
 
+/* ENDEREÇO */
+.endereco-linha{font-size:13.5px;color:rgba(255,255,255,0.75);line-height:1.5;}
+.endereco-bairro{font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px;}
+
+/* PEDIDO CANCELADO */
+.cancelado-box{text-align:center;padding:10px 0 22px;}
+.cancelado-emoji{font-size:44px;margin-bottom:10px;}
+.cancelado-box h2{font-size:22px;color:#ff6666;margin-bottom:4px;}
+.cancelado-box p{color:rgba(255,255,255,0.5);font-size:13px;}
+
 .erro-box{text-align:center;padding:20px 0;}
 .erro-emoji{font-size:52px;margin-bottom:14px;}
 .erro-box h2{font-size:24px;margin-bottom:8px;}
@@ -73,10 +83,14 @@ const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 const params=new URLSearchParams(location.search);
 const pedidoToken=params.get('token');
 
+// Mesmos 4 status do kanban do admin.html (COLUNAS_KANBAN_PEDIDOS/STATUS_LABEL)
+// — "aceito" e "preparando" foram unificados em "aceito_preparando" há um
+// tempo; manter os dois separados aqui (como era antes) faz o índice não
+// bater com nenhuma etapa pra qualquer pedido atual, e a página trava
+// mostrando "Aguardando confirmação" pro pedido inteiro.
 const ETAPAS=[
   {key:'aguardando',label:'Aguardando confirmação',icon:'⏳'},
-  {key:'aceito',label:'Pedido aceito',icon:'✅'},
-  {key:'preparando',label:'Preparando sua pizza',icon:'🟡'},
+  {key:'aceito_preparando',label:'Aceito e preparando',icon:'🔥'},
   {key:'saiu',label:'Saiu para entrega',icon:'🛵'},
   {key:'entregue',label:'Entregue',icon:'🏁'},
 ];
@@ -96,10 +110,43 @@ function renderErro(msg){
   </div>`;
 }
 
+function blocoItensEEndereco(p){
+  const itens=(p.itens||'').split(' | ').filter(Boolean);
+  const endereco=[p.endereco,p.complemento].filter(Boolean).join(', ');
+  return `
+    <div class="itens-box">
+      <div class="itens-title">Seu pedido</div>
+      ${itens.map(i=>`<div class="item-row">🍕 ${esc(i)}</div>`).join('')}
+      <div class="total-row"><span>TOTAL</span><span>R$ ${esc(Number(p.total||0).toFixed(2).replace('.',','))}</span></div>
+    </div>
+    ${endereco||p.bairro?`<div class="itens-box">
+      <div class="itens-title">Endereço de entrega</div>
+      ${endereco?`<div class="endereco-linha">${esc(endereco)}</div>`:''}
+      ${p.bairro?`<div class="endereco-bairro">${esc(p.bairro)}</div>`:''}
+    </div>`:''}`;
+}
+
 function renderPedido(p){
+  const hora=p.created_at?new Date(p.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+
+  if(p.status==='cancelado'){
+    document.getElementById('card').innerHTML=`
+      <div class="pedido-id">PEDIDO #${esc(p.id)}</div>
+      <div class="cliente-nome">${esc(p.nome||'')}</div>
+      ${hora?`<div class="hora-feito">Feito às ${esc(hora)}</div>`:''}
+      <div class="cancelado-box">
+        <div class="cancelado-emoji">❌</div>
+        <h2>Pedido cancelado</h2>
+        <p>Esse pedido não vai ser preparado. Se foi engano ou quiser fazer um novo, é só chamar a gente no WhatsApp.</p>
+      </div>
+      ${blocoItensEEndereco(p)}
+      <div class="atualizado">🔄 Atualiza automaticamente a cada 18s</div>
+    `;
+    return;
+  }
+
   let idxAtual=ETAPAS.findIndex(e=>e.key===p.status);
   if(idxAtual===-1) idxAtual=0;
-  const hora=p.created_at?new Date(p.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
   const stepsHtml=ETAPAS.map((e,i)=>{
     const cls=i<idxAtual?'done':(i===idxAtual?'current':'');
     return `<div class="step ${cls}">
@@ -113,19 +160,14 @@ function renderPedido(p){
       </div>
     </div>`;
   }).join('');
-  const itens=(p.itens||'').split(' | ').filter(Boolean);
   document.getElementById('card').innerHTML=`
     <div class="pedido-id">PEDIDO #${esc(p.id)}</div>
     <div class="cliente-nome">${esc(p.nome||'')}</div>
     ${hora?`<div class="hora-feito">Feito às ${esc(hora)}</div>`:''}
     <div class="tempo-estimado">⏱️ Tempo estimado: 35–60 minutos</div>
     <div class="timeline">${stepsHtml}</div>
-    <div class="itens-box">
-      <div class="itens-title">Seu pedido</div>
-      ${itens.map(i=>`<div class="item-row">🍕 ${esc(i)}</div>`).join('')}
-      <div class="total-row"><span>TOTAL</span><span>R$ ${esc(Number(p.total||0).toFixed(2).replace('.',','))}</span></div>
-    </div>
-    <div class="atualizado">🔄 Atualiza automaticamente a cada 30s</div>
+    ${blocoItensEEndereco(p)}
+    <div class="atualizado">🔄 Atualiza automaticamente a cada 18s</div>
   `;
 }
 
@@ -145,7 +187,7 @@ async function carregarPedido(){
 }
 
 carregarPedido();
-setInterval(carregarPedido,30000);
+setInterval(carregarPedido,18000);
 </script>
 </body>
 </html>
