@@ -289,6 +289,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('analytics')" id="nav-analytics"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia')" id="nav-aparencia"><span class="ic">🎨</span> Aparência</div>
       <div class="nav-item" onclick="show('bot')" id="nav-bot"><span class="ic">🤖</span> Configurações do Bot</div>
+      <div class="nav-item" onclick="show('automacao')" id="nav-automacao"><span class="ic">🔁</span> Dashboard de Automação</div>
     </div>
     <div class="sb-footer">
       <a class="btn-site" href="index.html" target="_blank">🌐 Ver Site</a>
@@ -679,6 +680,19 @@ input:checked+.sl::before{transform:translateX(20px);}
       </div>
     </div>
 
+    <div id="pg-automacao" class="hidden">
+      <div class="page-title">DASHBOARD DE AUTOMAÇÃO</div>
+      <div class="page-sub">Métricas das rotinas automáticas: carrinho abandonado, reativação de clientes e alertas pro Gabriel.</div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;" id="auto-filtros">
+        <button class="bt filtro-btn" onclick="setAutoFiltro(this,'7d')">📅 Últimos 7 dias</button>
+        <button class="bt filtro-btn" onclick="setAutoFiltro(this,'30d')">📅 Últimos 30 dias</button>
+        <button class="be filtro-btn" onclick="setAutoFiltro(this,'tudo')">📋 Tudo</button>
+      </div>
+
+      <div id="auto-content"><div class="loading">Carregando...</div></div>
+    </div>
+
   </div><!-- /main -->
 
   <!-- BOTTOM NAVIGATION MOBILE -->
@@ -708,6 +722,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('analytics');fecharMaisMenu()"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia');fecharMaisMenu()"><span class="ic">🎨</span> Aparência</div>
       <div class="nav-item" onclick="show('bot');fecharMaisMenu()"><span class="ic">🤖</span> Configurações do Bot</div>
+      <div class="nav-item" onclick="show('automacao');fecharMaisMenu()"><span class="ic">🔁</span> Dashboard de Automação</div>
       <div class="nav-item" onclick="toggleTheme()"><span class="ic">🌙</span> Alternar tema</div>
       <button class="btn-logout" style="margin:8px 18px;width:calc(100% - 36px);" onclick="logout()">🚪 Sair</button>
     </div>
@@ -1332,6 +1347,7 @@ function show(page) {
     analytics: loadAnalytics,
     aparencia: loadAparencia,
     bot: loadConfigBot,
+    automacao: () => { const b = document.querySelector('#pg-automacao .be.filtro-btn'); setAutoFiltro(b, 'tudo'); },
   };
   (map[page] || (() => loadTable(page)))();
 }
@@ -2977,6 +2993,123 @@ async function loadRelatorio(period='hoje'){
     <table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th></tr></thead>
     <tbody>${top.map(([n,q],i)=>`<tr><td data-label="#" style="color:var(--orange);font-weight:700;font-family:'Bebas Neue',sans-serif;font-size:18px;">${i+1}°</td><td data-label="Produto">${n}</td><td data-label="Qtd"><strong>${q}</strong></td></tr>`).join('')}</tbody></table></div>`
     : '<div class="loading">Nenhum pedido entregue neste período.</div>'}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD DE AUTOMAÇÃO — métricas de carrinho abandonado,
+// reativação de clientes e alertas pro Gabriel
+// ═══════════════════════════════════════════════════════
+
+// Janela pra considerar que uma reativação "deu resultado": um novo pedido
+// desse cliente criado até N dias depois do envio da mensagem. 7 dias cobre
+// bem mais que o ciclo normal de decisão de pedir de novo, sem contar como
+// conversão um pedido que já ia acontecer de qualquer jeito meses depois.
+const JANELA_CONVERSAO_REATIVACAO_DIAS = 7;
+
+function setAutoFiltro(btn, periodo){
+  document.querySelectorAll('#auto-filtros .filtro-btn').forEach(b=>b.className='bt filtro-btn');
+  if(btn) btn.className='be filtro-btn';
+  loadDashboardAutomacao(periodo);
+}
+
+// `avaliacoes.data` é texto livre no formato DD/MM/AAAA (toLocaleDateString('pt-BR')
+// no momento do envio) — não tem coluna de timestamp real, então pra filtrar por
+// período precisa converter aqui em vez de mandar o filtro pro Postgres.
+function parseDataBR(str){
+  const m = (str||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(!m) return null;
+  return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+}
+
+function pct(parte, total){
+  return total ? (parte/total*100).toFixed(1) : '0.0';
+}
+
+async function loadDashboardAutomacao(periodo='tudo'){
+  document.getElementById('auto-content').innerHTML = '<div class="loading">Carregando...</div>';
+  const hoje = new Date();
+  const desde = periodo==='7d' ? new Date(hoje-7*86400000)
+    : periodo==='30d' ? new Date(hoje-30*86400000)
+    : null;
+  const desdeISO = desde ? desde.toISOString() : null;
+  const filtro = (campo) => desdeISO ? `${campo}=gte.${desdeISO}` : '';
+  const juntar = (...partes) => partes.filter(Boolean).join('&');
+
+  const [carrinhos, reativacoes, pedidosAtrasados, avaliacoesRuins, pedidosParaMatch] = await Promise.all([
+    api('carrinhos_abandonados', filtro('created_at')),
+    api('reativacoes_enviadas', filtro('enviado_em')),
+    api('pedidos', juntar('alerta_atraso_enviado=eq.true', filtro('created_at'))),
+    api('avaliacoes', 'alerta_enviado=eq.true&select=data,estrelas'),
+    api('pedidos', juntar('whatsapp=not.is.null', filtro('created_at')), 'created_at.asc'),
+  ]);
+
+  // Carrinhos abandonados: recuperado = convertido_em preenchido (o
+  // abandonedCartJob.js só marca isso quando acha um pedido concluído desse
+  // telefone depois da criação do carrinho — nunca junto com expirado=true).
+  const totalCarrinhos = carrinhos.length;
+  const carrinhosRecuperados = carrinhos.filter(c=>c.convertido_em).length;
+  const carrinhosExpirados = carrinhos.filter(c=>c.expirado).length;
+
+  // Reativação: cruza cada mensagem enviada com pedidos do mesmo telefone
+  // (normalizado, mesmo problema de formato de sempre) criados entre o
+  // envio e a janela de conversão.
+  let reativacoesConvertidas = 0;
+  for (const r of reativacoes){
+    const tel = normalizarWhatsapp(r.whatsapp);
+    if(!tel) continue;
+    const enviadoEm = new Date(r.enviado_em);
+    const limite = new Date(enviadoEm.getTime() + JANELA_CONVERSAO_REATIVACAO_DIAS*86400000);
+    const converteu = pedidosParaMatch.some(p=>{
+      if(normalizarWhatsapp(p.whatsapp) !== tel) return false;
+      const criadoEm = new Date(p.created_at);
+      return criadoEm >= enviadoEm && criadoEm <= limite;
+    });
+    if(converteu) reativacoesConvertidas++;
+  }
+  const reativacoesManual = reativacoes.filter(r=>r.origem==='manual').length;
+  const reativacoesAutomatico = reativacoes.filter(r=>r.origem==='automatico').length;
+
+  // Alertas: pedido atrasado tem created_at real; avaliação ruim só tem o
+  // texto DD/MM/AAAA, filtrado à parte acima de qualquer forma.
+  const cutoffAvaliacao = desde;
+  const alertasAvaliacaoRuim = avaliacoesRuins.filter(a=>{
+    if(!cutoffAvaliacao) return true;
+    const d = parseDataBR(a.data);
+    return d && d >= cutoffAvaliacao;
+  }).length;
+
+  const labels = {'7d':'Últimos 7 dias','30d':'Últimos 30 dias','tudo':'Todo o período'};
+
+  document.getElementById('auto-content').innerHTML = `
+    <div style="margin-bottom:8px;color:rgba(255,255,255,.35);font-size:12px;">Período: <strong>${labels[periodo]||periodo}</strong></div>
+
+    <div class="tw" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:14px;">🛒 Carrinho Abandonado</h3>
+      <div class="stats">
+        <div class="stat"><div class="stat-n">${totalCarrinhos}</div><div class="stat-l">Detectados</div></div>
+        <div class="stat"><div class="stat-n" style="color:#4ade80;">${carrinhosRecuperados}</div><div class="stat-l">Recuperados</div></div>
+        <div class="stat"><div class="stat-n" style="color:#ff6666;">${carrinhosExpirados}</div><div class="stat-l">Expirados</div></div>
+        <div class="stat"><div class="stat-n">${pct(carrinhosRecuperados,totalCarrinhos)}%</div><div class="stat-l">Taxa de Recuperação</div></div>
+      </div>
+    </div>
+
+    <div class="tw" style="padding:20px;margin-bottom:16px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:14px;">🔁 Reativação de Clientes</h3>
+      <div class="stats">
+        <div class="stat"><div class="stat-n">${reativacoes.length}</div><div class="stat-l">Mensagens Enviadas</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:20px;">${reativacoesManual} manual / ${reativacoesAutomatico} auto</div><div class="stat-l">Origem</div></div>
+        <div class="stat"><div class="stat-n" style="color:#4ade80;">${reativacoesConvertidas}</div><div class="stat-l">Viraram Pedido em ${JANELA_CONVERSAO_REATIVACAO_DIAS}d</div></div>
+        <div class="stat"><div class="stat-n">${pct(reativacoesConvertidas,reativacoes.length)}%</div><div class="stat-l">Taxa de Conversão</div></div>
+      </div>
+    </div>
+
+    <div class="tw" style="padding:20px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:14px;">🔔 Alertas Disparados pro Gabriel</h3>
+      <div class="stats">
+        <div class="stat"><div class="stat-n">${pedidosAtrasados.length}</div><div class="stat-l">Pedido Atrasado</div></div>
+        <div class="stat"><div class="stat-n">${alertasAvaliacaoRuim}</div><div class="stat-l">Avaliação Ruim</div></div>
+      </div>
+    </div>`;
 }
 
 async function exportarCSV(){
