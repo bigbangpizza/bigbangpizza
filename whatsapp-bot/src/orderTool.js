@@ -74,7 +74,7 @@ function normalizar(s) {
 }
 
 /** Busca por nome com tolerância a acentuação/maiúsculas e correspondência parcial. */
-function buscarPorNome(lista, campoNome, nomeBusca) {
+export function buscarPorNome(lista, campoNome, nomeBusca) {
   const alvo = normalizar(nomeBusca);
   if (!alvo) return null;
 
@@ -93,11 +93,11 @@ function catalogoPorTipo(menuData, tipo) {
   return { pizza_salgada: menuData.salgadas, pizza_doce: menuData.doces, combo: menuData.combos, bebida: menuData.bebidas }[tipo];
 }
 
-function brl(v) {
+export function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
 
-const PAGAMENTO_TEXTO = {
+export const PAGAMENTO_TEXTO = {
   presencial: 'Presencial (dinheiro/cartão na entrega)',
   pix: 'Pix (aguardando pagamento)',
   cartao_link: 'Cartão via link Ton (aguardando envio do link)',
@@ -108,10 +108,11 @@ const PAGAMENTO_TEXTO = {
  * recalculando os preços a partir dos dados do Supabase (nunca confia em
  * preço que a IA eventualmente tenha citado na conversa). Pizza salgada
  * meio a meio usa a mesma regra do site: preço = soma das metades de cada
- * sabor no tamanho escolhido.
+ * sabor no tamanho escolhido. Exportada porque editOrderTool.js reaproveita
+ * a mesma validação/precificação ao editar os itens de um pedido existente.
  * @returns {{itensProcessados: Array, erros: string[]}}
  */
-function processarItens(itensInput, menuData) {
+export function processarItens(itensInput, menuData) {
   const erros = [];
   const itensProcessados = [];
 

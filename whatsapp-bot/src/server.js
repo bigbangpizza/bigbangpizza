@@ -7,6 +7,7 @@ import { transcreverAudio } from './transcribe.js';
 import { enviarTexto, baixarMediaBase64 } from './evolutionApi.js';
 import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
+import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
 import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
@@ -85,10 +86,11 @@ async function processarWebhook(body) {
   guardarMensagensNoHistorico(numero, [{ role: 'user', content: userContent }]);
 
   const systemPrompt = await buildSystemPrompt();
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
+    editar_pedido: criarExecutorEditarPedido({ numero }),
   };
 
   const { textoResposta, novasMensagens } = await conversarComFerramentas(

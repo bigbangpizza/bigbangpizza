@@ -9,10 +9,11 @@ e o admin.
 bairros atendidos), **fechar o pedido inteiro dentro da própria conversa**
 — itens, endereço, bairro (validado contra a área de entrega real) e forma
 de pagamento (presencial, Pix ou cartão via link/Ton), gravando direto na
-mesma tabela `pedidos` do site/admin — e **cancelar o pedido mais recente**,
-mas só enquanto a cozinha ainda não tiver aceitado (ver "Cancelamento de
-pedido" abaixo). Edição parcial (trocar item, endereço etc.) ainda não
-existe — só criação e cancelamento binário — ver "Próximos passos".
+mesma tabela `pedidos` do site/admin —, **cancelar** e **editar** o pedido
+mais recente (item, bairro/endereço, forma de pagamento), sempre só
+enquanto a cozinha ainda não tiver aceitado (ver "Cancelamento e edição de
+pedido" abaixo). Aplicar cupom de desconto pelo WhatsApp ainda não existe —
+ver "Próximos passos".
 
 ## Como funciona
 
@@ -44,6 +45,14 @@ WhatsApp → Evolution API → POST /webhook → este servidor
                               src/cancelOrderTool.js confere o status atual
                               (nunca cache) e só cancela se ainda estiver
                               "aguardando" — escrita atômica condicional
+                                              │
+                              se o cliente quiser corrigir algo (bairro
+                              errado, trocar item, forma de pagamento):
+                              Claude chama a tool `editar_pedido`
+                                              ↓
+                              src/editOrderTool.js revalida só os campos que
+                              mudaram, recalcula subtotal/frete/total e
+                              grava com a mesma escrita atômica condicional
                                               ↓
                               Evolution API (sendText) → WhatsApp do cliente
 ```
@@ -69,16 +78,22 @@ Pra trocar/consultar a chave Pix, edite a tabela `configuracoes` no Supabase
 (chaves `pix_chave` e `pix_titular`) — não precisa redeploy do bot, só
 espera o cache expirar (ou reinicia o processo).
 
-## Cancelamento de pedido
+## Cancelamento e edição de pedido
 
-Quando o cliente pede pra cancelar, Claude chama a tool `cancelar_pedido`
-(sem parâmetros — cancela sempre o pedido mais recente de quem está
-conversando, achado por telefone). `src/cancelOrderTool.js` faz o resto:
+`src/pedidoStatusUtil.js` reúne o que as duas tools abaixo têm em comum:
+achar "o pedido mais recente do cliente que está conversando" (por telefone
+normalizado, dentro de uma janela de 12h — mesma lógica de
+`abandonedCartJob.js`/`reactivationJob.js` pra lidar com `pedidos.whatsapp`
+vindo em formatos diferentes conforme a origem: bot grava já normalizado,
+site grava o texto livre digitado no checkout) e a mensagem fixa de recusa
+quando o pedido já saiu de `aguardando`.
 
-1. Busca, com a service_role key, o pedido mais recente desse telefone
-   criado nas últimas 12h (compara números normalizados — `pedidos.whatsapp`
-   vem em formatos diferentes conforme a origem: bot grava já normalizado,
-   site grava o texto livre digitado no checkout).
+### Cancelamento
+
+Quando o cliente pede pra cancelar de vez, Claude chama a tool
+`cancelar_pedido` (sem parâmetros). `src/cancelOrderTool.js`:
+
+1. Busca, com a service_role key, o pedido mais recente desse telefone.
 2. Se não achar nada, ou se já estiver `cancelado`, devolve pro Claude uma
    mensagem de erro simples pra explicar ao cliente.
 3. Se o status lido for diferente de `aguardando` (`aceito_preparando`,
@@ -88,18 +103,46 @@ conversando, achado por telefone). `src/cancelOrderTool.js` faz o resto:
    texto literalmente, sem reformular.
 4. Se ainda estava `aguardando` na leitura, tenta cancelar de verdade.
 
-**Sobre a corrida cliente-cancela vs. cozinha-aceita:** o passo 4 acima não
-é "leu aguardando, então escreve cancelado" — isso deixaria uma brecha entre
-a leitura e a escrita onde a cozinha poderia aceitar o pedido bem no meio.
-Em vez disso, a escrita em si já é condicional
-(`atualizarComoAdminSeStatus`, em `supabaseAdmin.js`): um único `UPDATE ...
-WHERE id = X AND status = 'aguardando'` atômico no Postgres. Se a cozinha
-aceitar um instante antes dessa escrita, o UPDATE não afeta nenhuma linha —
-e é esse resultado (zero linhas) que decide se o cancelamento aconteceu, não
-o valor lido antes. Testado direto no banco simulando as duas ordens de
-chegada (aceitar-depois-cancelar e cancelar-depois-aceitar); no primeiro
-caso o cancelamento é corretamente recusado e o pedido continua
-`aceito_preparando`.
+### Edição
+
+Quando o cliente quer CORRIGIR algo em vez de desistir do pedido (bairro
+errado, trocar um item, mudar forma de pagamento), Claude chama a tool
+`editar_pedido` com só os campos que mudaram — o que não vier é mantido
+como estava. `src/editOrderTool.js`:
+
+1. Mesma busca/checagem de status do cancelamento (passos 1-3 acima; a
+   mensagem de recusa troca só o verbo, "editar" em vez de "cancelar").
+2. Revalida contra o cardápio/bairros reais só o que mudou — reaproveita
+   `processarItens`/`buscarPorNome` de `orderTool.js` (a mesma validação e
+   precificação usada pra criar um pedido, sem duplicar a lógica).
+   - `itens`, se enviado, precisa ser a lista COMPLETA e final (não é
+     incremental) — Claude é instruído a mandar todos os itens, já com a
+     troca aplicada, mesmo que só 1 tenha mudado.
+   - `bairro`, se enviado, recalcula o frete a partir do valor real
+     cadastrado (nunca aceita um frete que a IA tenha dito).
+3. Recalcula `subtotal`/`frete`/`total` a partir do que mudou (o que não
+   mudou usa o valor que já estava salvo no pedido). Cupom/desconto não são
+   recalculados — ficam pelo valor absoluto já aplicado antes da edição
+   (fora do escopo desta versão; ver "Próximos passos").
+4. Se ainda estava `aguardando` na leitura, tenta gravar a edição de
+   verdade — tudo de uma vez (um único UPDATE), nunca campo por campo.
+
+**Sobre a corrida cliente-mexe-no-pedido vs. cozinha-aceita:** tanto o passo
+4 do cancelamento quanto o passo 4 da edição NÃO são "leu aguardando, então
+escreve" — isso deixaria uma brecha entre a leitura e a escrita onde a
+cozinha poderia aceitar o pedido bem no meio. Em vez disso, a escrita em si
+já é condicional (`atualizarComoAdminSeStatus`, em `supabaseAdmin.js`): um
+único `UPDATE ... WHERE id = X AND status = 'aguardando'` atômico no
+Postgres — no cancelamento, `{status: 'cancelado'}`; na edição, o patch
+inteiro (itens/bairro/frete/endereço/pagamento/total) num só UPDATE, nunca
+campo por campo. Se a cozinha aceitar um instante antes dessa escrita, o
+UPDATE não afeta nenhuma linha — e é esse resultado (zero linhas) que
+decide se a ação aconteceu, não o valor lido antes; o pedido fica
+exatamente como estava, sem aplicação parcial. Testado direto no banco nos
+dois fluxos (cancelamento e edição) simulando as duas ordens de chegada
+(aceitar-depois-de-mexer e mexer-depois-de-aceitar); no primeiro caso a
+ação é corretamente recusada e o pedido continua com os dados antigos e
+status `aceito_preparando`.
 
 **A corrida na direção oposta também está fechada.** O admin.html (dropdown
 do kanban, botão "Aceitar e Preparar" do modo Cozinha, swipe no card mobile)
@@ -115,10 +158,10 @@ pelo cliente...") e recarrega a lista de pedidos automaticamente, sem
 aplicar a mudança que o clique pretendia fazer. Testado e confirmado no
 banco, nas duas direções da corrida e no caso de alias legado.
 
-Toda tentativa de cancelamento (bem-sucedida ou recusada, em qualquer um
-dos motivos acima) é logada no console do servidor com o id do pedido, o
-telefone e o resultado — grep por `[cancelamento]` nos logs do Railway pra
-auditar.
+Toda tentativa de cancelamento ou edição (bem-sucedida ou recusada, em
+qualquer um dos motivos acima) é logada no console do servidor com o id do
+pedido, o telefone e o resultado — grep por `[cancelamento]` ou `[edicao]`
+nos logs do Railway pra auditar.
 
 ## Reativação automática de clientes "em risco"
 
@@ -345,10 +388,13 @@ retornar `{"ok":true}`) antes de configurar o webhook de verdade.
 
 ## Próximos passos (fora do escopo desta versão)
 
-- Edição de pedido já criado pelo WhatsApp (trocar item, endereço, bairro,
-  forma de pagamento) — hoje só existe criação e cancelamento binário; pra
-  mudar algo, o cliente precisa cancelar (se ainda der tempo) e pedir de
-  novo, ou falar direto com a loja/usar o admin.
+- Edição de pedido depois que a cozinha já aceitou (`aceito_preparando`,
+  `saiu`, `entregue`) — hoje só dá pra editar/cancelar enquanto ainda está
+  `aguardando`; depois disso só falando direto com a loja/usando o admin.
+- Recalcular cupom/desconto ao editar itens de um pedido que já tinha cupom
+  aplicado — hoje `editar_pedido` mantém o valor absoluto do desconto
+  original mesmo se o subtotal mudar (ex: cupom percentual não é
+  reajustado pro novo valor).
 - Persistir o histórico de conversa em banco (hoje é em memória e some a
   cada deploy/restart) — dá pra usar a própria tabela `contatos`/`pedidos`
   do Supabase ou um Redis, dependendo do volume. Isso também evitaria o
@@ -356,5 +402,6 @@ retornar `{"ok":true}`) antes de configurar o webhook de verdade.
   da conversa.
 - Validação/normalização mais robusta do número de telefone (mesmo padrão
   já usado no admin.html, `normalizarWhatsapp`).
-- Aplicar cupom de desconto pelo WhatsApp (hoje a tool `criar_pedido` sempre
-  grava `cupom: null` — o site continua sendo a única forma de usar cupom).
+- Aplicar cupom de desconto pelo WhatsApp (hoje `criar_pedido` sempre grava
+  `cupom: null`, e `editar_pedido` nunca mexe em cupom/desconto — o site
+  continua sendo a única forma de usar cupom).
