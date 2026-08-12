@@ -6,11 +6,13 @@ bairros de entrega puxados em tempo real do mesmo Supabase que alimenta o site
 e o admin.
 
 **Escopo desta versão:** responder dúvidas do cliente (cardápio, horário,
-bairros atendidos) **e fechar o pedido inteiro dentro da própria conversa**
+bairros atendidos), **fechar o pedido inteiro dentro da própria conversa**
 — itens, endereço, bairro (validado contra a área de entrega real) e forma
 de pagamento (presencial, Pix ou cartão via link/Ton), gravando direto na
-mesma tabela `pedidos` do site/admin. Cancelamento/edição de pedido ainda
-não existe (só criação) — ver "Próximos passos".
+mesma tabela `pedidos` do site/admin — e **cancelar o pedido mais recente**,
+mas só enquanto a cozinha ainda não tiver aceitado (ver "Cancelamento de
+pedido" abaixo). Edição parcial (trocar item, endereço etc.) ainda não
+existe — só criação e cancelamento binário — ver "Próximos passos".
 
 ## Como funciona
 
@@ -35,6 +37,13 @@ WhatsApp → Evolution API → POST /webhook → este servidor
                                               │
                               pagamento "Cartão via link" → avisa o Gabriel
                               por WhatsApp pra gerar o link na Ton
+                                              │
+                              se o cliente pedir cancelamento:
+                              Claude chama a tool `cancelar_pedido`
+                                              ↓
+                              src/cancelOrderTool.js confere o status atual
+                              (nunca cache) e só cancela se ainda estiver
+                              "aguardando" — escrita atômica condicional
                                               ↓
                               Evolution API (sendText) → WhatsApp do cliente
 ```
@@ -59,6 +68,57 @@ WhatsApp → Evolution API → POST /webhook → este servidor
 Pra trocar/consultar a chave Pix, edite a tabela `configuracoes` no Supabase
 (chaves `pix_chave` e `pix_titular`) — não precisa redeploy do bot, só
 espera o cache expirar (ou reinicia o processo).
+
+## Cancelamento de pedido
+
+Quando o cliente pede pra cancelar, Claude chama a tool `cancelar_pedido`
+(sem parâmetros — cancela sempre o pedido mais recente de quem está
+conversando, achado por telefone). `src/cancelOrderTool.js` faz o resto:
+
+1. Busca, com a service_role key, o pedido mais recente desse telefone
+   criado nas últimas 12h (compara números normalizados — `pedidos.whatsapp`
+   vem em formatos diferentes conforme a origem: bot grava já normalizado,
+   site grava o texto livre digitado no checkout).
+2. Se não achar nada, ou se já estiver `cancelado`, devolve pro Claude uma
+   mensagem de erro simples pra explicar ao cliente.
+3. Se o status lido for diferente de `aguardando` (`aceito_preparando`,
+   `saiu`, `entregue`), recusa e devolve a mensagem fixa "seu pedido já
+   entrou em produção..." com o WhatsApp da loja (lido de
+   `configuracoes.info_whatsapp`) — o Claude é instruído a repassar esse
+   texto literalmente, sem reformular.
+4. Se ainda estava `aguardando` na leitura, tenta cancelar de verdade.
+
+**Sobre a corrida cliente-cancela vs. cozinha-aceita:** o passo 4 acima não
+é "leu aguardando, então escreve cancelado" — isso deixaria uma brecha entre
+a leitura e a escrita onde a cozinha poderia aceitar o pedido bem no meio.
+Em vez disso, a escrita em si já é condicional
+(`atualizarComoAdminSeStatus`, em `supabaseAdmin.js`): um único `UPDATE ...
+WHERE id = X AND status = 'aguardando'` atômico no Postgres. Se a cozinha
+aceitar um instante antes dessa escrita, o UPDATE não afeta nenhuma linha —
+e é esse resultado (zero linhas) que decide se o cancelamento aconteceu, não
+o valor lido antes. Testado direto no banco simulando as duas ordens de
+chegada (aceitar-depois-cancelar e cancelar-depois-aceitar); no primeiro
+caso o cancelamento é corretamente recusado e o pedido continua
+`aceito_preparando`.
+
+**A corrida na direção oposta também está fechada.** O admin.html (dropdown
+do kanban, botão "Aceitar e Preparar" do modo Cozinha, swipe no card mobile)
+agora usa o mesmo padrão atômico: `updSeStatus()` em admin.html manda um
+`PATCH /pedidos?id=eq.X&status=eq.<esperado>` (reaproveitando
+`statusFiltroQuery`, que já tratava os aliases legados `aceito`/`preparando`
+pra leitura) em vez do `upd()` incondicional. Se a linha não bater mais com
+o status que aquela tela achava que o pedido tinha — por exemplo, o cliente
+cancelou pelo bot um instante antes de alguém clicar "Aceitar e Preparar"
+numa tela desatualizada — o UPDATE não afeta nenhuma linha, a interface
+mostra um toast explicando o que aconteceu ("Este pedido já foi cancelado
+pelo cliente...") e recarrega a lista de pedidos automaticamente, sem
+aplicar a mudança que o clique pretendia fazer. Testado e confirmado no
+banco, nas duas direções da corrida e no caso de alias legado.
+
+Toda tentativa de cancelamento (bem-sucedida ou recusada, em qualquer um
+dos motivos acima) é logada no console do servidor com o id do pedido, o
+telefone e o resultado — grep por `[cancelamento]` nos logs do Railway pra
+auditar.
 
 ## Reativação automática de clientes "em risco"
 
@@ -285,9 +345,10 @@ retornar `{"ok":true}`) antes de configurar o webhook de verdade.
 
 ## Próximos passos (fora do escopo desta versão)
 
-- Cancelamento/edição de pedido já criado pelo WhatsApp (hoje só existe
-  criação — pra mudar ou cancelar, ainda precisa falar direto ou usar o
-  admin).
+- Edição de pedido já criado pelo WhatsApp (trocar item, endereço, bairro,
+  forma de pagamento) — hoje só existe criação e cancelamento binário; pra
+  mudar algo, o cliente precisa cancelar (se ainda der tempo) e pedir de
+  novo, ou falar direto com a loja/usar o admin.
 - Persistir o histórico de conversa em banco (hoje é em memória e some a
   cada deploy/restart) — dá pra usar a própria tabela `contatos`/`pedidos`
   do Supabase ou um Redis, dependendo do volume. Isso também evitaria o

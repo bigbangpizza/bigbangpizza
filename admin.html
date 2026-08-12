@@ -1033,6 +1033,28 @@ async function upd(table, id, data) {
   return r.ok;
 }
 
+/**
+ * UPDATE condicional (por id + status esperado) — mesmo padrão atômico já
+ * usado no cancelamento via bot (atualizarComoAdminSeStatus em
+ * whatsapp-bot/src/supabaseAdmin.js): o Postgres só aplica a escrita se o
+ * status atual da linha ainda bater com `bucketEsperado` no exato momento
+ * do UPDATE — uma única instrução SQL, sem brecha entre "checar" e
+ * "escrever". Reaproveita `statusFiltroQuery` (já trata os aliases legados
+ * aceito/preparando dentro de "aceito_preparando").
+ * @returns {Promise<Array|null>} linhas efetivamente atualizadas (vazio se
+ *   a condição não bateu — outro processo já tinha mudado o status), ou
+ *   `null` se a requisição em si falhou (erro de rede/permissão).
+ */
+async function updSeStatus(table, id, bucketEsperado, dados) {
+  const r = await authFetch(`${SB}/rest/v1/${table}?id=eq.${id}&${statusFiltroQuery(bucketEsperado)}`, {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=representation' },
+    body: JSON.stringify(dados)
+  });
+  if (!r.ok) return null;
+  return r.json();
+}
+
 async function del(table, id) {
   const r = await authFetch(`${SB}/rest/v1/${table}?id=eq.${id}`, {
     method: 'DELETE'
@@ -1054,17 +1076,18 @@ function esc(s) {
   return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function showToastAdmin(msg) {
+function showToastAdmin(msg, duracaoMs = 3500) {
   const t = document.createElement('div');
   t.textContent = msg;
   Object.assign(t.style, {
     position:'fixed', bottom:'20px', left:'50%', transform:'translateX(-50%)',
     background:'#222', border:'1px solid rgba(255,255,255,0.12)', color:'white',
     padding:'12px 24px', borderRadius:'8px', fontSize:'14px', fontWeight:'600',
-    zIndex:'9999', whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.5)'
+    zIndex:'9999', maxWidth:'min(92vw, 420px)', whiteSpace:'normal', textAlign:'center',
+    boxShadow:'0 4px 20px rgba(0,0,0,0.5)'
   });
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3500);
+  setTimeout(() => t.remove(), duracaoMs);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1973,7 +1996,7 @@ function renderPedidoCard(p){
     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
     ${p.cupom ? `<div style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);border-radius:6px;padding:6px 10px;margin-bottom:10px;font-size:12px;color:#4ade80;">🎟️ Cupom: <strong>${esc(p.cupom)}</strong> — ${brl(p.desconto||0)} de desconto</div>` : ''}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <select onchange="atualizarStatus(${p.id},this.value,this.closest('.pedido-card'))" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
+      <select onchange="atualizarStatus(${p.id},this.value,this.closest('.pedido-card'),'${bucket}')" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
         <option value="aguardando"       ${bucket==='aguardando'?'selected':''}>⏳ Aguardando</option>
         <option value="aceito_preparando" ${bucket==='aceito_preparando'?'selected':''}>✅🔥 Aceito/Preparando</option>
         <option value="saiu"             ${bucket==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
@@ -2071,15 +2094,51 @@ function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw){
   window.open(`https://wa.me/${numero}?text=${encodeURIComponent(gerarMsg(primeiroNome))}`, '_blank');
 }
 
-async function atualizarStatus(id,status,cardEl){
+/**
+ * @param {string} statusEsperado bucket que a UI acreditava ser o status
+ *   atual do pedido quando disparou essa mudança (ex: o que estava
+ *   selecionado no dropdown, ou o `data-status` do card no momento do
+ *   swipe). A escrita só é aplicada se isso ainda bater no banco — ver
+ *   updSeStatus. Sem isso, um pedido cancelado pelo cliente (via bot) um
+ *   instante antes seria silenciosamente revertido pra "aceito" por um
+ *   clique na cozinha numa tela desatualizada.
+ * @returns {Promise<boolean>} true se a mudança foi aplicada de verdade.
+ */
+async function atualizarStatus(id,status,cardEl,statusEsperado){
   // Dispara o wa.me ANTES de qualquer await — se não, o navegador deixa de
   // considerar a abertura da aba como resultado direto do gesto do usuário
   // (clique/swipe) e bloqueia o pop-up. Mesmo cuidado do checkout em index.html.
+  // É otimista (roda antes de saber se a escrita abaixo vai vingar), mas o
+  // dano de um falso positivo é mínimo: wa.me só abre um rascunho de
+  // mensagem, ninguém é enviado sem o Gabriel apertar enviar manualmente.
   if(STATUS_WPP_MSGS[status]) enviarWhatsAppStatus(status, cardEl?.dataset?.nome, cardEl?.dataset?.whatsapp);
-  await upd('pedidos',id,{status});
+
+  const linhas = await updSeStatus('pedidos', id, statusEsperado, {status});
+
+  if (linhas === null) {
+    showToastAdmin('❌ Erro ao atualizar o pedido. Tente novamente.');
+    loadPedidos();
+    return false;
+  }
+  if (!linhas.length) {
+    // Corrida: o status mudou entre a última vez que essa tela leu o
+    // pedido e agora (ex: cliente cancelou pelo bot nesse meio-tempo).
+    const atual = await api('pedidos', `id=eq.${id}&select=status`);
+    const statusAtual = atual?.[0]?.status;
+    const msg = !atual?.length
+      ? '⚠️ Este pedido não existe mais — a lista foi atualizada.'
+      : statusAtual === 'cancelado'
+        ? '❌ Este pedido já foi cancelado pelo cliente — a lista foi atualizada.'
+        : `⚠️ Este pedido já mudou de status (agora: ${STATUS_LABEL[statusBucket(statusAtual)]||statusAtual}) — a lista foi atualizada.`;
+    showToastAdmin(msg, 6000);
+    loadPedidos();
+    return false;
+  }
+
   if(status==='entregue') { await baixarEstoquePedido(id); await incrementarUsoCupom(id); }
   registrarHistorico(`Pedido #${id} marcado como ${STATUS_LABEL[status]||status}`);
   loadPedidos();
+  return true;
 }
 
 async function incrementarUsoCupom(id){
@@ -2231,17 +2290,17 @@ async function loadCozinha(){
     const avanco = bucket === 'aguardando'
       ? {status:'aceito_preparando', label:'✅🔥 Aceitar e Preparar'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
-    return `<div class="cozinha-card ${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
+    return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
       <div class="cozinha-num">#${p.id}</div>
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
       <div class="cozinha-tempo">${texto}</div>
-      <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}',this.closest('.cozinha-card'))">${avanco.label}</button>
+      <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}','${bucket}',this.closest('.cozinha-card'))">${avanco.label}</button>
     </div>`;
   }).join('');
 }
-async function avancarStatusCozinha(id, novoStatus, cardEl){
-  await atualizarStatus(id, novoStatus, cardEl);
+async function avancarStatusCozinha(id, novoStatus, statusEsperado, cardEl){
+  await atualizarStatus(id, novoStatus, cardEl, statusEsperado);
   loadCozinha();
 }
 
@@ -2287,8 +2346,12 @@ document.addEventListener('touchend', () => {
   const novoIdx = dx > 0 ? idx+1 : idx-1;
   if(novoIdx < 0 || novoIdx >= ORDEM_STATUS.length) return;
   const novoStatus = ORDEM_STATUS[novoIdx];
-  atualizarStatus(parseInt(card.dataset.id), novoStatus, card);
-  showToastAdmin(`Status atualizado para ${STATUS_LABEL[novoStatus]}`);
+  const statusEsperado = card.dataset.status;
+  atualizarStatus(parseInt(card.dataset.id), novoStatus, card, statusEsperado).then(ok => {
+    // Só comemora se a escrita realmente vingou — em caso de corrida,
+    // atualizarStatus() já mostrou o toast explicando o que aconteceu.
+    if (ok) showToastAdmin(`Status atualizado para ${STATUS_LABEL[novoStatus]}`);
+  });
 });
 
 async function baixarEstoquePedido(pedidoId){
