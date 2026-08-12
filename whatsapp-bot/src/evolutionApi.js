@@ -30,6 +30,32 @@ export async function enviarTexto(number, text) {
 }
 
 /**
+ * Mostra (ou não, se a chamada falhar) o indicador de "digitando..." pro
+ * número, por `delayMs` milissegundos — usado pra simular tempo de digitação
+ * humana antes de mandar cada mensagem (ver respostaHumanizada.js). É
+ * "melhor esforço": se o endpoint não existir nessa versão da Evolution API
+ * ou a chamada falhar por qualquer motivo, só loga e segue — a mensagem em
+ * si (via enviarTexto) precisa sair de qualquer jeito, com ou sem indicador.
+ * @param {string} number
+ * @param {number} delayMs
+ * @param {'composing'|'paused'} presence
+ */
+export async function enviarPresenca(number, delayMs, presence = 'composing') {
+  try {
+    const r = await fetch(evolutionUrl('/chat/sendPresence'), {
+      method: 'POST',
+      headers: evolutionHeaders(),
+      body: JSON.stringify({ number, delay: delayMs, presence }),
+    });
+    if (!r.ok) {
+      console.error('[evolutionApi] sendPresence respondeu', r.status, await r.text().catch(() => ''));
+    }
+  } catch (err) {
+    console.error('[evolutionApi] falha ao enviar indicador de presença:', err.message);
+  }
+}
+
+/**
  * Baixa o base64 de uma mensagem de mídia (áudio/imagem) a partir do ID da
  * mensagem — usado como fallback quando o webhook não vem com o campo
  * `base64` já embutido (depende da opção "webhook_base64" da instância,

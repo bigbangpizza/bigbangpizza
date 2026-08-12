@@ -4,7 +4,8 @@ import { config } from './config.js';
 import { buildSystemPrompt } from './systemPrompt.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
-import { enviarTexto, baixarMediaBase64 } from './evolutionApi.js';
+import { baixarMediaBase64 } from './evolutionApi.js';
+import { enviarRespostaHumanizada } from './respostaHumanizada.js';
 import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
 import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
@@ -85,7 +86,7 @@ async function processarWebhook(body) {
     userContent = await extrairConteudoMensagem(mensagem, data.key?.id);
   } catch (err) {
     console.error('[webhook] erro ao extrair conteúdo da mensagem:', err);
-    await enviarTexto(
+    await enviarRespostaHumanizada(
       numero,
       'Desculpa, não consegui processar essa mensagem 😕 pode tentar de novo ou digitar sua dúvida em texto?'
     );
@@ -116,7 +117,7 @@ async function processarWebhook(body) {
   aplicarLimiteHistorico(historico);
   await persistirHistorico(numero, historico);
 
-  await enviarTexto(numero, textoResposta);
+  await enviarRespostaHumanizada(numero, textoResposta);
 }
 
 /** Converte a mensagem recebida da Evolution API em content blocks pra Claude. */
