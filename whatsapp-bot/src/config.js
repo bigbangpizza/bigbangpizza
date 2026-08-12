@@ -60,6 +60,10 @@ export const config = {
   // Configure a mesma URL (com o secret) como webhook na Evolution API.
   webhookSecret: process.env.WEBHOOK_SECRET || '',
 
+  // Mesma ideia do webhookSecret acima, mas pro endpoint /alerta-uptime
+  // (monitoramento externo, ex: UptimeRobot) — ver src/uptimeAlert.js.
+  uptimeWebhookSecret: process.env.UPTIME_WEBHOOK_SECRET || '',
+
   // Quantas mensagens (pares usuário/assistente) manter por contato, pra dar
   // contexto de conversa. Vale tanto pro histórico em Redis quanto pro
   // fallback em memória (ver historicoRedis.js).

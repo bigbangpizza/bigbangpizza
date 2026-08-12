@@ -250,7 +250,7 @@ rotinas abaixo, são as únicas partes do projeto que usam essa chave
 privilegiada; todo o resto (webhook, pedidos) usa a chave pública, de
 propósito, pra manter o blast radius pequeno.
 
-## Alertas em tempo real para o Gabriel (pedido atrasado / avaliação ruim)
+## Alertas em tempo real para o Gabriel (pedido atrasado / avaliação ruim / bot fora do ar)
 
 Duas rotinas periódicas — mesma infra de `node-cron`, mesmo motivo de
 escolha (o projeto inteiro já é construído em cima de polling: o site
@@ -269,17 +269,67 @@ pra trocar "a cada alguns minutos" por "instantâneo" — não compensa aqui):
   `avaliacoes.alerta_enviado = true` depois de avisar.
 
 O número que recebe os dois alertas (e o de "Cartão via link Ton", ver
-diagrama acima) e o limite de minutos de `delayedOrdersJob.js` são lidos da
-aba **Configurações do Bot** do admin.html a cada execução, com fallback
-pras variáveis de ambiente `GABRIEL_WHATSAPP_NUMBER` / `PEDIDO_ATRASO_MINUTOS`
-enquanto os campos não são preenchidos por lá (ver "Configurações do Bot"
-abaixo).
+diagrama acima, e o de bot fora do ar, ver abaixo) e o limite de minutos de
+`delayedOrdersJob.js` são lidos da aba **Configurações do Bot** do
+admin.html a cada execução, com fallback pras variáveis de ambiente
+`GABRIEL_WHATSAPP_NUMBER` / `PEDIDO_ATRASO_MINUTOS` enquanto os campos não
+são preenchidos por lá (ver "Configurações do Bot" abaixo).
 
 Como as duas rotinas usam a service_role key (única forma de ler `pedidos`
 fora do checkout público, e de marcar `avaliacoes` como já avisada — essa
 tabela tem leitura pública mas não permite UPDATE anônimo), elas seguem a
 mesma regra das outras: sem `SUPABASE_SERVICE_ROLE_KEY`, os crons não são
 agendados e o resto do bot continua normal.
+
+### Monitoramento externo (UptimeRobot)
+
+`POST /alerta-uptime` recebe o webhook de um serviço de monitoramento
+externo (UptimeRobot, mas qualquer um que poste JSON serve) e repassa como
+alerta de WhatsApp pro Gabriel — `src/uptimeAlert.js` faz a conversão.
+
+Diferente do `/webhook` da Evolution API, o UptimeRobot não tem um formato
+de payload fixo: o corpo é o template JSON que você mesmo configura no
+painel deles. Passo a passo:
+
+1. No UptimeRobot, crie um **Alert Contact** do tipo **Web-Hook**.
+2. URL: `https://seu-bot.exemplo.com/alerta-uptime?secret=SEU_UPTIME_WEBHOOK_SECRET`
+   (mesmo `UPTIME_WEBHOOK_SECRET` do `.env` — sem ele ou com o valor errado,
+   o endpoint responde `401`, igual ao `/webhook` principal).
+3. Método: `POST`, e ligue a opção **"Send as JSON"**.
+4. Em **"POST value"** (ou "Custom HTTP Headers/Body", dependendo da versão
+   do painel), cole exatamente isto — os textos entre `*asteriscos*` são
+   variáveis que o próprio UptimeRobot substitui na hora do envio:
+
+   ```json
+   {
+     "alertTypeFriendlyName": "*alertTypeFriendlyName*",
+     "alertType": "*alertType*",
+     "alertDetails": "*alertDetails*",
+     "alertDateTime": "*alertDateTime*"
+   }
+   ```
+
+5. Associe esse Alert Contact ao monitor que aponta pro `/health` do bot
+   (ver "Como funciona" acima).
+
+`alertType` vem `1` quando o monitor cai e `2` quando volta ("Down"/"Up" em
+`alertTypeFriendlyName`) — `uptimeAlert.js` confere os dois campos, não só
+um, pra não depender de um formato específico. Mensagens enviadas:
+
+- **Caiu**: "🔴 Alerta: Big Bang Pizza WhatsApp Bot está fora do ar.
+  Verifique o Railway." — com `Detalhe:` e `Horário:` (convertido pro
+  fuso de Lauro de Freitas) anexados quando o UptimeRobot manda essas
+  informações.
+- **Voltou**: "🟢 Big Bang Pizza WhatsApp Bot voltou ao normal." — mesmo
+  formato de detalhe/horário.
+
+O número que recebe é resolvido do mesmo jeito que os outros alertas (aba
+**Configurações do Bot** do admin.html, com fallback pro
+`GABRIEL_WHATSAPP_NUMBER`) — mas, diferente das rotinas agendadas, isso
+**não trava** se o Supabase estiver fora do ar ou a service_role key não
+estiver configurada: um alerta de "o bot caiu" não pode depender de mais
+nenhum outro serviço estar de pé pra sair. Se a consulta no Supabase falhar
+por qualquer motivo, cai direto pro valor do `.env` e envia mesmo assim.
 
 ## Recuperação de carrinho abandonado
 

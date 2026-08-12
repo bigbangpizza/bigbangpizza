@@ -15,6 +15,7 @@ import { verificarAvaliacoesRuins } from './badReviewsJob.js';
 import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
+import { processarAlertaUptime } from './uptimeAlert.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -65,6 +66,20 @@ app.post('/webhook', (req, res) => {
 
   processarWebhook(req.body).catch((err) => {
     console.error('[webhook] erro ao processar mensagem:', err);
+  });
+});
+
+// Webhook de monitoramento externo (ex: UptimeRobot) — repassa como alerta
+// de WhatsApp pro Gabriel. Ver src/uptimeAlert.js pro template JSON exato
+// que precisa ser configurado no painel do serviço de monitoramento.
+app.post('/alerta-uptime', (req, res) => {
+  if (config.uptimeWebhookSecret && req.query.secret !== config.uptimeWebhookSecret) {
+    return res.sendStatus(401);
+  }
+  res.sendStatus(200);
+
+  processarAlertaUptime(req.body).catch((err) => {
+    console.error('[alerta-uptime] erro inesperado ao processar:', err);
   });
 });
 
