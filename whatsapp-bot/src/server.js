@@ -69,6 +69,70 @@ app.post('/webhook', (req, res) => {
   });
 });
 
+// ── Fila por número (evita respostas simultâneas/sobrepostas) ─────────────
+// Antes, cada mensagem recebida disparava na hora um processarLote()
+// independente. Quando o cliente mandava várias mensagens em sequência
+// rápida (comum em WhatsApp — 2, 3 balões seguidos pra completar um
+// pensamento), isso rodava múltiplas chamadas à Claude e ao envio
+// humanizado (enviarRespostaHumanizada, que já leva vários segundos por
+// causa do delay de "digitando...") em paralelo pro mesmo número:
+// respostas saíam fora de ordem/sobrepostas, e havia até risco de uma
+// mensagem se perder do histórico (duas chamadas concorrentes liam o
+// histórico antes de qualquer uma delas persistir a sua).
+//
+// A correção agrupa (debounce) em vez de só travar: mensagens do mesmo
+// número são acumuladas e só processadas juntas, como um único turno,
+// depois de ~4s sem nenhuma mensagem nova. Isso resolve o problema
+// relatado (várias mensagens rápidas geravam respostas separadas e
+// sobrepostas) E melhora a conversa — 3 balões digitados em sequência
+// viram 1 chamada à Claude com o pensamento completo, em vez de 3
+// respostas parciais e possivelmente contraditórias. Se uma mensagem nova
+// chegar enquanto o lote anterior ainda está sendo processado, ela entra
+// na fila do próximo lote (nunca dispara processamento em paralelo).
+const JANELA_DEBOUNCE_MS = 4000;
+const filasPorNumero = new Map(); // numero -> { buffer, nomeContato, timer, processando }
+
+function filaDe(numero) {
+  let fila = filasPorNumero.get(numero);
+  if (!fila) {
+    fila = { buffer: [], nomeContato: '', timer: null, processando: false };
+    filasPorNumero.set(numero, fila);
+  }
+  return fila;
+}
+
+function enfileirarMensagem(numero, nomeContato, blocos) {
+  const fila = filaDe(numero);
+  fila.buffer.push(...blocos);
+  if (nomeContato) fila.nomeContato = nomeContato;
+  if (fila.timer) clearTimeout(fila.timer);
+  fila.timer = setTimeout(() => processarFila(numero), JANELA_DEBOUNCE_MS);
+}
+
+async function processarFila(numero) {
+  const fila = filaDe(numero);
+  fila.timer = null;
+  // "processando" só pode estar true aqui se um lote anterior ainda não
+  // terminou — nesse caso não faz nada agora; o próprio processarFila,
+  // no finally logo abaixo, reagenda um novo ciclo assim que esse lote
+  // acabar e sobrar algo no buffer, então essa mensagem não fica presa.
+  if (fila.processando || !fila.buffer.length) return;
+
+  fila.processando = true;
+  const blocos = fila.buffer.splice(0, fila.buffer.length);
+  const nomeContato = fila.nomeContato;
+  try {
+    await processarLote(numero, nomeContato, blocos);
+  } catch (err) {
+    console.error(`[webhook] numero=${numero} erro ao processar lote de mensagens:`, err);
+  } finally {
+    fila.processando = false;
+    if (fila.buffer.length) {
+      fila.timer = setTimeout(() => processarFila(numero), JANELA_DEBOUNCE_MS);
+    }
+  }
+}
+
 // Webhook de monitoramento externo (ex: UptimeRobot) — repassa como alerta
 // de WhatsApp pro Gabriel. Ver src/uptimeAlert.js pro template JSON exato
 // que precisa ser configurado no painel do serviço de monitoramento.
@@ -110,6 +174,16 @@ async function processarWebhook(body) {
 
   if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
 
+  enfileirarMensagem(numero, nomeContato, userContent);
+}
+
+/**
+ * Processa um lote de content blocks (uma ou mais mensagens do cliente
+ * acumuladas pela fila acima) como um único turno de conversa: chama a
+ * Claude, executa as tools necessárias e envia a resposta humanizada.
+ * Nunca roda duas vezes em paralelo pro mesmo número — ver fila acima.
+ */
+async function processarLote(numero, nomeContato, userContent) {
   const historico = await carregarHistorico(numero);
   historico.push({ role: 'user', content: userContent });
   aplicarLimiteHistorico(historico);

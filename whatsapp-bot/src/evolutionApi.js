@@ -6,7 +6,11 @@ function evolutionUrl(path) {
 
 function evolutionHeaders() {
   return {
-    'content-type': 'application/json',
+    // Charset explícito por segurança — o corpo em si (JSON.stringify de uma
+    // string JS) já sai em UTF-8 pelo fetch do Node, mas declarar o charset
+    // evita qualquer ambiguidade do lado de quem recebe (Evolution API ou um
+    // proxy no meio do caminho) sobre como decodificar emoji/acentos.
+    'content-type': 'application/json; charset=utf-8',
     apikey: config.evolution.apiKey,
   };
 }
