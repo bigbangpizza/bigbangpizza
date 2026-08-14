@@ -66,6 +66,34 @@ export async function getMenuData({ forceRefresh = false } = {}) {
 }
 
 /**
+ * Valida um código de cupom contra a tabela `cupons` — mesmas regras do
+ * `aplicarCupom()` do checkout do site (index.html): existe (busca
+ * case-insensitive), está ativo, não passou da validade e ainda não
+ * esgotou os usos. Mantida aqui como fonte única pro bot, já que o site
+ * roda em outro runtime (browser) e não dá pra importar o JS dele direto.
+ * @returns {Promise<{valido:true, codigo:string, tipo:string, desconto:number} | {valido:false, motivo:string}>}
+ */
+export async function validarCupom(codigo) {
+  const busca = (codigo || '').trim();
+  if (!busca) return { valido: false, motivo: 'Nenhum código de cupom foi informado.' };
+
+  const rows = await fetchTable('cupons', `codigo=ilike.${encodeURIComponent(busca)}`);
+  const cupom = rows?.[0];
+  if (!cupom) return { valido: false, motivo: `O cupom "${busca}" não existe.` };
+  if (!cupom.ativo) return { valido: false, motivo: `O cupom "${cupom.codigo}" não está mais ativo.` };
+
+  const hoje = new Date().toISOString().split('T')[0];
+  if (cupom.validade && cupom.validade < hoje) {
+    return { valido: false, motivo: `O cupom "${cupom.codigo}" já expirou.` };
+  }
+  if (cupom.usos_max != null && (cupom.usos_atuais || 0) >= cupom.usos_max) {
+    return { valido: false, motivo: `O cupom "${cupom.codigo}" já atingiu o limite de usos.` };
+  }
+
+  return { valido: true, codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
+}
+
+/**
  * Insere um pedido na tabela `pedidos` — mesma estrutura usada pelo
  * checkout do site (index.html), então o pedido aparece no kanban do
  * admin normalmente. Usa a chave pública (anon), igual ao site.

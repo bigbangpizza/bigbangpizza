@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { getMenuData, inserirPedido } from './supabaseData.js';
+import { getMenuData, inserirPedido, validarCupom } from './supabaseData.js';
 import { enviarTexto } from './evolutionApi.js';
 
 /**
@@ -34,6 +34,14 @@ export const CRIAR_PEDIDO_TOOL = {
           '"presencial" = dinheiro/cartão na entrega; "pix" = pagamento via Pix; "cartao_link" = link de pagamento (Ton) enviado depois.',
       },
       observacao_geral: { type: 'string', description: 'Alguma observação geral do pedido (ex: sem cebola, campainha quebrada).' },
+      cupom: {
+        type: 'string',
+        description:
+          'Código do cupom de desconto, apenas se o cliente mencionar um explicitamente (ex: "BIGBANG10"). O sistema ' +
+          'valida se existe, está ativo e ainda tem uso disponível. Se for inválido, o pedido é registrado normalmente ' +
+          'sem desconto e a resposta vem com um aviso pra você repassar ao cliente — nunca deixe de fechar o pedido ' +
+          'por causa de um cupom inválido. Omita este campo se o cliente não mencionar nenhum cupom.',
+      },
       itens: {
         type: 'array',
         minItems: 1,
@@ -250,8 +258,28 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
 
     const subtotal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
     const frete = Number(bairroEncontrado.frete) || 0;
-    const total = +(subtotal + frete).toFixed(2);
     const itensTexto = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
+
+    // Cupom é opcional e nunca trava o fechamento do pedido: se o código
+    // vier inválido/expirado/esgotado, o pedido segue sem desconto e o
+    // motivo vai em "aviso_cupom" pra Claude repassar ao cliente com
+    // simpatia (ver instrução da tool acima e o system prompt).
+    let cupomAplicado = null;
+    let avisoCupom = null;
+    if (input.cupom) {
+      const resultado = await validarCupom(input.cupom);
+      if (resultado.valido) {
+        cupomAplicado = resultado;
+      } else {
+        avisoCupom = resultado.motivo;
+      }
+    }
+    const desconto = cupomAplicado
+      ? cupomAplicado.tipo === 'fixo'
+        ? Math.min(cupomAplicado.desconto, subtotal)
+        : +(subtotal * (cupomAplicado.desconto / 100)).toFixed(2)
+      : 0;
+    const total = +(subtotal - desconto + frete).toFixed(2);
 
     const pedido = {
       nome: nomeContato || 'Cliente WhatsApp',
@@ -262,7 +290,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       whatsapp: numero,
       observacao: input.observacao_geral || null,
       status: 'aguardando',
-      cupom: null,
+      cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: itensTexto,
       itens_json: itensProcessados.map(({ tipo, tamanho, sabores, precoUnitario, qty, obs }) => ({
         tipo,
@@ -273,7 +301,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
         obs,
       })),
       subtotal,
-      desconto: 0,
+      desconto,
       frete,
       total,
     };
@@ -303,6 +331,8 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       link_rastreio: rastreioToken ? `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}` : null,
       itens: itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`),
       subtotal,
+      cupom_aplicado: cupomAplicado ? { codigo: cupomAplicado.codigo, desconto } : null,
+      aviso_cupom: avisoCupom,
       frete,
       total,
       bairro: bairroEncontrado.nome,
