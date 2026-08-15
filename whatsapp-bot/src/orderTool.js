@@ -12,20 +12,29 @@ export const CRIAR_PEDIDO_TOOL = {
   name: 'criar_pedido',
   description:
     'Registra o pedido do cliente no sistema depois que TODAS as informações necessárias já foram ' +
-    'confirmadas na conversa: itens (com tamanho/sabores quando aplicável), endereço completo, bairro ' +
-    'e forma de pagamento. Só chame esta função depois que o cliente confirmar explicitamente que quer ' +
-    'fechar o pedido com esses dados — nunca antes disso. Os preços não precisam ser calculados por ' +
-    'você: o sistema recalcula os valores oficiais a partir do cardápio real e retorna o resultado. Se ' +
-    'a resposta desta função vier com "erro", NÃO tente de novo sozinho — explique o problema ao ' +
-    'cliente com as próprias palavras do erro e aguarde ele corrigir.',
+    'confirmadas na conversa: itens (com tamanho/sabores quando aplicável), endereço completo + bairro ' +
+    '(ou "retirada" se o cliente pediu pra retirar no local) e forma de pagamento. Só chame esta função ' +
+    'depois que o cliente confirmar explicitamente que quer fechar o pedido com esses dados — nunca ' +
+    'antes disso. Os preços não precisam ser calculados por você: o sistema recalcula os valores ' +
+    'oficiais a partir do cardápio real e retorna o resultado. Se a resposta desta função vier com ' +
+    '"erro", NÃO tente de novo sozinho — explique o problema ao cliente com as próprias palavras do ' +
+    'erro e aguarde ele corrigir.',
   input_schema: {
     type: 'object',
     properties: {
-      endereco: { type: 'string', description: 'Rua e número informados pelo cliente.' },
+      retirada: {
+        type: 'boolean',
+        description:
+          'true SOMENTE se o cliente pediu explicitamente pra retirar o pedido no local, em vez de receber em casa. ' +
+          'Nunca ofereça ou sugira essa opção por conta própria — o padrão é sempre entrega; só marque true se o ' +
+          'próprio cliente pedir retirada. Quando true, "endereco" e "bairro" ficam dispensados.',
+      },
+      endereco: { type: 'string', description: 'Rua e número informados pelo cliente. Dispensado se "retirada" for true.' },
       complemento: { type: 'string', description: 'Complemento do endereço (apto, ponto de referência), se houver.' },
       bairro: {
         type: 'string',
-        description: 'Nome do bairro exatamente como o cliente disse — o sistema valida contra a lista real de bairros atendidos.',
+        description:
+          'Nome do bairro exatamente como o cliente disse — o sistema valida contra a lista real de bairros atendidos. Dispensado se "retirada" for true.',
       },
       forma_pagamento: {
         type: 'string',
@@ -69,7 +78,7 @@ export const CRIAR_PEDIDO_TOOL = {
         },
       },
     },
-    required: ['endereco', 'bairro', 'forma_pagamento', 'itens'],
+    required: ['forma_pagamento', 'itens'],
   },
 };
 
@@ -104,6 +113,11 @@ function catalogoPorTipo(menuData, tipo) {
 export function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
+
+// Endereço físico da loja — usado só quando o cliente pede retirada no
+// local (campo "retirada" da tool). Mesmo endereço já publicado no
+// schema.org do site (index.html) — atualize os dois juntos se a loja mudar.
+export const ENDERECO_LOJA = 'Rua Nilton Calmon, 96 - Centro, Lauro de Freitas - BA';
 
 export const PAGAMENTO_TEXTO = {
   presencial: 'Presencial (dinheiro/cartão na entrega)',
@@ -237,14 +251,21 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
 
     const { itensProcessados, erros } = processarItens(input.itens, menuData);
 
-    const bairroEncontrado = buscarPorNome(menuData.bairros, 'nome', input.bairro);
-    if (!bairroEncontrado) {
-      const listaBairros = menuData.bairros.map((b) => b.nome).join(', ');
-      erros.push(`O bairro "${input.bairro}" não está na nossa área de entrega. Bairros atendidos: ${listaBairros}.`);
-    }
-
-    if (!input.endereco || !input.endereco.trim()) {
-      erros.push('O endereço (rua e número) não foi informado.');
+    // Retirada no local: dispensa bairro/endereço (não há entrega). Ver
+    // regra no system prompt — a IA só deve marcar isso se o cliente pedir
+    // explicitamente, nunca por sugestão própria.
+    let bairroEncontrado;
+    if (input.retirada) {
+      bairroEncontrado = { nome: 'Retirada no local', frete: 0 };
+    } else {
+      bairroEncontrado = buscarPorNome(menuData.bairros, 'nome', input.bairro);
+      if (!bairroEncontrado) {
+        const listaBairros = menuData.bairros.map((b) => b.nome).join(', ');
+        erros.push(`O bairro "${input.bairro}" não está na nossa área de entrega. Bairros atendidos: ${listaBairros}.`);
+      }
+      if (!input.endereco || !input.endereco.trim()) {
+        erros.push('O endereço (rua e número) não foi informado.');
+      }
     }
 
     const pagamentoTexto = PAGAMENTO_TEXTO[input.forma_pagamento];
@@ -283,7 +304,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
 
     const pedido = {
       nome: nomeContato || 'Cliente WhatsApp',
-      endereco: input.endereco.trim(),
+      endereco: input.retirada ? ENDERECO_LOJA : input.endereco.trim(),
       bairro: bairroEncontrado.nome,
       complemento: input.complemento || null,
       pagamento: pagamentoTexto,
@@ -336,6 +357,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       frete,
       total,
       bairro: bairroEncontrado.nome,
+      endereco: pedido.endereco,
       forma_pagamento: pagamentoTexto,
       tempo_estimado: '35 a 60 minutos',
     };
