@@ -681,6 +681,17 @@ input:checked+.sl::before{transform:translateX(20px);}
         <p style="color:var(--text-faint);font-size:12px;margin:-4px 0 14px;">⚠️ Esse código só funciona de verdade se existir um cupom ativo com o mesmo código na aba <strong>Cupons</strong> — atualize os dois juntos.</p>
         <button class="btn-new" onclick="salvarBotReativacao()">💾 Salvar Reativação</button>
       </div>
+
+      <!-- SEÇÃO 4: BORDA RECHEADA -->
+      <div class="tw" style="padding:20px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🧀 Borda recheada</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Preço adicional da borda no site (Catupiry/Cheddar nas salgadas, Chocolate nas doces). Ainda não disponível pelo bot do WhatsApp.</p>
+        <div class="fr">
+          <div class="fg"><label>Borda salgada — Catupiry/Cheddar (R$)</label><input type="number" id="bot-borda-preco-salgada" min="0" step="0.01" placeholder="12.00"></div>
+          <div class="fg"><label>Borda doce — Chocolate (R$)</label><input type="number" id="bot-borda-preco-doce" min="0" step="0.01" placeholder="12.00"></div>
+        </div>
+        <button class="btn-new" onclick="salvarBotBorda()">💾 Salvar Borda</button>
+      </div>
     </div>
 
     <div id="pg-automacao" class="hidden">
@@ -2673,6 +2684,9 @@ async function loadConfigBot(){
   document.getElementById('bot-reativacao-hora').value = cfg.reativacao_hora || '15';
   document.getElementById('bot-cupom-codigo').value = cfg.reativacao_cupom_codigo || 'VOLTEI10';
   document.getElementById('bot-cupom-percentual').value = cfg.reativacao_cupom_percentual || 10;
+
+  document.getElementById('bot-borda-preco-salgada').value = cfg.borda_preco_salgada || 12;
+  document.getElementById('bot-borda-preco-doce').value = cfg.borda_preco_doce || 12;
 }
 
 function renderBotDias(){
@@ -2722,6 +2736,17 @@ async function salvarBotReativacao(){
     reativacao_cupom_percentual: percentual,
   });
   showToastAdmin(ok ? '✅ Reativação automática atualizada!' : '⚠️ Erro ao salvar.');
+}
+
+async function salvarBotBorda(){
+  const salgada = parseFloat(document.getElementById('bot-borda-preco-salgada').value);
+  const doce = parseFloat(document.getElementById('bot-borda-preco-doce').value);
+  if (!(salgada >= 0) || !(doce >= 0)) { alert('Informe preços válidos (0 ou mais) para as duas bordas!'); return; }
+  const ok = await salvarConfigs({
+    borda_preco_salgada: salgada,
+    borda_preco_doce: doce,
+  });
+  showToastAdmin(ok ? '✅ Preço da borda atualizado!' : '⚠️ Erro ao salvar.');
 }
 
 // ═══════════════════════════════════════════════════════

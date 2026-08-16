@@ -710,6 +710,10 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
       <div class="modal-label">2ª Metade</div><select id="meio2" onchange="onMeioChange()"></select>
       <div class="modal-aviso" id="modal-aviso-igual" style="display:none;">⚠️ Sabores iguais — use a aba "1 Sabor"</div>
     </div>
+    <div id="painel-borda">
+      <div class="modal-label">Borda recheada</div>
+      <div class="sabor-grid" id="borda-grid" style="margin-bottom:15px;"></div>
+    </div>
     <div class="modal-resumo" id="modal-resumo"></div>
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal()">Cancelar</button>
@@ -724,6 +728,14 @@ const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
 let modalState = null;
 let WPP_NUMBER = '5571993738823';
+// Preço da borda recheada — configurável via admin (Configurações do Bot),
+// tabela `configuracoes`, chaves borda_preco_salgada/borda_preco_doce.
+// Valores abaixo são só o fallback até aplicarConfigsVisuais() carregar.
+let bordaPrecoSalgada = 12, bordaPrecoDoce = 12;
+const OPCOES_BORDA = {
+  pizza_salgada: [{ id: 'catupiry', nome: 'Catupiry' }, { id: 'cheddar', nome: 'Cheddar' }],
+  pizza_doce: [{ id: 'chocolate', nome: 'Chocolate' }],
+};
 function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
 function novoId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2); }
 // Precisa ser um UUID de verdade (a coluna pedidos.rastreio_token é uuid no
@@ -1015,7 +1027,7 @@ async function loadDoces() {
         <div class="pizza-size">Tamanho: 25cm</div>
         <div class="pizza-bottom">
           <span class="pizza-price">R$ ${p.preco.toFixed(2).replace('.',',')}</span>
-          <button class="btn-add" onclick="addItem('Doce ${p.nome}',${p.preco})">🍕 Pedir Agora</button>
+          <button class="btn-add" onclick="abrirModalSabor(null,${p.id})">🍕 Pedir Agora</button>
         </div>
       </div>
     </div>`).join('');
@@ -1168,6 +1180,9 @@ async function aplicarConfigsVisuais() {
   if (cfg.subtitulo_salgadas) document.getElementById('subtitulo-salgadas').textContent = cfg.subtitulo_salgadas;
   if (cfg.subtitulo_doces) document.getElementById('subtitulo-doces').textContent = cfg.subtitulo_doces;
 
+  if (cfg.borda_preco_salgada != null && cfg.borda_preco_salgada !== '') bordaPrecoSalgada = parseFloat(cfg.borda_preco_salgada);
+  if (cfg.borda_preco_doce != null && cfg.borda_preco_doce !== '') bordaPrecoDoce = parseFloat(cfg.borda_preco_doce);
+
   loadHeroPhoto(cfg.hero_foto || null);
 }
 aplicarConfigsVisuais();
@@ -1190,13 +1205,22 @@ function addItem(name, price, obs='') {
   fbq('track', 'AddToCart', {value: price, currency: 'BRL', content_name: name});
 }
 
-// MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio, sempre filtrado pelo tamanho escolhido)
+// MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio — e pizza doce —
+// sempre 1 sabor só, sem meio a meio — ambas com opção de borda recheada).
+// tamanho=null identifica pizza doce (doce não tem Grande/Família).
 function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
-  const campoPreco = tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
-  const sabores = salgadasCache
-    .filter(p => p[campoPreco] != null)
-    .map(p => ({ id: p.id, nome: p.nome, preco: p[campoPreco] }));
+  const tipoItem = tamanho ? 'pizza_salgada' : 'pizza_doce';
+  let sabores;
+  if (tipoItem === 'pizza_salgada') {
+    const campoPreco = tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
+    sabores = salgadasCache
+      .filter(p => p[campoPreco] != null)
+      .map(p => ({ id: p.id, nome: p.nome, preco: p[campoPreco] }));
+  } else {
+    sabores = docesCache.map(p => ({ id: p.id, nome: p.nome, preco: p.preco }));
+  }
 
+  const permiteMeio = tipoItem === 'pizza_salgada' && sabores.length >= 2;
   const modo = editItem ? (editItem.sabores.length === 2 ? 'meio' : 'unico') : 'unico';
   const sabor1 = editItem
     ? sabores.find(s => s.id === editItem.sabores[0].id) || null
@@ -1204,21 +1228,43 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
   const sabor2 = (editItem && editItem.sabores[1])
     ? sabores.find(s => s.id === editItem.sabores[1].id) || null
     : null;
+  const borda = editItem?.borda || null;
 
   if (!editItem && sabor1) {
-    gtag('event', 'view_item_detail', {item_name: sabor1.nome, tamanho: tamanho, price: sabor1.preco});
+    gtag('event', 'view_item_detail', {item_name: sabor1.nome, tamanho: tamanho||'', price: sabor1.preco});
   }
 
-  modalState = { tamanho, sabores, modo, sabor1, sabor2, editId: editItem ? editItem.id : null };
+  modalState = { tipoItem, tamanho, sabores, modo, sabor1, sabor2, borda, editId: editItem ? editItem.id : null };
 
-  document.getElementById('modal-titulo').textContent = `🍕 Pizza ${tamanho}`;
-  document.getElementById('tab-meio').style.display = sabores.length >= 2 ? '' : 'none';
+  document.getElementById('modal-titulo').textContent = tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
+  document.getElementById('tab-meio').style.display = permiteMeio ? '' : 'none';
   document.getElementById('modal-aviso-igual').style.display = 'none';
 
   renderPainelUnico();
   renderSelectsMeio();
-  setModoSabor(sabores.length >= 2 ? modo : 'unico');
+  renderBordaOpcoes();
+  setModoSabor(permiteMeio ? modo : 'unico');
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+function renderBordaOpcoes() {
+  const precoBorda = modalState.tipoItem === 'pizza_salgada' ? bordaPrecoSalgada : bordaPrecoDoce;
+  const opcoes = [{ id: null, nome: 'Sem borda', preco: 0 }, ...OPCOES_BORDA[modalState.tipoItem].map(o => ({ ...o, preco: precoBorda }))];
+  document.getElementById('borda-grid').innerHTML = opcoes.map(o => `
+    <button type="button" class="sabor-opt ${(modalState.borda?.id ?? null) === o.id ? 'active' : ''}" onclick="selecionarBorda(${o.id ? `'${o.id}'` : 'null'})">
+      ${o.nome} <span>${o.preco > 0 ? '+' + brl(o.preco) : ''}</span>
+    </button>`).join('');
+}
+
+function selecionarBorda(bordaId) {
+  if (!bordaId) { modalState.borda = null; }
+  else {
+    const precoBorda = modalState.tipoItem === 'pizza_salgada' ? bordaPrecoSalgada : bordaPrecoDoce;
+    const opcao = OPCOES_BORDA[modalState.tipoItem].find(o => o.id === bordaId);
+    modalState.borda = opcao ? { id: opcao.id, nome: opcao.nome, preco: precoBorda } : null;
+  }
+  renderBordaOpcoes();
+  atualizarResumo();
 }
 
 function setModoSabor(modo) {
@@ -1272,17 +1318,18 @@ function atualizarResumo() {
   const resumo = document.getElementById('modal-resumo');
   const aviso = document.getElementById('modal-aviso-igual');
   aviso.style.display = 'none';
+  const precoBorda = modalState.borda ? modalState.borda.preco : 0;
 
   if (modalState.modo === 'unico') {
     if (!modalState.sabor1) { btn.disabled = true; resumo.textContent = ''; return; }
     btn.disabled = false;
-    resumo.textContent = brl(modalState.sabor1.preco);
+    resumo.textContent = brl(modalState.sabor1.preco + precoBorda);
   } else {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
     if (!s1 || !s2) { btn.disabled = true; resumo.textContent = ''; return; }
     if (s1.id === s2.id) { aviso.style.display = 'block'; btn.disabled = true; resumo.textContent = ''; return; }
     btn.disabled = false;
-    resumo.textContent = brl((s1.preco/2) + (s2.preco/2));
+    resumo.textContent = brl((s1.preco/2) + (s2.preco/2) + precoBorda);
   }
 }
 
@@ -1290,32 +1337,38 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 function confirmModalSabor() {
   if (!modalState) return;
+  const ehDoce = modalState.tipoItem === 'pizza_doce';
+  const tabela = ehDoce ? 'pizzas_doces' : 'pizzas_salgadas';
+  const categoria = ehDoce ? 'pizza_doce' : 'pizza_salgada';
+  const precoBorda = modalState.borda ? modalState.borda.preco : 0;
   let sabores, precoUnitario, nomeExibicao;
   if (modalState.modo === 'unico') {
     if (!modalState.sabor1) return;
     sabores = [modalState.sabor1];
-    precoUnitario = modalState.sabor1.preco;
-    nomeExibicao = `Pizza ${modalState.tamanho} — ${modalState.sabor1.nome}`;
+    precoUnitario = +(modalState.sabor1.preco + precoBorda).toFixed(2);
+    nomeExibicao = ehDoce ? `Doce ${modalState.sabor1.nome}` : `Pizza ${modalState.tamanho} — ${modalState.sabor1.nome}`;
   } else {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
     if (!s1 || !s2 || s1.id === s2.id) return;
     sabores = [s1, s2];
-    precoUnitario = +((s1.preco/2) + (s2.preco/2)).toFixed(2);
+    precoUnitario = +((s1.preco/2) + (s2.preco/2) + precoBorda).toFixed(2);
     nomeExibicao = `Pizza ${modalState.tamanho} — ½ ${s1.nome} + ½ ${s2.nome}`;
   }
+  if (modalState.borda) nomeExibicao += ` — Borda ${modalState.borda.nome}`;
+  const borda = modalState.borda;
 
   if (modalState.editId) {
     const idx = cart.findIndex(i => i.id === modalState.editId);
-    if (idx > -1) cart[idx] = { ...cart[idx], tamanho: modalState.tamanho, sabores, precoUnitario, nomeExibicao };
+    if (idx > -1) cart[idx] = { ...cart[idx], tamanho: modalState.tamanho, sabores, borda, precoUnitario, nomeExibicao };
   } else {
-    cart.push({ id: novoId(), tipo:'pizza', tabela:'pizzas_salgadas', tamanho: modalState.tamanho, sabores, precoUnitario, qty:1, obs:'', nomeExibicao });
+    cart.push({ id: novoId(), tipo:'pizza', tabela, tamanho: modalState.tamanho, sabores, borda, precoUnitario, qty:1, obs:'', nomeExibicao });
     gtag('event', 'add_to_cart', {
       currency: 'BRL',
       value: precoUnitario,
       items: [{
         item_name: nomeExibicao,
-        item_category: 'pizza_salgada',
-        item_variant: modalState.tamanho,
+        item_category: categoria,
+        item_variant: modalState.tamanho || undefined,
         price: precoUnitario,
         quantity: 1
       }]
@@ -1328,7 +1381,7 @@ function confirmModalSabor() {
 function editCartItem(id) {
   const item = cart.find(i => i.id === id);
   if (!item || item.tipo !== 'pizza') return;
-  abrirModalSabor(item.tamanho, null, item);
+  abrirModalSabor(item.tabela === 'pizzas_doces' ? null : item.tamanho, null, item);
 }
 
 function removeCartItem(id) {
@@ -1437,7 +1490,7 @@ async function registrarCarrinhoAbandonado() {
         telefone,
         nome: nome || null,
         itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
-        itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
+        itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
         total
       })
     });
@@ -1550,7 +1603,7 @@ async function finalizarPedido() {
       status: 'aguardando',
       cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
-      itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
+      itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
       subtotal: sub,
       desconto: desconto,
       frete: fr||0,
