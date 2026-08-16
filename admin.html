@@ -3436,16 +3436,38 @@ async function loadClientes() {
 // ═══════════════════════════════════════════════════════
 // CUPONS DE DESCONTO
 // ═══════════════════════════════════════════════════════
+// Conta usos reais de um cupom via RPC — mais confiável que usos_atuais
+// (só incrementa quando o pedido é marcado "entregue"). Mesma RPC usada
+// pelo checkout do site e pelo bot de WhatsApp (ver contar_usos_cupom no
+// Supabase). Não precisa de sessão de admin — a RPC já é liberada pra anon.
+async function contarUsosCupom(codigo, desde) {
+  const r = await fetch(`${SB}/rest/v1/rpc/contar_usos_cupom`, {
+    method: 'POST',
+    headers: { apikey: SK, Authorization: 'Bearer ' + SK, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_codigo: codigo, p_desde: desde || null })
+  });
+  return r.ok ? r.json() : null;
+}
+
 async function loadCupons() {
   const data = await api('cupons', '', 'created_at.desc');
   if (!data.length) {
     document.getElementById('t-cupons').innerHTML = '<div class="loading">Nenhum cupom criado ainda.</div>';
     return;
   }
+  // Cupons com contagem_desde (campanha relançada) mostram o uso real via
+  // RPC em vez do usos_atuais, que pode incluir uso anterior ao relançamento.
+  const usosReaisPorId = {};
+  await Promise.all(data.filter(c => c.contagem_desde).map(async c => {
+    const total = await contarUsosCupom(c.codigo, c.contagem_desde);
+    if (total != null) usosReaisPorId[c.id] = total;
+  }));
+
   const hoje = new Date().toISOString().split('T')[0];
   const rows = data.map(c => {
+    const usosAtuais = usosReaisPorId[c.id] != null ? usosReaisPorId[c.id] : (c.usos_atuais || 0);
     const expirado = c.validade && c.validade < hoje;
-    const esgotado = c.usos_max && c.usos_atuais >= c.usos_max;
+    const esgotado = c.usos_max && usosAtuais >= c.usos_max;
     let statusLabel = '';
     if (!c.ativo)      statusLabel = '<span class="boff">Inativo</span>';
     else if (expirado) statusLabel = '<span class="boff">Expirado</span>';
@@ -3453,11 +3475,14 @@ async function loadCupons() {
     else               statusLabel = '<span class="bon">Ativo</span>';
     const desconto = c.tipo === 'percentual' ? `${c.desconto}%` : brl(c.desconto);
     const validade = c.validade ? new Date(c.validade + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
-    const usos = c.usos_max ? `${c.usos_atuais || 0}/${c.usos_max}` : `${c.usos_atuais || 0} / ilimitado`;
+    const usos = c.usos_max ? `${usosAtuais}/${c.usos_max}` : `${usosAtuais} / ilimitado`;
+    const campanhaTag = c.contagem_desde
+      ? `<br><span style="font-size:10px;color:rgba(74,222,128,.7);">🔄 desde ${new Date(c.contagem_desde).toLocaleDateString('pt-BR')}</span>`
+      : '';
     return `<tr>
       <td data-label="Código"><strong style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--orange);">${c.codigo}</strong></td>
       <td data-label="Desconto"><strong>${desconto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${c.tipo === 'percentual' ? 'Percentual' : 'Valor fixo'}</span></td>
-      <td data-label="Usos" style="font-size:12px;">${usos}</td>
+      <td data-label="Usos" style="font-size:12px;">${usos}${campanhaTag}</td>
       <td data-label="Validade" style="font-size:12px;">${validade}</td>
       <td data-label="Status">${statusLabel}</td>
       <td data-label="Ações"><div class="acts">
@@ -3514,6 +3539,17 @@ async function openModCupom(id = null) {
         <label>Validade (deixe vazio = sem prazo)</label>
         <input id="cup-validade" type="date" value="${item.validade || ''}">
       </div>
+    </div>
+    <div class="fg">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+        <input type="checkbox" id="cup-reiniciar-contagem" style="width:auto;">
+        🔄 Reiniciar contagem de usos a partir de agora
+      </label>
+      <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;">
+        ${item.contagem_desde
+          ? `Contando usos desde ${new Date(item.contagem_desde).toLocaleString('pt-BR')}. Marque a caixa acima pra relançar como campanha nova (ex: "primeiros ${item.usos_max || 'N'} pedidos") sem herdar o uso já contado até aqui.`
+          : `Hoje conta o uso desde a criação do cupom. Marque a caixa acima pra começar a contar só a partir de agora (útil pra relançar como campanha "primeiros ${item.usos_max || 'N'} pedidos").`}
+      </div>
     </div>`;
   document.getElementById('modal').classList.add('open');
 }
@@ -3541,6 +3577,7 @@ async function saveCupom() {
   const tipo = document.getElementById('cup-tipo').value;
   const usosMax = document.getElementById('cup-usos-max').value;
   const validade = document.getElementById('cup-validade').value;
+  const reiniciarContagem = document.getElementById('cup-reiniciar-contagem').checked;
   const data = {
     codigo,
     desconto,
@@ -3549,6 +3586,10 @@ async function saveCupom() {
     usos_max: usosMax ? parseInt(usosMax) : null,
     validade: validade || null,
   };
+  // Só envia contagem_desde se o admin marcou a caixa — deixar de fora
+  // preserva o valor já salvo no cupom (novo cupom sem marcar = null,
+  // conta desde sempre, igual ao comportamento de antes desta funcionalidade).
+  if (reiniciarContagem) data.contagem_desde = new Date().toISOString();
   const ok = editId ? await upd('cupons', editId, data) : await ins('cupons', data);
   if (ok) { closeMod(); loadCupons(); showToastAdmin('✅ Cupom salvo!'); }
   else { alert('Erro ao salvar! Verifique se o código já existe.'); }

@@ -511,8 +511,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 <!-- BANNER CUPOM -->
 <div class="cupom-banner" id="cupom-banner">
-  <h3>🎉 OFERTA DE LANÇAMENTO — USE O CUPOM E GANHE 10% OFF!</h3>
-  <p>Válido para os primeiros 50 pedidos pelo site</p>
+  <h3>🎉 OFERTA DE LANÇAMENTO — 10% OFF com o cupom BIGBANG10!</h3>
   <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG10'})">BIGBANG10</div>
   <div class="cupom-restantes" id="cupom-restantes">Carregando vagas...</div>
 </div>
@@ -1791,22 +1790,44 @@ function filtrarPizzas(termo) {
 // CUPOM
 let cupomAplicado = null; // { codigo, tipo, desconto } vindo da tabela cupons, ou null
 
+// Conta os usos reais de um cupom via RPC (contar_usos_cupom) — mais
+// confiável que o campo usos_atuais, que só é incrementado quando um
+// pedido é marcado "entregue" no admin (fica atrasado em relação ao uso
+// real no checkout). p_desde=null conta o histórico inteiro.
+async function contarUsosCupom(codigo, desde) {
+  const r = await fetch(`${SB}/rest/v1/rpc/contar_usos_cupom`, {
+    method: 'POST',
+    headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
+    body: JSON.stringify({ p_codigo: codigo, p_desde: desde || null })
+  });
+  if (!r.ok) throw new Error('Falha ao contar usos do cupom: ' + r.status);
+  return await r.json();
+}
+
 async function loadCupomRestantes() {
   // Só esconde o banner se o BIGBANG10 (cupom em destaque) estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG10&select=usos_max,usos_atuais,ativo`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG10&select=usos_max,usos_atuais,ativo,contagem_desde`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
     const cupom = Array.isArray(data) ? data[0] : null;
     const banner = document.getElementById('cupom-banner');
     const el = document.getElementById('cupom-restantes');
-    if (!cupom || !cupom.ativo || (cupom.usos_max != null && (cupom.usos_atuais||0) >= cupom.usos_max)) {
+    if (!cupom || !cupom.ativo) {
       if (banner) banner.style.display = 'none';
       return;
     }
-    const restantes = cupom.usos_max != null ? cupom.usos_max - (cupom.usos_atuais||0) : null;
-    if (el) el.textContent = (restantes !== null && restantes <= 10) ? `⚡ Últimas ${restantes} vagas!` : '⚡ Válido para os primeiros 50 pedidos!';
+    // contagem_desde marca o início de uma campanha "primeiros N pedidos"
+    // relançada — conta em tempo real a partir dali em vez do usos_atuais
+    // (que pode incluir uso anterior ao relançamento, ou ficar atrasado).
+    const usosReais = cupom.contagem_desde ? await contarUsosCupom('BIGBANG10', cupom.contagem_desde) : (cupom.usos_atuais || 0);
+    if (cupom.usos_max != null && usosReais >= cupom.usos_max) {
+      if (banner) banner.style.display = 'none';
+      return;
+    }
+    const restantes = cupom.usos_max != null ? cupom.usos_max - usosReais : null;
+    if (el) el.textContent = restantes !== null ? `Restam ${restantes} de ${cupom.usos_max} vagas — corre antes que acabe!` : '⚡ Cupom de lançamento!';
   } catch(e) {
     const el = document.getElementById('cupom-restantes');
     if (el) el.textContent = '⚡ Válido para os primeiros 50 pedidos!';
@@ -1861,11 +1882,16 @@ async function aplicarCupom() {
       updateTotals();
       return;
     }
-    if (cupom.usos_max != null && (cupom.usos_atuais||0) >= cupom.usos_max) {
-      erro.textContent = '❌ Cupom esgotado! Todas as vagas foram utilizadas.';
-      erro.style.display = 'block';
-      updateTotals();
-      return;
+    if (cupom.usos_max != null) {
+      // contagem_desde (campanha relançada) usa contagem real via RPC;
+      // sem isso, cai no comportamento antigo (usos_atuais).
+      const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : (cupom.usos_atuais || 0);
+      if (usosReais >= cupom.usos_max) {
+        erro.textContent = '❌ Cupom esgotado! Todas as vagas foram utilizadas.';
+        erro.style.display = 'block';
+        updateTotals();
+        return;
+      }
     }
 
     cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };

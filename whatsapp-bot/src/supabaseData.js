@@ -66,6 +66,23 @@ export async function getMenuData({ forceRefresh = false } = {}) {
 }
 
 /**
+ * Conta usos reais de um cupom via RPC `contar_usos_cupom` — mais confiável
+ * que o campo `usos_atuais` (só incrementa quando o pedido é marcado
+ * "entregue" no admin). `desde` (opcional) limita a contagem a partir de
+ * uma data — usado por cupons com campanha relançada (ver `contagem_desde`
+ * na tabela `cupons`). Mesma RPC usada pelo checkout do site.
+ */
+async function contarUsosCupom(codigo, desde) {
+  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/contar_usos_cupom`, {
+    method: 'POST',
+    headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ p_codigo: codigo, p_desde: desde || null }),
+  });
+  if (!r.ok) throw new Error(`Falha ao contar usos do cupom (${r.status})`);
+  return r.json();
+}
+
+/**
  * Valida um código de cupom contra a tabela `cupons` — mesmas regras do
  * `aplicarCupom()` do checkout do site (index.html): existe (busca
  * case-insensitive), está ativo, não passou da validade e ainda não
@@ -86,8 +103,13 @@ export async function validarCupom(codigo) {
   if (cupom.validade && cupom.validade < hoje) {
     return { valido: false, motivo: `O cupom "${cupom.codigo}" já expirou.` };
   }
-  if (cupom.usos_max != null && (cupom.usos_atuais || 0) >= cupom.usos_max) {
-    return { valido: false, motivo: `O cupom "${cupom.codigo}" já atingiu o limite de usos.` };
+  if (cupom.usos_max != null) {
+    // contagem_desde (campanha relançada) usa contagem real via RPC; sem
+    // isso, cai no comportamento antigo (usos_atuais).
+    const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : cupom.usos_atuais || 0;
+    if (usosReais >= cupom.usos_max) {
+      return { valido: false, motivo: `O cupom "${cupom.codigo}" já atingiu o limite de usos.` };
+    }
   }
 
   return { valido: true, codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
