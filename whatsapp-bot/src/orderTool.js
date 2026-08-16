@@ -1,6 +1,8 @@
 import { config } from './config.js';
 import { getMenuData, inserirPedido, validarCupom } from './supabaseData.js';
 import { enviarTexto } from './evolutionApi.js';
+import { temServiceRoleConfigurada } from './supabaseAdmin.js';
+import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
 
 /**
  * Definição da tool `criar_pedido` no formato esperado pela Anthropic
@@ -18,7 +20,9 @@ export const CRIAR_PEDIDO_TOOL = {
     'antes disso. Os preços não precisam ser calculados por você: o sistema recalcula os valores ' +
     'oficiais a partir do cardápio real e retorna o resultado. Se a resposta desta função vier com ' +
     '"erro", NÃO tente de novo sozinho — explique o problema ao cliente com as próprias palavras do ' +
-    'erro e aguarde ele corrigir.',
+    'erro e aguarde ele corrigir. Se vier "duplicata: true" com "mensagem_para_cliente", o sistema já ' +
+    'detectou um pedido muito parecido feito há poucos minutos (proteção contra duplicidade) — repasse ' +
+    'essa mensagem ao cliente literalmente, sem reformular, e não chame a ferramenta de novo.',
   input_schema: {
     type: 'object',
     properties: {
@@ -280,6 +284,41 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
     const subtotal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
     const frete = Number(bairroEncontrado.frete) || 0;
     const itensTexto = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
+
+    // Rede de segurança contra pedido duplicado (ver PEDIDO_DUPLICADO_* em
+    // config.js e o aviso de contexto que buildSystemPrompt já injeta antes
+    // disso). Cenário que motivou essa checagem: cliente fecha o pedido
+    // pelo site e, em seguida, envia a mensagem pré-preenchida do WhatsApp
+    // (botão "Enviar pelo WhatsApp") — o bot recebia isso como um pedido
+    // novo e criava uma segunda linha idêntica. Comparação exata (mesmos
+    // itens + mesmo bairro/retirada) numa janela curta, não uma regra vaga
+    // — pedidos parecidos mas legitimamente diferentes (bairro ou itens
+    // diferentes) não são bloqueados aqui.
+    if (temServiceRoleConfigurada()) {
+      try {
+        const pedidoRecente = await buscarPedidoAbertoRecente(numero, config.pedidoDuplicadoBloqueioMinutos, 'itens,bairro');
+        const destinoBate = pedidoRecente
+          ? input.retirada
+            ? pedidoRecente.bairro === 'Retirada no local'
+            : pedidoRecente.bairro === bairroEncontrado.nome
+          : false;
+        if (pedidoRecente && destinoBate && pedidoRecente.itens === itensTexto) {
+          console.warn(
+            `[orderTool] possível pedido duplicado bloqueado: numero=${numero} pedido_existente=${pedidoRecente.id} itens="${itensTexto}"`
+          );
+          return {
+            erro: true,
+            duplicata: true,
+            pedido_existente_id: pedidoRecente.id,
+            mensagem_para_cliente:
+              `Já tenho um pedido seu bem parecido com esse, registrado há poucos minutos (pedido #${pedidoRecente.id}). ` +
+              'Pra não duplicar, não criei um novo agora — se for realmente um pedido diferente, me conta o que muda que eu ajusto! 🍕',
+          };
+        }
+      } catch (err) {
+        console.error('[orderTool] falha ao checar pedido duplicado (seguindo sem bloquear):', err);
+      }
+    }
 
     // Cupom é opcional e nunca trava o fechamento do pedido: se o código
     // vier inválido/expirado/esgotado, o pedido segue sem desconto e o

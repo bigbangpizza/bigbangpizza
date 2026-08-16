@@ -50,6 +50,21 @@ export const config = {
   // antes do abandonedCartJob.js mandar a mensagem de recuperação.
   abandonedCartMinutos: Number(process.env.ABANDONED_CART_MINUTOS || 25),
 
+  // Duas janelas usadas pra evitar pedido duplicado (ver orderTool.js e
+  // systemPrompt.js) — cenário típico: cliente fecha pedido pelo site e em
+  // seguida manda a mensagem pré-preenchida do WhatsApp, que o bot processa
+  // como se fosse um pedido novo.
+  //   - pedidoDuplicadoContextoMinutos: janela maior, usada só pra AVISAR a
+  //     Claude que o cliente já tem um pedido em aberto recente, deixando-a
+  //     decidir com bom senso se a mensagem atual é sobre esse pedido ou é
+  //     um pedido novo de verdade.
+  //   - pedidoDuplicadoBloqueioMinutos: janela menor e mais estrita, usada
+  //     como rede de segurança técnica logo antes do INSERT — só bloqueia
+  //     se o pedido novo tiver os MESMOS itens e bairro de um pedido aberto
+  //     recente (não é uma regra vaga, é comparação exata).
+  pedidoDuplicadoContextoMinutos: Number(process.env.PEDIDO_DUPLICADO_CONTEXTO_MINUTOS || 20),
+  pedidoDuplicadoBloqueioMinutos: Number(process.env.PEDIDO_DUPLICADO_BLOQUEIO_MINUTOS || 10),
+
   // Número (só dígitos, com DDI 55, ex: 5571999999999) que recebe o aviso
   // quando um pedido escolhe "Cartão via link (Ton)" — não é obrigatório pra
   // subir o servidor: sem ele, o bot ainda funciona normalmente, só não

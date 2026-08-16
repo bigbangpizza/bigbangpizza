@@ -39,6 +39,32 @@ export async function buscarPedidoRecenteDoCliente(numero, camposExtras = '') {
   return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
 }
 
+// Mesmos aliases legados tratados no kanban do admin (admin.html:
+// STATUS_LEGACY_ALIASES) — pedidos antigos podem ter ficado gravados com
+// "aceito"/"preparando" em vez do bucket unificado "aceito_preparando".
+const STATUS_EM_ABERTO = ['aguardando', 'aceito_preparando', 'aceito', 'preparando'];
+
+/**
+ * Busca o pedido EM ABERTO (aguardando/aceito_preparando) mais recente do
+ * cliente, criado dentro dos últimos `janelaMinutos` — usado só pela
+ * checagem de duplicidade em orderTool.js antes de criar um pedido novo
+ * (ver PEDIDO_DUPLICADO_* em config.js). Diferente de
+ * `buscarPedidoRecenteDoCliente` acima (janela em horas, sem filtro de
+ * status — feita pra cancelamento/edição, não pra detecção de duplicata).
+ */
+export async function buscarPedidoAbertoRecente(numero, janelaMinutos, camposExtras = '') {
+  const numeroNormalizado = normalizarWhatsapp(numero);
+  if (!numeroNormalizado) return null;
+
+  const select = camposExtras ? `${CAMPOS_BASE},${camposExtras}` : CAMPOS_BASE;
+  const limite = new Date(Date.now() - janelaMinutos * 60000).toISOString();
+  const pedidos = await selectComoAdmin(
+    'pedidos',
+    `select=${select}&whatsapp=not.is.null&status=in.(${STATUS_EM_ABERTO.join(',')})&created_at=gte.${limite}&order=created_at.desc`
+  );
+  return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
+}
+
 export function formatarTelefoneExibicao(numeroComDDI) {
   const digits = (numeroComDDI || '').replace(/\D/g, '');
   const semDDI = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;

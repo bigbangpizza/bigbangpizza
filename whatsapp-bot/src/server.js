@@ -192,7 +192,7 @@ async function processarLote(numero, nomeContato, userContent) {
   // de novo sem repetir o que já disse, e o contexto sobrevive mesmo assim).
   await persistirHistorico(numero, historico);
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(numero);
   const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),

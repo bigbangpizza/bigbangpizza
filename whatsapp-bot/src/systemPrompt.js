@@ -1,5 +1,8 @@
 import { getMenuData } from './supabaseData.js';
-import { getAgoraNoBrasil } from './dataUtils.js';
+import { getAgoraNoBrasil, minutosEntre, parseComoUTC } from './dataUtils.js';
+import { config } from './config.js';
+import { temServiceRoleConfigurada } from './supabaseAdmin.js';
+import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 
@@ -56,16 +59,43 @@ function formatarBairros(lista) {
 }
 
 /**
+ * Se o cliente já tem um pedido em aberto recente (aguardando/aceito_
+ * preparando, criado dentro de PEDIDO_DUPLICADO_CONTEXTO_MINUTOS), monta um
+ * bloco de aviso pro system prompt — dá contexto pra Claude decidir com bom
+ * senso se a mensagem atual é sobre ESSE pedido (não duplicar) ou é
+ * realmente um pedido novo (proceder normalmente). Cenário típico: cliente
+ * fecha pelo site e manda em seguida a mensagem pré-preenchida do WhatsApp
+ * (botão "Enviar pelo WhatsApp"), que sem esse aviso o bot tratava como um
+ * pedido novo — ver a checagem técnica complementar em orderTool.js, que
+ * bloqueia mesmo se a Claude não seguir esta instrução.
+ */
+async function montarBlocoPedidoRecente(numero) {
+  if (!numero || !temServiceRoleConfigurada()) return '';
+  let pedido;
+  try {
+    pedido = await buscarPedidoAbertoRecente(numero, config.pedidoDuplicadoContextoMinutos, 'itens,bairro,total');
+  } catch (err) {
+    console.error('[systemPrompt] falha ao checar pedido recente do cliente (seguindo sem o aviso):', err);
+    return '';
+  }
+  if (!pedido) return '';
+
+  const minAtras = minutosEntre(parseComoUTC(pedido.created_at), new Date());
+  return `\n## Pedido recente em aberto deste cliente\nEste cliente já tem um pedido em aberto, feito há ${minAtras} min: Pedido #${pedido.id} — ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)}. Pode ter sido feito pelo site (às vezes o cliente manda a mensagem de confirmação do WhatsApp logo em seguida, achando que precisa confirmar por aqui também).\nAntes de seguir com "Como fechar um pedido" abaixo:\n- Se a mensagem do cliente parecer ser sobre ESSE pedido (confirmação, dúvida, agradecimento, ou repete os mesmos itens/dados), NÃO chame \`criar_pedido\` de novo — responda sobre esse pedido existente e pergunte se é sobre ele.\n- Só chame \`criar_pedido\` normalmente se o cliente pedir claramente algo novo ou diferente (outros itens, ou disser explicitamente que é um pedido à parte).\n`;
+}
+
+/**
  * Monta o system prompt da Claude API a partir dos dados reais do Supabase —
  * cardápio, preços e bairros de entrega vêm sempre do banco, então quando
  * alguém atualiza o admin, o bot responde atualizado (respeitando o cache
  * de MENU_CACHE_TTL_SECONDS, ver supabaseData.js).
  */
-export async function buildSystemPrompt() {
+export async function buildSystemPrompt(numero) {
   const { salgadas, doces, combos, bebidas, bairros, configuracoes } = await getMenuData();
   const aberto = estaAbertoAgora(configuracoes.modo_loja || 'automatico');
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';
+  const blocoPedidoRecente = await montarBlocoPedidoRecente(numero);
 
   return `Você trabalha atendendo o WhatsApp da Big Bang Pizza, uma pizzaria artesanal delivery em Lauro de Freitas, Bahia. Você é uma pessoa de verdade conversando, não um assistente virtual — nunca se apresente como bot/IA, nunca abra uma conversa com frase de atendimento genérica tipo "Estou aqui para ajudar!" ou "Como posso te ajudar hoje?". Vá direto ao que a pessoa perguntou ou disse, como alguém que já tá no meio do expediente responderia.
 
@@ -112,7 +142,7 @@ Se o cliente disser um bairro que não está na lista abaixo, não corte com um 
 ## Horário de funcionamento
 Quinta a domingo, das 18h às 00h (horário de Lauro de Freitas/BA).
 Status agora: ${aberto ? 'ABERTO ✅' : 'FECHADO 🔴'}. ${aberto ? '' : 'Se o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.'}
-
+${blocoPedidoRecente}
 ## Como fechar um pedido pelo WhatsApp
 Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule etapas:
 
@@ -129,6 +159,7 @@ Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule e
    - Se a ferramenta retornar sucesso, mande uma mensagem de confirmação final pro cliente com o resumo (itens, subtotal, frete, total) e o tempo estimado que a própria ferramenta retornou — não invente esses números, use os que vieram na resposta da ferramenta. Se vier um "link_rastreio", inclua ele também, dizendo que dá pra acompanhar o status do pedido por ali. Se o pedido foi de retirada, use o "endereco" que veio na resposta pra confirmar onde o cliente deve buscar — não invente esse endereço, use exatamente o que a ferramenta retornou.
      - Se veio \`cupom_aplicado\` preenchido, comemore o desconto na mensagem final (código e valor).
      - Se veio \`aviso_cupom\` preenchido, avise o cliente com simpatia que aquele cupom não pôde ser aplicado (use o motivo retornado) — mas o pedido já foi registrado normalmente, sem desconto; não trate isso como um erro que precisa ser corrigido antes de fechar.
+   - Se a ferramenta retornar \`duplicata: true\` com \`mensagem_para_cliente\`, repasse esse texto literalmente ao cliente, sem reformular — o sistema já identificou que um pedido bem parecido foi registrado há poucos minutos, então não tente chamar a ferramenta de novo.
    - Se a ferramenta retornar erro (item não encontrado, bairro fora da área, etc.), explique o problema com clareza pro cliente, usando a mensagem de erro como base, e pergunte novamente — não chame a ferramenta de novo até ter uma correção do cliente.
 
 ## Como cancelar um pedido
