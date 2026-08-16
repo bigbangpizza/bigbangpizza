@@ -2063,6 +2063,7 @@ function renderPedidoCard(p){
       </select>
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
+      <button class="bp" onclick="abrirModEditarBorda(${p.id})">🧀 Borda</button>
       <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
     </div>
   </div>`;
@@ -2213,6 +2214,117 @@ async function incrementarUsoCupom(id){
 }
 
 async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(); } }
+
+// ═══════════════════════════════════════════════════════
+// EDITAR BORDA DE UM PEDIDO JÁ EXISTENTE
+// Único jeito hoje de mexer nos itens de um pedido pelo admin (não existe
+// editor de itens genérico) — criado especificamente pra adicionar/trocar
+// borda em pedidos que já foram registrados, inclusive pedidos antigos
+// (de antes dessa funcionalidade existir, cujo itens_json não tem o campo
+// "borda" nenhum). Reaproveita as mesmas opções/preços do site e do bot
+// (tabela `configuracoes`, chaves borda_preco_salgada/borda_preco_doce).
+// Desconto/frete não são recalculados — mesma decisão já tomada em
+// whatsapp-bot/src/editOrderTool.js: um cupom percentual aplicado antes
+// continua valendo pelo valor absoluto original.
+function nomeBaseItemPedido(item){
+  if(item.tamanho){
+    return item.sabores.length===2
+      ? `Pizza ${item.tamanho} — ½ ${item.sabores[0].nome} + ½ ${item.sabores[1].nome}`
+      : `Pizza ${item.tamanho} — ${item.sabores[0].nome}`;
+  }
+  if(item.tipoItem==='pizza_doce') return `Doce ${item.sabores[0].nome}`;
+  return item.sabores?.[0]?.nome || '(item)';
+}
+
+async function abrirModEditarBorda(pedidoId){
+  const [pedidoRows, doces, cfg] = await Promise.all([
+    api('pedidos', `id=eq.${pedidoId}`),
+    api('pizzas_doces', 'ativo=eq.true'),
+    carregarConfigs(),
+  ]);
+  const pedido = pedidoRows[0];
+  if(!pedido){ showToastAdmin('⚠️ Pedido não encontrado.'); return; }
+  const itensJson = pedido.itens_json || [];
+  if(!itensJson.length){ showToastAdmin('⚠️ Esse pedido não tem itens detalhados (itens_json vazio) — não dá pra editar a borda.'); return; }
+
+  const precoBordaSalgada = parseFloat(cfg.borda_preco_salgada) || 12;
+  const precoBordaDoce = parseFloat(cfg.borda_preco_doce) || 12;
+  const nomesDoce = new Set(doces.map(d => d.nome));
+
+  window.__bordaPedidoOriginal = pedido;
+  window.__bordaModalState = itensJson.map(item => {
+    const ehSalgada = !!item.tamanho;
+    const ehDoce = !ehSalgada && item.sabores?.[0]?.nome && nomesDoce.has(item.sabores[0].nome);
+    return { ...item, elegivel: ehSalgada || ehDoce, tipoItem: ehSalgada ? 'pizza_salgada' : (ehDoce ? 'pizza_doce' : null) };
+  });
+
+  document.getElementById('mod-save-btn').onclick = salvarBordaPedido;
+  document.getElementById('mod-title').textContent = `🧀 Borda — Pedido #${pedidoId}`;
+  renderBordaPedidoBody(precoBordaSalgada, precoBordaDoce);
+  document.getElementById('modal').classList.add('open');
+}
+
+function renderBordaPedidoBody(precoBordaSalgada, precoBordaDoce){
+  const itens = window.__bordaModalState;
+  const linhas = itens.map((item, i) => {
+    if(!item.elegivel){
+      return `<div class="fg"><label>${item.qty}x ${esc(nomeBaseItemPedido(item))}</label>
+        <div style="font-size:12px;color:var(--text-faint);">Item sem opção de borda.</div></div>`;
+    }
+    const precoBorda = item.tipoItem==='pizza_doce' ? precoBordaDoce : precoBordaSalgada;
+    const opcoes = item.tipoItem==='pizza_doce'
+      ? [{id:'',nome:'Sem borda'},{id:'chocolate',nome:'Chocolate'}]
+      : [{id:'',nome:'Sem borda'},{id:'catupiry',nome:'Catupiry'},{id:'cheddar',nome:'Cheddar'}];
+    const atual = item.borda?.id || '';
+    return `<div class="fg">
+      <label>${item.qty}x ${esc(nomeBaseItemPedido(item))}</label>
+      <select onchange="onMudarBordaPedido(${i}, this.value, ${precoBorda})">
+        ${opcoes.map(o => `<option value="${o.id}" ${atual===o.id?'selected':''}>${o.nome}${o.id?' (+'+brl(precoBorda)+')':''}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+  document.getElementById('mod-body').innerHTML = linhas + `<div id="borda-pedido-resumo" style="margin-top:10px;font-size:14px;color:var(--text-primary);font-weight:700;"></div>`;
+  atualizarResumoBordaPedido();
+}
+
+function onMudarBordaPedido(i, bordaId, precoBorda){
+  const item = window.__bordaModalState[i];
+  const nomesBorda = item.tipoItem==='pizza_doce' ? {chocolate:'Chocolate'} : {catupiry:'Catupiry', cheddar:'Cheddar'};
+  const precoBase = item.precoUnitario - (item.borda?.preco || 0);
+  if(bordaId){
+    item.borda = { id: bordaId, nome: nomesBorda[bordaId], preco: precoBorda };
+    item.precoUnitario = +(precoBase + precoBorda).toFixed(2);
+  } else {
+    item.borda = null;
+    item.precoUnitario = +precoBase.toFixed(2);
+  }
+  atualizarResumoBordaPedido();
+}
+
+function atualizarResumoBordaPedido(){
+  const novoSubtotal = window.__bordaModalState.reduce((s,i) => s + i.precoUnitario*i.qty, 0);
+  document.getElementById('borda-pedido-resumo').textContent = `Novo subtotal: ${brl(novoSubtotal)}`;
+}
+
+async function salvarBordaPedido(){
+  const estado = window.__bordaModalState;
+  const pedidoOriginal = window.__bordaPedidoOriginal;
+  const novoItensTexto = estado.map(i => `${i.qty}x ${nomeBaseItemPedido(i)}${i.borda ? ' — Borda '+i.borda.nome : ''}`).join(' | ');
+  const novoItensJson = estado.map(({elegivel, tipoItem, ...resto}) => resto);
+  const novoSubtotal = +estado.reduce((s,i) => s + i.precoUnitario*i.qty, 0).toFixed(2);
+  const desconto = Number(pedidoOriginal.desconto) || 0;
+  const frete = Number(pedidoOriginal.frete) || 0;
+  const novoTotal = +(novoSubtotal - desconto + frete).toFixed(2);
+
+  const ok = await upd('pedidos', pedidoOriginal.id, {
+    itens: novoItensTexto,
+    itens_json: novoItensJson,
+    subtotal: novoSubtotal,
+    total: novoTotal,
+  });
+  if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Borda atualizada!'); }
+  else { alert('Erro ao salvar!'); }
+}
 
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
