@@ -75,6 +75,13 @@ export const CRIAR_PEDIDO_TOOL = {
               type: 'string',
               description: 'Segundo sabor, apenas se for pizza salgada meio a meio. Deixe vazio para pizza de sabor único.',
             },
+            borda: {
+              type: 'string',
+              enum: ['catupiry', 'cheddar', 'chocolate'],
+              description:
+                'Borda recheada, só se o cliente pedir. "catupiry" e "cheddar" valem só para tipo "pizza_salgada"; ' +
+                '"chocolate" só para tipo "pizza_doce". Omita se o cliente não quiser borda ou se o item não for pizza.',
+            },
             quantidade: { type: 'integer', minimum: 1 },
             obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
           },
@@ -128,6 +135,25 @@ export const PAGAMENTO_TEXTO = {
   pix: 'Pix (aguardando pagamento)',
   cartao_link: 'Cartão via link Ton (aguardando envio do link)',
 };
+
+// Mesmas opções de borda do checkout do site (index.html) — catupiry/cheddar
+// só pra pizza_salgada, chocolate só pra pizza_doce.
+const OPCOES_BORDA = {
+  pizza_salgada: { catupiry: 'Catupiry', cheddar: 'Cheddar' },
+  pizza_doce: { chocolate: 'Chocolate' },
+};
+
+/**
+ * Preço da borda recheada, configurável no admin (Configurações do Bot >
+ * Borda recheada, tabela `configuracoes`, chaves borda_preco_salgada/
+ * borda_preco_doce — mesmas chaves que o site usa). Cai pro padrão de
+ * R$12 se ainda não foi configurado, igual ao fallback do site.
+ */
+function precoBorda(menuData, tipoItem) {
+  const chave = tipoItem === 'pizza_doce' ? 'borda_preco_doce' : 'borda_preco_salgada';
+  const valor = parseFloat(menuData.configuracoes[chave]);
+  return Number.isFinite(valor) ? valor : 12;
+}
 
 /**
  * Processa e valida a lista de itens do pedido contra o cardápio real,
@@ -208,12 +234,27 @@ export function processarItens(itensInput, menuData) {
       nomeExibicao = `${prefixo}${encontrado1.nome}`;
     }
 
+    let borda = null;
+    if (itemInput.borda) {
+      const nomeBorda = OPCOES_BORDA[itemInput.tipo]?.[itemInput.borda];
+      if (!nomeBorda) {
+        const tipoLabel = itemInput.tipo === 'pizza_salgada' ? 'pizza salgada' : itemInput.tipo === 'pizza_doce' ? 'pizza doce' : 'esse tipo de item';
+        erros.push(`Borda "${itemInput.borda}" não está disponível para ${tipoLabel}.`);
+        continue;
+      }
+      const precoDaBorda = precoBorda(menuData, itemInput.tipo);
+      borda = { id: itemInput.borda, nome: nomeBorda, preco: precoDaBorda };
+      precoUnitario = +(precoUnitario + precoDaBorda).toFixed(2);
+      nomeExibicao += ` — Borda ${nomeBorda}`;
+    }
+
     const qty = Math.max(1, Math.trunc(Number(itemInput.quantidade) || 1));
     itensProcessados.push({
       tipo: tipoItem,
       tabela,
       tamanho,
       sabores,
+      borda,
       precoUnitario,
       qty,
       obs: itemInput.obs || null,
@@ -352,10 +393,11 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       status: 'aguardando',
       cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: itensTexto,
-      itens_json: itensProcessados.map(({ tipo, tamanho, sabores, precoUnitario, qty, obs }) => ({
+      itens_json: itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
         tipo,
         tamanho,
         sabores,
+        borda,
         precoUnitario,
         qty,
         obs,

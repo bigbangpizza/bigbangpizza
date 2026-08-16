@@ -45,6 +45,13 @@ export const EDITAR_PEDIDO_TOOL = {
               type: 'string',
               description: 'Segundo sabor, apenas se for pizza salgada meio a meio. Deixe vazio para pizza de sabor único.',
             },
+            borda: {
+              type: 'string',
+              enum: ['catupiry', 'cheddar', 'chocolate'],
+              description:
+                'Borda recheada, só se o cliente pedir. "catupiry" e "cheddar" valem só para tipo "pizza_salgada"; ' +
+                '"chocolate" só para tipo "pizza_doce". Omita se o cliente não quiser borda ou se o item não for pizza.',
+            },
             quantidade: { type: 'integer', minimum: 1 },
             obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
           },
@@ -140,10 +147,11 @@ export function criarExecutorEditarPedido({ numero }) {
         subtotalFinal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
         itensTextoFinal = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
         patch.itens = itensTextoFinal;
-        patch.itens_json = itensProcessados.map(({ tipo, tamanho, sabores, precoUnitario, qty, obs }) => ({
+        patch.itens_json = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
           tipo,
           tamanho,
           sabores,
+          borda,
           precoUnitario,
           qty,
           obs,
