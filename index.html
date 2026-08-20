@@ -1187,6 +1187,7 @@ async function aplicarConfigsVisuais() {
 }
 aplicarConfigsVisuais();
 restoreCart();
+aplicarCupomDaURL();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
 checkBairrosAtualizados(true);
 setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 segundos
@@ -1894,6 +1895,39 @@ function calcDesconto(sub) {
   return +(sub * (cupomAplicado.desconto/100)).toFixed(2);
 }
 
+/**
+ * Valida um código de cupom contra a tabela `cupons` (existe, ativo, dentro
+ * da validade, ainda tem vaga) — não mexe em DOM nenhum. Fonte única de
+ * verdade reaproveitada tanto por aplicarCupom() (campo manual do checkout)
+ * quanto por aplicarCupomDaURL() (parâmetro ?cupom= na URL), pra não ter
+ * duas implementações da mesma regra podendo divergir.
+ * @returns {Promise<{valido:true, cupom:object} | {valido:false, motivo:string}>}
+ */
+async function validarCupomCodigo(codigo) {
+  if (!codigo) return { valido: false, motivo: 'Digite um código de cupom' };
+  try {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=ilike.${encodeURIComponent(codigo)}&select=*`, {
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    });
+    const data = await r.json();
+    const cupom = Array.isArray(data) ? data[0] : null;
+
+    if (!cupom) return { valido: false, motivo: 'Cupom não existe' };
+    if (!cupom.ativo) return { valido: false, motivo: 'Cupom inativo' };
+    const hoje = new Date().toISOString().split('T')[0];
+    if (cupom.validade && cupom.validade < hoje) return { valido: false, motivo: 'Cupom expirado' };
+    if (cupom.usos_max != null) {
+      // contagem_desde (campanha relançada) usa contagem real via RPC;
+      // sem isso, cai no comportamento antigo (usos_atuais).
+      const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : (cupom.usos_atuais || 0);
+      if (usosReais >= cupom.usos_max) return { valido: false, motivo: 'Cupom esgotado! Todas as vagas foram utilizadas.' };
+    }
+    return { valido: true, cupom };
+  } catch(e) {
+    return { valido: false, motivo: 'Erro ao verificar cupom. Tente novamente.' };
+  }
+}
+
 async function aplicarCupom() {
   const codigo = document.getElementById('f-cupom').value.trim();
   const ok = document.getElementById('cupom-ok');
@@ -1902,64 +1936,69 @@ async function aplicarCupom() {
   erro.style.display = 'none';
   cupomAplicado = null;
 
-  if (!codigo) {
-    erro.textContent = '❌ Digite um código de cupom';
+  const resultado = await validarCupomCodigo(codigo);
+  if (!resultado.valido) {
+    erro.textContent = '❌ ' + resultado.motivo;
     erro.style.display = 'block';
     updateTotals();
     return;
   }
 
-  try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=ilike.${encodeURIComponent(codigo)}&select=*`, {
-      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
-    });
-    const data = await r.json();
-    const cupom = Array.isArray(data) ? data[0] : null;
+  const cupom = resultado.cupom;
+  cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
+  ok.textContent = cupomAplicado.tipo === 'fixo'
+    ? `✅ Cupom aplicado! ${brl(cupomAplicado.desconto)} de desconto`
+    : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
+  ok.style.display = 'block';
+  updateTotals();
+  gtag('event', 'apply_coupon', {coupon: cupom.codigo});
+  fbq('track', 'ViewContent', {content_name: 'cupom_aplicado'});
+}
 
-    if (!cupom) {
-      erro.textContent = '❌ Cupom não existe';
-      erro.style.display = 'block';
-      updateTotals();
-      return;
-    }
-    if (!cupom.ativo) {
-      erro.textContent = '❌ Cupom inativo';
-      erro.style.display = 'block';
-      updateTotals();
-      return;
-    }
-    const hoje = new Date().toISOString().split('T')[0];
-    if (cupom.validade && cupom.validade < hoje) {
-      erro.textContent = '❌ Cupom expirado';
-      erro.style.display = 'block';
-      updateTotals();
-      return;
-    }
-    if (cupom.usos_max != null) {
-      // contagem_desde (campanha relançada) usa contagem real via RPC;
-      // sem isso, cai no comportamento antigo (usos_atuais).
-      const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : (cupom.usos_atuais || 0);
-      if (usosReais >= cupom.usos_max) {
-        erro.textContent = '❌ Cupom esgotado! Todas as vagas foram utilizadas.';
-        erro.style.display = 'block';
-        updateTotals();
-        return;
-      }
-    }
+/**
+ * Aplica automaticamente um cupom vindo por link (?cupom=CODIGO na URL) —
+ * mesma validação de aplicarCupom(), mas silenciosa: se o código for
+ * inválido/expirado/esgotado, não mostra erro nenhum (o cliente nem precisa
+ * saber que veio um parâmetro na URL). Se aplicar com sucesso, também
+ * preenche o campo manual do checkout com o mesmo código, então se o
+ * cliente digitar um cupom diferente depois, o mais recente naturalmente
+ * substitui (mesmo comportamento de sempre de aplicarCupom(), que começa
+ * zerando cupomAplicado a cada chamada).
+ */
+async function aplicarCupomDaURL() {
+  const params = new URLSearchParams(location.search);
+  const codigo = params.get('cupom');
+  if (!codigo) return;
 
-    cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
+  // Limpa o parâmetro da URL já de cara, independente do resultado da
+  // validação — não queremos nem que a URL fique poluída, nem que um F5
+  // tente reaplicar (ou tente de novo um código inválido) repetidamente.
+  params.delete('cupom');
+  const novaQuery = params.toString();
+  history.replaceState(null, '', location.pathname + (novaQuery ? '?' + novaQuery : '') + location.hash);
+
+  const resultado = await validarCupomCodigo(codigo.trim());
+  if (!resultado.valido) return; // silencioso por design — ver requisito 4
+
+  const cupom = resultado.cupom;
+  cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
+
+  const campoCupom = document.getElementById('f-cupom');
+  if (campoCupom) campoCupom.value = cupom.codigo;
+  const ok = document.getElementById('cupom-ok');
+  if (ok) {
     ok.textContent = cupomAplicado.tipo === 'fixo'
       ? `✅ Cupom aplicado! ${brl(cupomAplicado.desconto)} de desconto`
       : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
     ok.style.display = 'block';
-    updateTotals();
-    gtag('event', 'apply_coupon', {coupon: codigo});
-    fbq('track', 'ViewContent', {content_name: 'cupom_aplicado'});
-  } catch(e) {
-    erro.textContent = '❌ Erro ao verificar cupom. Tente novamente.';
-    erro.style.display = 'block';
-    updateTotals();
   }
+  updateTotals();
+
+  toast(cupomAplicado.tipo === 'fixo'
+    ? `Cupom ${cupomAplicado.codigo} aplicado! ${brl(cupomAplicado.desconto)} OFF 🎉`
+    : `Cupom ${cupomAplicado.codigo} aplicado! ${cupomAplicado.desconto}% OFF 🎉`);
+  gtag('event', 'apply_coupon', {coupon: cupom.codigo, source: 'url_param'});
+  fbq('track', 'ViewContent', {content_name: 'cupom_aplicado_url'});
 }
 
 // NAV DE CATEGORIAS — destaque da seção visível
