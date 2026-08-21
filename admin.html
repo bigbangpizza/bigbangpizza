@@ -3624,6 +3624,7 @@ async function loadCupons() {
       <td data-label="Status">${statusLabel}</td>
       <td data-label="Ações"><div class="acts">
         <button class="be" onclick="openModCupom(${c.id})">✏️</button>
+        <button class="bt" data-codigo="${esc(c.codigo)}" onclick="copiarLinkCupom(this.dataset.codigo)">🔗 Copiar link</button>
         <button class="bt" onclick="togCupom(${c.id},${c.ativo})">${c.ativo ? '⏸' : '▶'}</button>
         <button class="bd" onclick="remCupom(${c.id})">🗑️</button>
       </div></td>
@@ -3632,6 +3633,29 @@ async function loadCupons() {
   document.getElementById('t-cupons').innerHTML = `<table>
     <thead><tr><th>Código</th><th>Desconto</th><th>Usos</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
+}
+
+// Link pronto pra divulgar um cupom — reaproveita a aplicação automática
+// via ?cupom= já implementada no site (index.html: aplicarCupomDaURL()).
+// encodeURIComponent porque código de cupom pode ter espaço ou caractere
+// especial (ex: "KARINNE SILVA MACEDO", "UNIME15%"); URLSearchParams do
+// site decodifica de volta o valor original ao ler o parâmetro.
+async function copiarLinkCupom(codigo) {
+  const link = `https://www.bigbangpizza.com.br/?cupom=${encodeURIComponent(codigo)}`;
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch(e) {
+    // Fallback pra quando a Clipboard API não está disponível (ex: contexto não seguro)
+    const ta = document.createElement('textarea');
+    ta.value = link;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  showToastAdmin('🔗 Link copiado!');
 }
 
 async function togCupom(id, ativo) {
