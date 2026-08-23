@@ -1,8 +1,8 @@
 import { getMenuData } from './supabaseData.js';
-import { getAgoraNoBrasil, minutosEntre, parseComoUTC } from './dataUtils.js';
+import { getAgoraNoBrasil, minutosEntre, parseComoUTC, diasEntre } from './dataUtils.js';
 import { config } from './config.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
-import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
+import { buscarPedidoAbertoRecente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 
@@ -84,18 +84,84 @@ async function montarBlocoPedidoRecente(numero) {
   return `\n## Pedido recente em aberto deste cliente\nEste cliente já tem um pedido em aberto, feito há ${minAtras} min: Pedido #${pedido.id} — ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)}. Pode ter sido feito pelo site (às vezes o cliente manda a mensagem de confirmação do WhatsApp logo em seguida, achando que precisa confirmar por aqui também).\nAntes de seguir com "Como fechar um pedido" abaixo:\n- Se a mensagem do cliente parecer ser sobre ESSE pedido (confirmação, dúvida, agradecimento, ou repete os mesmos itens/dados), NÃO chame \`criar_pedido\` de novo — responda sobre esse pedido existente e pergunte se é sobre ele.\n- Só chame \`criar_pedido\` normalmente se o cliente pedir claramente algo novo ou diferente (outros itens, ou disser explicitamente que é um pedido à parte).\n`;
 }
 
+function diasAtras(dataISO) {
+  const dias = diasEntre(parseComoUTC(dataISO), new Date());
+  if (dias <= 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  return `há ${dias} dias`;
+}
+
+const DICA_TOM_POR_SEGMENTO = {
+  fiel: 'Ele já pediu aqui várias vezes — pode reconhecer essa frequência com um tom mais caloroso (mostrando que lembra dele), sem exagerar nem parecer forçado.',
+  em_risco: 'Faz tempo que ele não pedia — pode reconhecer com simpatia que fazia tempo, sem soar como cobrança ou reclamação.',
+  ativo: 'Ele pede com uma certa regularidade — pode reconhecer que já é conhecido, num tom normal, sem precisar de muito destaque.',
+  novo: 'Ele só pediu uma vez antes — reconhecer que já pediu é bom, mas não trate como cliente fiel/frequente ainda, é sutil.',
+};
+
+function formatarBlocoClienteConhecido(cliente) {
+  const primeiroNome = (cliente.nome || '').trim().split(/\s+/)[0] || null;
+  const [ultimoPedido, pedidoAnterior] = cliente.ultimosPedidos;
+  const dicaTom = DICA_TOM_POR_SEGMENTO[cliente.segmento] || '';
+
+  const linhaUltimoPedido = ultimoPedido
+    ? `Último pedido (${diasAtras(ultimoPedido.criadoEm)}): ${ultimoPedido.itens}.`
+    : '(sem pedidos não-cancelados registrados — não tem o que sugerir repetir.)';
+  const linhaPedidoAnterior = pedidoAnterior ? ` Pedido anterior a esse: ${pedidoAnterior.itens}.` : '';
+  const linhaEndereco = cliente.ultimoEndereco
+    ? `Último endereço usado: ${cliente.ultimoEndereco}${cliente.ultimoBairro ? `, bairro ${cliente.ultimoBairro}` : ''}.`
+    : '';
+
+  return `\n## Cliente conhecido (reconhecimento sutil, não obrigatório)\nEsse número já pediu aqui antes${primeiroNome ? ` — nome usado no último pedido: ${primeiroNome}` : ''}. Segmento: ${cliente.segmento}. ${dicaTom}\n${linhaUltimoPedido}${linhaPedidoAnterior}\n${linhaEndereco}\n\nComo usar essa informação (importante):\n- Pode cumprimentar reconhecendo que ele já é conhecido${primeiroNome ? ` (pode chamar pelo nome "${primeiroNome}")` : ''}, mas não precisa ser logo na primeira mensagem nem em toda mensagem — espere um momento natural da conversa.\n${ultimoPedido ? `- Em algum momento apropriado da conversa (não necessariamente logo de cara), pode oferecer repetir o último pedido, algo como "Quer repetir ${ultimoPedido.itens}, ou prefere pedir algo diferente hoje?". Ofereça no máximo uma vez por conversa — se o cliente ignorar e pedir algo novo/diferente, siga o fluxo normal sem insistir ou repetir a sugestão.\n` : ''}- Mesmo que ele aceite repetir o pedido anterior, NUNCA finalize sem confirmar endereço e bairro de novo com o cliente antes de chamar \`criar_pedido\` — endereço pode ter mudado, nunca presuma que continua o mesmo só por já ter esse dado aqui.\n- Essa personalização é só um toque sutil pra reduzir fricção e mostrar reconhecimento — nunca insista, nunca pareça "vendedor demais". Se o cliente já começou pedindo algo direto, siga normalmente sem forçar esse reconhecimento em algum ponto da conversa.\n`;
+}
+
+// A consulta ao Supabase só roda na primeira mensagem de uma conversa nova
+// (`ehConversaNova`, ver server.js/processarLote — sem histórico recente no
+// Redis/memória) — não faz sentido bater no banco a cada mensagem da mesma
+// conversa. O resultado fica em cache em memória por número pelo resto da
+// conversa: o momento certo de oferecer repetir o pedido nem sempre é logo
+// na primeira mensagem, então a Claude precisa continuar enxergando esse
+// contexto nas mensagens seguintes também. Expira sozinho depois do mesmo
+// TTL do histórico no Redis (ver historicoRedis.js) pra nunca ficar "vivo"
+// mais tempo que a própria conversa que ele descreve.
+const CACHE_CLIENTE_TTL_MS = 24 * 60 * 60 * 1000;
+const cacheClienteConhecido = new Map(); // numero -> { bloco, expiraEm }
+
+async function montarBlocoClienteConhecido(numero, ehConversaNova) {
+  if (!numero || !temServiceRoleConfigurada()) return '';
+
+  if (!ehConversaNova) {
+    const emCache = cacheClienteConhecido.get(numero);
+    if (emCache && Date.now() < emCache.expiraEm) return emCache.bloco;
+    return '';
+  }
+
+  let cliente;
+  try {
+    cliente = await buscarHistoricoClienteConhecido(numero);
+  } catch (err) {
+    console.error('[systemPrompt] falha ao buscar histórico do cliente (seguindo sem personalização):', err);
+    return '';
+  }
+  if (!cliente) return '';
+
+  const bloco = formatarBlocoClienteConhecido(cliente);
+  cacheClienteConhecido.set(numero, { bloco, expiraEm: Date.now() + CACHE_CLIENTE_TTL_MS });
+  return bloco;
+}
+
 /**
  * Monta o system prompt da Claude API a partir dos dados reais do Supabase —
  * cardápio, preços e bairros de entrega vêm sempre do banco, então quando
  * alguém atualiza o admin, o bot responde atualizado (respeitando o cache
  * de MENU_CACHE_TTL_SECONDS, ver supabaseData.js).
  */
-export async function buildSystemPrompt(numero) {
+export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const { salgadas, doces, combos, bebidas, bairros, configuracoes } = await getMenuData();
   const aberto = estaAbertoAgora(configuracoes.modo_loja || 'automatico');
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';
   const blocoPedidoRecente = await montarBlocoPedidoRecente(numero);
+  const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
 
   // Mesmas chaves/fallback que orderTool.js usa pra calcular o preço real da
   // borda (Configurações do Bot > Borda recheada) — precisa bater com o que
@@ -149,7 +215,7 @@ Se o cliente disser um bairro que não está na lista abaixo, não corte com um 
 ## Horário de funcionamento
 Quinta a domingo, das 18h às 00h (horário de Lauro de Freitas/BA).
 Status agora: ${aberto ? 'ABERTO ✅' : 'FECHADO 🔴'}. ${aberto ? '' : 'Se o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.'}
-${blocoPedidoRecente}
+${blocoPedidoRecente}${blocoClienteConhecido}
 ## Como fechar um pedido pelo WhatsApp
 Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule etapas:
 

@@ -33,6 +33,23 @@ export function normalizarWhatsapp(raw) {
   return digits;
 }
 
+// Mesmo critério de segmentação usado em admin.html (classificarSegmentoCliente,
+// aba Clientes) — duplicado aqui porque admin.html é JS puro de navegador,
+// sem módulo compartilhado com o bot. Critérios (loja abre só qui-dom, 14
+// dias ≈ 2 fins de semana sem pedido):
+//   1) >14 dias sem pedido, qualquer frequência  → em_risco (prioridade máxima: quem sumiu)
+//   2) 3+ pedidos                                → fiel
+//   3) 1 pedido só                                → novo
+//   4) (sobra: 2 pedidos, ≤14 dias)                → ativo
+// Se mudar aqui, mude também em admin.html pra não divergir do que o
+// Gabriel vê na aba Clientes.
+export function classificarSegmentoCliente(totalPedidos, diasDesdeUltimo) {
+  if (diasDesdeUltimo > 14) return 'em_risco';
+  if (totalPedidos >= 3) return 'fiel';
+  if (totalPedidos === 1) return 'novo';
+  return 'ativo';
+}
+
 /**
  * Dia da semana (0=domingo...6=sábado, mesma convenção do JS Date#getDay) e
  * hora atual no horário de Lauro de Freitas (BA), independente do fuso

@@ -205,6 +205,11 @@ function tratarMensagemPropria(numero) {
  */
 async function processarLote(numero, nomeContato, userContent) {
   const historico = await carregarHistorico(numero);
+  // Precisa ser lido ANTES do push abaixo — sinaliza pro system prompt que é
+  // a primeira mensagem de uma conversa nova (sem histórico recente), gatilho
+  // pra consulta de reconhecimento de cliente recorrente (ver
+  // montarBlocoClienteConhecido em systemPrompt.js).
+  const ehConversaNova = historico.length === 0;
   historico.push({ role: 'user', content: userContent });
   aplicarLimiteHistorico(historico);
   // Persiste a mensagem do cliente ANTES de chamar a Claude — se a chamada
@@ -222,7 +227,7 @@ async function processarLote(numero, nomeContato, userContent) {
     return;
   }
 
-  const systemPrompt = await buildSystemPrompt(numero);
+  const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
   const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
