@@ -16,6 +16,7 @@ import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
 import { processarAlertaUptime } from './uptimeAlert.js';
+import { ehEcoDoBot, ativarPausaHumana, estaPausadoPorHumano } from './atendimentoHumanoUtil.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -151,12 +152,16 @@ async function processarWebhook(body) {
   const evento = body?.event;
   const data = body?.data;
   if (!data || !['messages.upsert', 'MESSAGES_UPSERT'].includes(evento)) return;
-  if (data.key?.fromMe) return; // ignora eco das próprias mensagens do bot
 
   const remoteJid = data.key?.remoteJid;
   if (!remoteJid || !remoteJid.endsWith('@s.whatsapp.net')) return; // ignora grupos/status/broadcast
-
   const numero = remoteJid.split('@')[0];
+
+  if (data.key?.fromMe) {
+    tratarMensagemPropria(numero);
+    return;
+  }
+
   const nomeContato = data.pushName || '';
   const mensagem = data.message || {};
 
@@ -178,6 +183,21 @@ async function processarWebhook(body) {
 }
 
 /**
+ * Mensagem fromMe (enviada pelo próprio número conectado) — ou é eco de um
+ * enviarTexto() que a nossa API acabou de disparar (nada a fazer), ou foi
+ * alguém (Gabriel/equipe) digitando manualmente pelo WhatsApp. Nesse
+ * segundo caso, pausa as respostas automáticas pra esse número — ver
+ * atendimentoHumanoUtil.js e o gate correspondente em processarLote().
+ */
+function tratarMensagemPropria(numero) {
+  if (ehEcoDoBot(numero)) return;
+  ativarPausaHumana(numero);
+  console.log(
+    `[atendimentoHumano] mensagem manual detectada numero=${numero} — pausando respostas automáticas por ${config.humanTakeoverPausaMinutos} min`
+  );
+}
+
+/**
  * Processa um lote de content blocks (uma ou mais mensagens do cliente
  * acumuladas pela fila acima) como um único turno de conversa: chama a
  * Claude, executa as tools necessárias e envia a resposta humanizada.
@@ -191,6 +211,16 @@ async function processarLote(numero, nomeContato, userContent) {
   // falhar lá na frente, a mensagem já não se perde (o cliente pode mandar
   // de novo sem repetir o que já disse, e o contexto sobrevive mesmo assim).
   await persistirHistorico(numero, historico);
+
+  // Atendimento manual em andamento pra esse número (ver tratarMensagemPropria
+  // acima) — a mensagem do cliente já ficou salva no histórico (o bot tem
+  // contexto quando retomar), mas não gera resposta automática agora.
+  // Checado aqui (não só na chegada do webhook) porque a pausa pode ter
+  // começado durante a janela de debounce da fila.
+  if (estaPausadoPorHumano(numero)) {
+    console.log(`[atendimentoHumano] numero=${numero} pausado — mensagem guardada, bot não respondeu`);
+    return;
+  }
 
   const systemPrompt = await buildSystemPrompt(numero);
   const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];

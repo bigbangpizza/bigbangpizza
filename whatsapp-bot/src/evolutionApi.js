@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { registrarEnvioBot } from './atendimentoHumanoUtil.js';
 
 function evolutionUrl(path) {
   return `${config.evolution.apiUrl}${path}/${config.evolution.instance}`;
@@ -21,6 +22,12 @@ function evolutionHeaders() {
  * @param {string} text
  */
 export async function enviarTexto(number, text) {
+  // Registrado ANTES do fetch (não depois) — evita qualquer corrida com o
+  // eco fromMe do webhook, que só pode chegar depois da Evolution API
+  // processar esse envio. Ver atendimentoHumanoUtil.js pra saber por que
+  // isso existe: sem isso, o bot não teria como distinguir seu próprio eco
+  // de uma mensagem manual digitada por um humano no mesmo WhatsApp.
+  registrarEnvioBot(number);
   const r = await fetch(evolutionUrl('/message/sendText'), {
     method: 'POST',
     headers: evolutionHeaders(),

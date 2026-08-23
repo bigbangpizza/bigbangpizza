@@ -65,6 +65,12 @@ export const config = {
   pedidoDuplicadoContextoMinutos: Number(process.env.PEDIDO_DUPLICADO_CONTEXTO_MINUTOS || 20),
   pedidoDuplicadoBloqueioMinutos: Number(process.env.PEDIDO_DUPLICADO_BLOQUEIO_MINUTOS || 10),
 
+  // Minutos que o bot fica em silêncio pra um número depois de detectar que
+  // um humano (Gabriel/equipe) respondeu manualmente pelo WhatsApp — ver
+  // atendimentoHumanoUtil.js. Passado esse tempo, a próxima mensagem do
+  // cliente volta a ser respondida normalmente pelo bot.
+  humanTakeoverPausaMinutos: Number(process.env.HUMAN_TAKEOVER_PAUSA_MINUTOS || 45),
+
   // Número (só dígitos, com DDI 55, ex: 5571999999999) que recebe o aviso
   // quando um pedido escolhe "Cartão via link (Ton)" — não é obrigatório pra
   // subir o servidor: sem ele, o bot ainda funciona normalmente, só não
