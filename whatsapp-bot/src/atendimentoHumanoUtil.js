@@ -19,7 +19,21 @@ import { config } from './config.js';
 // nunca chegar (algumas instâncias/configurações podem não ecoar fromMe),
 // pra não deixar o contador acumulando indefinidamente e mascarando uma
 // mensagem humana real mais tarde.
-const JANELA_ECO_MS = 5_000;
+//
+// ATENÇÃO: esse valor já foi reduzido pra 5s numa sessão anterior (só pra
+// bater com o timing de um teste local, onde o eco mockado chega quase
+// instantaneamente) e isso causou um bug crítico em produção — o eco real
+// da Evolution API (fetch até a Evolution + Evolution manda pro WhatsApp +
+// confirmação do WhatsApp + webhook de volta pro nosso servidor) pode
+// facilmente passar de 5s, principalmente numa resposta com várias bolhas
+// (cada bolha manda um enviarTexto separado, ver respostaHumanizada.js) ou
+// com a Evolution sob carga. Quando o crédito expirava antes do eco real
+// chegar, o bot classificava o próprio eco como mensagem manual e se
+// autopausava por HUMAN_TAKEOVER_PAUSA_MINUTOS logo depois de responder —
+// na prática, o atendimento parava. 20s dá folga bem maior pra latência
+// real de produção, mantendo a detecção de humano digitando rápido ainda
+// muito mais restritiva que os 45 min de pausa em si.
+const JANELA_ECO_MS = 20_000;
 const ecosPendentesPorNumero = new Map(); // numero -> quantidade
 
 export function registrarEnvioBot(numero) {

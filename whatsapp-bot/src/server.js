@@ -155,7 +155,12 @@ async function processarWebhook(body) {
 
   const remoteJid = data.key?.remoteJid;
   if (!remoteJid || !remoteJid.endsWith('@s.whatsapp.net')) return; // ignora grupos/status/broadcast
-  const numero = remoteJid.split('@')[0];
+  // O ":XX" depois do número (sufixo de device, comum em eventos fromMe do
+  // próprio multi-device) precisa ser removido aqui — se não fosse, o eco do
+  // bot chegaria com um "numero" diferente do que foi registrado em
+  // registrarEnvioBot() (que usa o número sem sufixo), e o eco seria
+  // erroneamente tratado como mensagem manual (ver atendimentoHumanoUtil.js).
+  const numero = remoteJid.split('@')[0].split(':')[0];
 
   if (data.key?.fromMe) {
     tratarMensagemPropria(numero);
