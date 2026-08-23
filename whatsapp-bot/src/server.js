@@ -163,28 +163,58 @@ async function processarWebhook(body) {
   const numero = remoteJid.split('@')[0].split(':')[0];
 
   if (data.key?.fromMe) {
-    tratarMensagemPropria(numero);
+    tratarMensagemPropria(numero, data.key?.id);
     return;
   }
 
   const nomeContato = data.pushName || '';
   const mensagem = data.message || {};
 
-  let userContent;
-  try {
-    userContent = await extrairConteudoMensagem(mensagem, data.key?.id);
-  } catch (err) {
-    console.error('[webhook] erro ao extrair conteúdo da mensagem:', err);
-    await enviarRespostaHumanizada(
-      numero,
-      'Desculpa, não consegui processar essa mensagem 😕 pode tentar de novo ou digitar sua dúvida em texto?'
-    );
-    return;
-  }
+  await processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, data.key?.id);
+}
 
-  if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
+// ── Serialização da extração por número (evita reordenar mensagens do cliente) ──
+// extrairConteudoMensagem() é assíncrona e tem duração bem variável: texto
+// resolve quase instantâneo, mas áudio (transcrição via Groq) e imagem
+// (download da mídia) podem levar vários segundos. Como cada webhook chega
+// como uma requisição HTTP independente e processarWebhook() não é
+// aguardado pela rota (ver app.post('/webhook', ...) acima), duas mensagens
+// consecutivas do MESMO cliente disparam extrações concorrentes — e se a
+// primeira for um áudio (lento) e a segunda um texto (rápido), a segunda
+// pode terminar a extração e cair na fila (enfileirarMensagem) ANTES da
+// primeira, mesmo tendo chegado depois. Isso bagunça a ordem que a Claude
+// vê da conversa (e pode aparecer como se o bot tivesse respondido/reagido
+// fora de ordem, já que a resposta reflete um histórico fora de ordem).
+// Encadear a extração+enfileiramento num Promise chain por número garante
+// que, mesmo com durações diferentes, cada mensagem só entra na fila depois
+// que a anterior (do mesmo número) já entrou — preservando a ordem real de
+// chegada sem travar mensagens de OUTROS clientes entre si.
+const filaExtracaoPorNumero = new Map(); // numero -> Promise (última extração encadeada)
 
-  enfileirarMensagem(numero, nomeContato, userContent);
+async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, messageId) {
+  const anterior = filaExtracaoPorNumero.get(numero) || Promise.resolve();
+  const atual = anterior
+    .catch(() => {}) // uma falha na mensagem anterior não deve travar as próximas desse número
+    .then(async () => {
+      let userContent;
+      try {
+        userContent = await extrairConteudoMensagem(mensagem, messageId);
+      } catch (err) {
+        console.error('[webhook] erro ao extrair conteúdo da mensagem:', err);
+        await enviarRespostaHumanizada(
+          numero,
+          'Desculpa, não consegui processar essa mensagem 😕 pode tentar de novo ou digitar sua dúvida em texto?'
+        );
+        return;
+      }
+
+      if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
+
+      enfileirarMensagem(numero, nomeContato, userContent);
+    });
+
+  filaExtracaoPorNumero.set(numero, atual);
+  await atual;
 }
 
 /**
@@ -194,8 +224,8 @@ async function processarWebhook(body) {
  * segundo caso, pausa as respostas automáticas pra esse número — ver
  * atendimentoHumanoUtil.js e o gate correspondente em processarLote().
  */
-function tratarMensagemPropria(numero) {
-  if (ehEcoDoBot(numero)) return;
+function tratarMensagemPropria(numero, messageId) {
+  if (ehEcoDoBot(numero, messageId)) return;
   ativarPausaHumana(numero);
   console.log(
     `[atendimentoHumano] mensagem manual detectada numero=${numero} — pausando respostas automáticas por ${config.humanTakeoverPausaMinutos} min`

@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { registrarEnvioBot } from './atendimentoHumanoUtil.js';
+import { registrarEnvioBot, registrarIdEnviado } from './atendimentoHumanoUtil.js';
 
 function evolutionUrl(path) {
   return `${config.evolution.apiUrl}${path}/${config.evolution.instance}`;
@@ -22,11 +22,9 @@ function evolutionHeaders() {
  * @param {string} text
  */
 export async function enviarTexto(number, text) {
-  // Registrado ANTES do fetch (não depois) — evita qualquer corrida com o
-  // eco fromMe do webhook, que só pode chegar depois da Evolution API
-  // processar esse envio. Ver atendimentoHumanoUtil.js pra saber por que
-  // isso existe: sem isso, o bot não teria como distinguir seu próprio eco
-  // de uma mensagem manual digitada por um humano no mesmo WhatsApp.
+  // Registrado ANTES do fetch (não depois) — mantém a rede de segurança por
+  // contagem (ver atendimentoHumanoUtil.js) ativa mesmo se o registro do ID
+  // abaixo falhar por algum motivo.
   registrarEnvioBot(number);
   const r = await fetch(evolutionUrl('/message/sendText'), {
     method: 'POST',
@@ -37,7 +35,13 @@ export async function enviarTexto(number, text) {
     const errBody = await r.text().catch(() => '');
     throw new Error(`Evolution API (sendText) respondeu ${r.status}: ${errBody}`);
   }
-  return r.json();
+  const data = await r.json();
+  // O ID real retornado aqui (key.id) é o MESMO que volta depois no webhook
+  // de eco fromMe — é o jeito preciso de reconhecer que um fromMe é eco do
+  // próprio bot, sem depender de proximidade de tempo. Ver
+  // atendimentoHumanoUtil.js pro porquê disso ser o mecanismo principal.
+  registrarIdEnviado(data?.key?.id);
+  return data;
 }
 
 /**

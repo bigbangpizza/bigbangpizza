@@ -8,31 +8,72 @@ import { config } from './config.js';
 // alguém (Gabriel/equipe) digita manualmente no WhatsApp conectado — não dá
 // pra distinguir pelo conteúdo do evento em si.
 //
-// Em vez de tentar casar pelo texto ou id da mensagem (frágil — depende de
-// como a Evolution API formata o eco, que pode nem ser garantido igual em
-// todo caso), usamos um contador de "ecos pendentes" por número: toda
-// chamada a enviarTexto() incrementa o contador daquele número antes de
-// mandar; quando um fromMe chega, se o contador for > 0, é eco — consome um
-// e ignora. Se for 0, ninguém da nossa API mandou nada pra esse número
-// agora há pouco — só pode ter sido alguém digitando na mão.
-// Cada incremento expira sozinho depois de JANELA_ECO_MS mesmo se o eco
-// nunca chegar (algumas instâncias/configurações podem não ecoar fromMe),
-// pra não deixar o contador acumulando indefinidamente e mascarando uma
-// mensagem humana real mais tarde.
+// MECANISMO PRINCIPAL — casamento por ID exato:
+// A resposta da Evolution API ao mandar uma mensagem (POST /message/sendText)
+// já retorna o ID real da mensagem (key.id) — e esse é o MESMO ID que volta
+// depois no webhook de eco fromMe. Guardando esse ID no envio (ver
+// registrarIdEnviado, chamado de evolutionApi.js) dá pra checar uma
+// correspondência EXATA: se o ID do fromMe que chegou bate com um ID que a
+// gente mandou, é eco, sem sombra de dúvida — não importa quanto tempo
+// demorou pra chegar.
 //
-// ATENÇÃO: esse valor já foi reduzido pra 5s numa sessão anterior (só pra
-// bater com o timing de um teste local, onde o eco mockado chega quase
-// instantaneamente) e isso causou um bug crítico em produção — o eco real
-// da Evolution API (fetch até a Evolution + Evolution manda pro WhatsApp +
-// confirmação do WhatsApp + webhook de volta pro nosso servidor) pode
-// facilmente passar de 5s, principalmente numa resposta com várias bolhas
-// (cada bolha manda um enviarTexto separado, ver respostaHumanizada.js) ou
-// com a Evolution sob carga. Quando o crédito expirava antes do eco real
-// chegar, o bot classificava o próprio eco como mensagem manual e se
-// autopausava por HUMAN_TAKEOVER_PAUSA_MINUTOS logo depois de responder —
-// na prática, o atendimento parava. 20s dá folga bem maior pra latência
-// real de produção, mantendo a detecção de humano digitando rápido ainda
-// muito mais restritiva que os 45 min de pausa em si.
+// Por que isso substitui o design anterior (só contador por número): a
+// primeira versão desse módulo tentava inferir eco só pela PROXIMIDADE DE
+// TEMPO (um contador de "ecos pendentes" que expira depois de
+// JANELA_ECO_MS). Isso tem um defeito estrutural que só apareceu em
+// produção: se alguém da equipe digitasse uma mensagem manual pro MESMO
+// número pouco depois do bot ter mandado algo — antes do eco real do bot
+// chegar —, o contador ainda tinha um "crédito" pendente, e a mensagem
+// MANUAL acabava sendo consumida como se fosse o eco do bot. Ou seja, o
+// caso mais importante de usar essa feature (Gabriel corrigindo o bot na
+// hora) era justamente o caso em que ela falhava silenciosamente. Alargar
+// a janela (pra corrigir o bot se autopausando com eco lento) só piorava
+// isso, aumentando a chance de um humano digitar dentro da janela.
+// Casar por ID exato elimina essa ambiguidade — não depende de "quantos
+// envios recentes", só de "esse ID específico é nosso ou não".
+const IDS_ENVIADOS_PELO_BOT = new Set();
+
+// TTL aqui é só higiene de memória (evita o Set crescer pra sempre se algum
+// ID nunca voltar) — não afeta a precisão da detecção, já que a checagem é
+// por igualdade exata de ID, não por janela de tempo. Pode ser bem generoso
+// sem nenhum risco de falso positivo.
+const TTL_ID_ENVIADO_MS = 5 * 60_000;
+
+// Flag de "o rastreamento por ID já provou que funciona nessa instância" —
+// vira true na primeira vez que a Evolution API retornar um key.id de
+// verdade num envio. Existe pra decidir SE o contador por número (abaixo)
+// deve ser consultado como reserva. IMPORTANTE: essa checagem tem que ser
+// "o mecanismo por ID nunca funcionou, então não temos como saber" — e NÃO
+// "esse ID específico não bateu, então deixa eu tentar o contador" — as
+// duas soam parecidas mas são bem diferentes na prática. Um teste local
+// pegou isso: se o contador entra como fallback POR EVENTO (não por
+// instância), ele volta a causar o mesmo bug que o casamento por ID foi
+// feito pra resolver — porque o crédito do contador fica pendente até o
+// eco de verdade chegar e consumi-lo, e se um humano mandar uma mensagem
+// manual justamente NESSA janela (antes do eco chegar), o contador ainda
+// tem crédito sobrando e "absorve" a mensagem manual como se fosse eco,
+// mesmo com o ID não batendo. Só cair pro contador quando o ID NUNCA
+// funcionou (falha sistêmica da instância/versão) evita essa reintrodução.
+let idTrackingFuncionando = false;
+
+/**
+ * Registra o ID de uma mensagem que a própria API acabou de mandar (ver
+ * evolutionApi.js/enviarTexto) — usado por ehEcoDoBot pra reconhecer o eco
+ * correspondente com certeza, não importa quanto tempo demore pra chegar.
+ */
+export function registrarIdEnviado(id) {
+  if (!id) return;
+  idTrackingFuncionando = true;
+  IDS_ENVIADOS_PELO_BOT.add(id);
+  setTimeout(() => IDS_ENVIADOS_PELO_BOT.delete(id), TTL_ID_ENVIADO_MS);
+}
+
+// MECANISMO DE RESERVA — contador por número:
+// Só é consultado se idTrackingFuncionando NUNCA tiver virado true — ou
+// seja, se essa instância/versão da Evolution API simplesmente nunca
+// retornou um key.id em nenhum envio (incompatibilidade sistêmica, não uma
+// falha pontual). Nesse caso (raro), cai de volta pro comportamento antigo
+// — melhor com o risco conhecido do que sem detecção nenhuma.
 const JANELA_ECO_MS = 20_000;
 const ecosPendentesPorNumero = new Map(); // numero -> quantidade
 
@@ -45,12 +86,28 @@ export function registrarEnvioBot(numero) {
   }, JANELA_ECO_MS);
 }
 
-/** true se essa mensagem fromMe é eco de algo que a própria API acabou de mandar (consome um "crédito"). */
-export function ehEcoDoBot(numero) {
+function consumirCreditoPorContador(numero) {
   const atual = ecosPendentesPorNumero.get(numero) || 0;
   if (atual <= 0) return false;
   ecosPendentesPorNumero.set(numero, atual - 1);
   return true;
+}
+
+/**
+ * true se essa mensagem fromMe é eco de algo que a própria API acabou de
+ * mandar. Se o rastreamento por ID já provou funcionar nessa instância
+ * (idTrackingFuncionando), o casamento por ID é a ÚNICA fonte de verdade —
+ * não bateu, não é eco, ponto (mesmo que exista crédito pendente no
+ * contador). Só cai pro contador (mais frágil, ver acima) se o rastreamento
+ * por ID nunca tiver funcionado nem uma vez.
+ */
+export function ehEcoDoBot(numero, id) {
+  if (id && IDS_ENVIADOS_PELO_BOT.has(id)) {
+    IDS_ENVIADOS_PELO_BOT.delete(id);
+    return true;
+  }
+  if (idTrackingFuncionando) return false;
+  return consumirCreditoPorContador(numero);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
