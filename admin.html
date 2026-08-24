@@ -543,12 +543,14 @@ input:checked+.sl::before{transform:translateX(20px);}
 
     <!-- RELATÓRIO -->
     <div id="pg-relatorio" class="hidden">
-      <div class="page-title">FINANCEIRO &amp; RELATÓRIO</div><div class="page-sub">Faturamento bruto, ticket médio e mais vendidos por período</div>
+      <div class="page-title">FINANCEIRO &amp; RELATÓRIO</div><div class="page-sub">Faturamento, pedidos e pizzas vendidas por período — números de pedidos e de pizzas são métricas diferentes, veja os rótulos</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
         <button class="be filtro-btn" onclick="setRelFiltro(this,'hoje')">  📅 Hoje</button>
+        <button class="bt filtro-btn" onclick="setRelFiltro(this,'ontem')"> 📅 Ontem</button>
         <button class="bt filtro-btn" onclick="setRelFiltro(this,'semana')">📅 7 dias</button>
         <button class="bt filtro-btn" onclick="setRelFiltro(this,'mes')">   📅 Este mês</button>
         <button class="bt filtro-btn" onclick="setRelFiltro(this,'tudo')">  📋 Tudo</button>
+        <input type="date" id="rel-data-especifica" class="bt filtro-btn" style="color-scheme:dark;" onchange="setRelFiltroData(this.value)">
         <button class="btn-csv"       onclick="exportarCSV()">              📊 Exportar CSV</button>
       </div>
       <div id="rel-content"><div class="loading">Carregando...</div></div>
@@ -1443,13 +1445,17 @@ async function loadDash() {
 // ═══════════════════════════════════════════════════════
 // DASHBOARD — cards extras (pico, mais pedida, financeiro)
 // ═══════════════════════════════════════════════════════
+// Comparação por data-calendário em Bahia (não local do navegador nem UTC
+// puro) — ver dataBahiaISO() acima pro porquê disso importar: sem isso,
+// pedidos feitos entre 21h e meia-noite (Bahia) contavam como "hoje" um dia
+// cedo demais ou tarde demais, dependendo de quando a página era carregada.
 function ehHoje(dataStr){
-  const d = new Date(dataStr), hoje = new Date();
-  return d.getFullYear()===hoje.getFullYear() && d.getMonth()===hoje.getMonth() && d.getDate()===hoje.getDate();
+  return dataBahiaISO(dataStr) === hojeBahiaISO();
 }
 function ehOntem(dataStr){
-  const d = new Date(dataStr), ontem = new Date(); ontem.setDate(ontem.getDate()-1);
-  return d.getFullYear()===ontem.getFullYear() && d.getMonth()===ontem.getMonth() && d.getDate()===ontem.getDate();
+  const ontem = new Date(); ontem.setDate(ontem.getDate()-1);
+  const ontemISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bahia' }).format(ontem);
+  return dataBahiaISO(dataStr) === ontemISO;
 }
 function contarItens(pedidosLista){
   const cont = {};
@@ -1507,7 +1513,7 @@ function renderDashExtraCards(pedidos){
   }
   const financeiroHtml = `<div class="dash-card-t">💰 Resumo Financeiro Hoje</div>
     <div class="dash-card-line"><span>💰 Faturamento</span><strong>${brl(fatHoje)}</strong></div>
-    <div class="dash-card-line"><span>🍕 Pedidos entregues</span><strong>${entHoje.length}</strong></div>
+    <div class="dash-card-line"><span>📦 Pedidos entregues</span><strong>${entHoje.length}</strong></div>
     <div class="dash-card-line"><span>🎯 Ticket médio</span><strong>${brl(ticketHoje)}</strong></div>
     <div class="dash-card-line" style="font-size:12px;">${compHtml}</div>`;
 
@@ -2001,6 +2007,25 @@ function hojeBahiaISO(){
 function limitesDiaBahiaUTC(dataISO){
   const inicio = new Date(`${dataISO}T00:00:00-03:00`);
   return { inicio, fim: new Date(inicio.getTime() + 86400000) };
+}
+// Converte um timestamp cru do Postgres (formato "YYYY-MM-DD HH:MM:SS[.ffffff]",
+// sempre UTC mas sem sufixo "Z" — mesma observação de dataUtils.js no
+// whatsapp-bot) pra data-calendário correta em Bahia (YYYY-MM-DD). Sem isso,
+// `new Date(stringCrua)` é interpretado como horário LOCAL DO NAVEGADOR (quirk
+// do JS pra strings "YYYY-MM-DD HH:MM:SS" com espaço, diferente do formato
+// "T" que o spec trata como UTC) — o que faz pedidos feitos entre 21h e
+// meia-noite (Bahia) vazarem pro dia seguinte em qualquer comparação de "é
+// hoje?"/"é ontem?", já que esse é justamente o intervalo em que o dia UTC já
+// virou mas o dia em Bahia (UTC-3) ainda não. Foi a causa raiz do relatório
+// mostrando mais pedidos/pizzas do que o Gabriel contou manualmente.
+function parseUTC(pgTimestamp){
+  if(!pgTimestamp) return null;
+  const iso = pgTimestamp.includes('T') ? pgTimestamp : pgTimestamp.replace(' ','T');
+  return new Date(iso.endsWith('Z') ? iso : iso+'Z');
+}
+function dataBahiaISO(pgTimestamp){
+  const dataUTC = parseUTC(pgTimestamp);
+  return dataUTC ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bahia' }).format(dataUTC) : null;
 }
 let filtroDataEntregue = hojeBahiaISO();
 function onFiltroDataEntregueChange(){
@@ -3131,39 +3156,165 @@ async function salvarTextosSecoes(){
 // ═══════════════════════════════════════════════════════
 // RELATÓRIO + EXPORTAR CSV
 // ═══════════════════════════════════════════════════════
+// "Pedidos" e "pizzas (unidades)" são métricas DIFERENTES e não devem se
+// confundir na tela: um pedido pode ter mais de uma pizza (ex: um combo tem
+// 2), então "N pedidos" e "M pizzas" quase nunca vão bater — isso é
+// esperado, não um bug. Rótulos abaixo são explícitos de propósito.
+const REL_LABELS = {hoje:'Hoje', ontem:'Ontem', semana:'Últimos 7 dias', mes:'Este mês', tudo:'Todo o período'};
+const REL_STATUS_LABEL = {aguardando:'⏳ Aguardando', aceito_preparando:'✅🔥 Aceito/Preparando', aceito:'✅🔥 Aceito/Preparando', preparando:'✅🔥 Aceito/Preparando', saiu:'🛵 Na rua', entregue:'✅ Entregue', cancelado:'❌ Cancelado'};
+const REL_PERIODOS_DE_UM_DIA = ['hoje','ontem','data']; // só esses mostram a lista detalhada de pedidos
+
 function setRelFiltro(btn,periodo){
   document.querySelectorAll('#pg-relatorio .filtro-btn').forEach(b=>b.className='bt filtro-btn');
   if(btn) btn.className='be filtro-btn';
+  const inputData=document.getElementById('rel-data-especifica');
+  if(inputData) inputData.value='';
   loadRelatorio(periodo);
 }
+function setRelFiltroData(dataISO){
+  if(!dataISO) return;
+  document.querySelectorAll('#pg-relatorio .filtro-btn').forEach(b=>b.className='bt filtro-btn');
+  loadRelatorio('data', dataISO);
+}
 
-async function loadRelatorio(period='hoje'){
+// Limites [início, fim) em UTC pro período pedido, sempre calculados a
+// partir do dia-calendário em Bahia (ver dataBahiaISO acima) — nunca do dia
+// UTC puro nem do fuso local do navegador de quem estiver logado no admin.
+function limitesRelatorio(period, dataEspecifica){
+  const hojeISO=hojeBahiaISO();
+  if(period==='hoje') return limitesDiaBahiaUTC(hojeISO);
+  if(period==='ontem'){
+    const ontem=new Date(); ontem.setDate(ontem.getDate()-1);
+    const ontemISO=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(ontem);
+    return limitesDiaBahiaUTC(ontemISO);
+  }
+  if(period==='data') return limitesDiaBahiaUTC(dataEspecifica);
+  if(period==='semana'){
+    const seteDiasAtras=new Date(); seteDiasAtras.setDate(seteDiasAtras.getDate()-6); // hoje + 6 anteriores = 7 dias
+    const inicioISO=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(seteDiasAtras);
+    return { inicio: limitesDiaBahiaUTC(inicioISO).inicio, fim: limitesDiaBahiaUTC(hojeISO).fim };
+  }
+  if(period==='mes'){
+    const [ano,mes]=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(new Date()).split('-');
+    const inicioISO=`${ano}-${mes}-01`;
+    return { inicio: limitesDiaBahiaUTC(inicioISO).inicio, fim: limitesDiaBahiaUTC(hojeISO).fim };
+  }
+  return null; // 'tudo' — sem filtro de data
+}
+
+// Pizzas vendidas por SABOR (unidade física, não pedido/linha do pedido).
+// itens_json não guarda o "tipo" original da tool (pizza_salgada/pizza_doce/
+// combo/bebida) — só um "tipo" interno ('pizza' só pra salgada avulsa,
+// 'simples' pra doce/combo/bebida misturados) — então pra separar doce de
+// combo de bebida dentro de "simples", cruza o nome do item com os catálogos
+// reais (nomesDoces/nomesCombos), que são exatos (vêm do mesmo buscarPorNome
+// usado no fechamento do pedido).
+function contarPizzasPorSabor(pedidosLista, nomesDoces, nomesCombos){
+  const cont={};
+  let semSaborDefinido=0;
+  pedidosLista.forEach(p=>{
+    (p.itens_json||[]).forEach(item=>{
+      const qty=item.qty||1;
+      if(item.tipo==='pizza'){
+        // pizza salgada avulsa — sabores tem 1 (sabor único) ou 2 (meio a
+        // meio) entradas; cada metade conta 1 unidade pro sabor dela (é a
+        // convenção padrão pra ranquear popularidade de sabor).
+        (item.sabores||[]).forEach(s=>{ if(s?.nome) cont[s.nome]=(cont[s.nome]||0)+qty; });
+        return;
+      }
+      const nomeItem=(item.sabores||[])[0]?.nome||'';
+      if(nomesDoces.has(nomeItem)){
+        cont[nomeItem]=(cont[nomeItem]||0)+qty; // pizza doce avulsa
+      } else if(nomesCombos.has(nomeItem)){
+        // combo: 1 pizza salgada (fixa na receita do combo) + 1 pizza doce
+        // (escolhida pelo cliente na conversa) = 2 unidades físicas — mas
+        // nenhuma das duas tem o sabor gravado de forma estruturada no
+        // pedido (só em texto livre no campo "obs", quando o cliente
+        // escolheu) — conta pro TOTAL geral de unidades, não pro ranking
+        // por sabor, pra não arriscar atribuir um sabor errado.
+        semSaborDefinido += 2*qty;
+      }
+      // bebida avulsa (nem doce nem combo) não é pizza — ignora.
+    });
+  });
+  return { porSabor: cont, unidadesSemSaborDefinido: semSaborDefinido };
+}
+
+async function loadRelatorio(period='hoje', dataEspecifica=null){
   document.getElementById('rel-content').innerHTML='<div class="loading">Carregando...</div>';
-  const hoje=new Date();
-  let q='';
-  if(period==='hoje'){ const d=hoje.toISOString().split('T')[0]; q=`created_at=gte.${d}T00:00:00`; }
-  else if(period==='semana'){ const d=new Date(hoje-7*86400000).toISOString().split('T')[0]; q=`created_at=gte.${d}T00:00:00`; }
-  else if(period==='mes'){ const d=new Date(hoje.getFullYear(),hoje.getMonth(),1).toISOString().split('T')[0]; q=`created_at=gte.${d}T00:00:00`; }
-  const pedidos=await api('pedidos',q,'created_at.desc');
+  const limites=limitesRelatorio(period, dataEspecifica);
+  const q=limites?`created_at=gte.${limites.inicio.toISOString()}&created_at=lt.${limites.fim.toISOString()}`:'';
+  const [pedidos, doces, combos]=await Promise.all([
+    api('pedidos', q, 'created_at.desc'),
+    api('pizzas_doces'),
+    api('combos'),
+  ]);
+  const nomesDoces=new Set(doces.map(d=>d.nome));
+  const nomesCombos=new Set(combos.map(c=>c.nome));
+
   const entregues=pedidos.filter(p=>p.status==='entregue');
+  const cancelados=pedidos.filter(p=>p.status==='cancelado');
+  const emAndamento=pedidos.filter(p=>!['entregue','cancelado'].includes(p.status));
+
+  // Faturamento só conta pedido ENTREGUE — cancelado nunca entra aqui.
   const fat=entregues.reduce((s,p)=>s+(p.total||0),0);
   const ticket=entregues.length?fat/entregues.length:0;
-  const cont={};
-  entregues.forEach(p=>{ if(!p.itens) return; p.itens.split(' | ').filter(Boolean).forEach(i=>{ const m=i.match(/^(\d+)x\s+(.+)/); const n=m?m[2].trim():i.trim(); cont[n]=(cont[n]||0)+(m?parseInt(m[1]):1); }); });
-  const top=Object.entries(cont).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const labels={hoje:'Hoje',semana:'Últimos 7 dias',mes:'Este mês',tudo:'Todo o período'};
+
+  const { porSabor, unidadesSemSaborDefinido }=contarPizzasPorSabor(entregues, nomesDoces, nomesCombos);
+  const rankingSabores=Object.entries(porSabor).sort((a,b)=>b[1]-a[1]);
+  const totalUnidadesPizza=rankingSabores.reduce((s,[,q])=>s+q,0)+unidadesSemSaborDefinido;
+
+  const ehDiaUnico=REL_PERIODOS_DE_UM_DIA.includes(period);
+  const label=period==='data'
+    ? (parseUTC(dataEspecifica+' 12:00:00')||new Date()).toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Bahia'})
+    : (REL_LABELS[period]||period);
+
   document.getElementById('rel-content').innerHTML=`
-    <div style="margin-bottom:8px;color:rgba(255,255,255,.35);font-size:12px;">Período: <strong>${labels[period]||period}</strong> · ${pedidos.length} pedido(s)</div>
-    <div class="stats" style="margin-bottom:20px;">
-      <div class="stat"><div class="stat-n">${entregues.length}</div><div class="stat-l">Pedidos Entregues</div></div>
-      <div class="stat"><div class="stat-n" style="font-size:20px;">${brl(fat)}</div><div class="stat-l">Faturamento Bruto</div></div>
-      <div class="stat"><div class="stat-n" style="font-size:20px;">${brl(ticket)}</div><div class="stat-l">Ticket Médio</div></div>
-      <div class="stat"><div class="stat-n">${pedidos.length-entregues.length}</div><div class="stat-l">Em Andamento</div></div>
+    <div style="margin-bottom:14px;color:rgba(255,255,255,.35);font-size:12px;">Período: <strong>${esc(label)}</strong></div>
+
+    <div class="tw" style="padding:18px;margin-bottom:16px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:4px;">💰 Faturamento</h3>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">Só pedidos com status "entregue" contam pro faturamento — cancelados nunca entram nessa conta.</div>
+      <div class="stats">
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat)}</div><div class="stat-l">Faturamento Bruto</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(ticket)}</div><div class="stat-l">Ticket Médio</div></div>
+      </div>
     </div>
-    ${top.length?`<div class="tw"><div class="tw-head"><h3>🏆 Mais Vendidos</h3></div>
-    <table><thead><tr><th>#</th><th>Produto</th><th>Qtd</th></tr></thead>
-    <tbody>${top.map(([n,q],i)=>`<tr><td data-label="#" style="color:var(--orange);font-weight:700;font-family:'Bebas Neue',sans-serif;font-size:18px;">${i+1}°</td><td data-label="Produto">${n}</td><td data-label="Qtd"><strong>${q}</strong></td></tr>`).join('')}</tbody></table></div>`
-    : '<div class="loading">Nenhum pedido entregue neste período.</div>'}`;
+
+    <div class="tw" style="padding:18px;margin-bottom:16px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:4px;">📋 Pedidos</h3>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">Contagem de PEDIDOS — não confundir com pizzas (um pedido pode conter mais de uma pizza, ver seção abaixo).</div>
+      <div class="stats">
+        <div class="stat"><div class="stat-n">${pedidos.length}</div><div class="stat-l">Pedidos no Total</div></div>
+        <div class="stat"><div class="stat-n" style="color:#4ade80;">${entregues.length}</div><div class="stat-l">Entregues</div></div>
+        <div class="stat"><div class="stat-n" style="color:#facc15;">${emAndamento.length}</div><div class="stat-l">Em Andamento</div></div>
+        <div class="stat"><div class="stat-n" style="color:#ff5555;">${cancelados.length}</div><div class="stat-l">Cancelados</div></div>
+      </div>
+    </div>
+
+    <div class="tw" style="padding:18px;margin-bottom:16px;">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:4px;">🍕 Pizzas Vendidas por Sabor</h3>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">UNIDADES de pizza, não pedidos — cada combo conta 2 unidades, cada pizza meio a meio conta 1 unidade pra cada sabor.</div>
+      <div style="margin-bottom:12px;"><span style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--orange);">${totalUnidadesPizza}</span> <span style="color:rgba(255,255,255,.5);font-size:13px;">unidades de pizza (não pedidos) no total</span></div>
+      ${rankingSabores.length?`<table><thead><tr><th>#</th><th>Sabor</th><th>Unidades</th></tr></thead><tbody>
+      ${rankingSabores.map(([n,q],i)=>`<tr><td data-label="#" style="color:var(--orange);font-weight:700;font-family:'Bebas Neue',sans-serif;font-size:16px;">${i+1}°</td><td data-label="Sabor">${esc(n)}</td><td data-label="Unidades"><strong>${q}</strong></td></tr>`).join('')}
+      </tbody></table>`:'<div class="loading">Nenhuma pizza vendida nesse período.</div>'}
+      ${unidadesSemSaborDefinido>0?`<div style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.35);">+ ${unidadesSemSaborDefinido} unidade(s) de pizza dentro de combos, cujo sabor exato não fica gravado separadamente no sistema (confira o pedido individual na lista abaixo, campo "Itens", pra ver qual foi escolhido).</div>`:''}
+    </div>
+
+    ${ehDiaUnico?`<div class="tw"><div class="tw-head"><h3>📄 Pedidos de ${esc(label)}</h3></div>
+    ${pedidos.length?`<table><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Status</th></tr></thead><tbody>
+    ${pedidos.map(p=>`<tr>
+      <td data-label="#">${p.id}</td>
+      <td data-label="Hora">${(parseUTC(p.created_at)||new Date()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'})}</td>
+      <td data-label="Cliente">${esc(p.nome)}</td>
+      <td data-label="Itens" style="max-width:320px;font-size:12px;color:rgba(255,255,255,.6);">${esc(p.itens||'')}</td>
+      <td data-label="Valor" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(p.total||0)}</td>
+      <td data-label="Status">${REL_STATUS_LABEL[p.status]||esc(p.status)}</td>
+    </tr>`).join('')}
+    </tbody></table>`:'<div class="loading">Nenhum pedido nesse dia.</div>'}</div>`
+    :`<div style="font-size:12px;color:rgba(255,255,255,.35);">Selecione "Hoje", "Ontem" ou uma data específica (calendário acima) pra ver a lista detalhada de pedidos.</div>`}
+  `;
 }
 
 // ═══════════════════════════════════════════════════════
