@@ -2112,6 +2112,7 @@ function renderPedidoCard(p){
       </select>
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
+      ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
       <button class="bp" onclick="abrirModEditarBorda(${p.id})">🧀 Borda</button>
       <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
     </div>
@@ -2233,7 +2234,13 @@ function enviarWhatsAppEntregador(dataset){
     + `Pagamento: ${dataset.pagamento || ''}\n`
     + `Itens: ${itensResumo}`;
 
-  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+  // O navegador pode bloquear esse pop-up quando ele é o SEGUNDO window.open()
+  // do mesmo clique (o primeiro, pro cliente, já "gastou" a permissão do
+  // gesto do usuário em alguns navegadores/extensões) — nesse caso window.open
+  // retorna null/undefined, e a saída é usar o botão "🛵 Entregador" do card
+  // (clique próprio, nunca bloqueado) pra abrir manualmente.
+  const win = window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+  if (!win) showToastAdmin('⚠️ O navegador bloqueou a aba do entregador — use o botão "🛵 Entregador" no card do pedido pra abrir manualmente.', 6000);
 }
 
 /**
