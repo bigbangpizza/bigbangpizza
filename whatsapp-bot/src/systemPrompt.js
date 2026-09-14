@@ -16,6 +16,18 @@ function estaAbertoAgora(modoLoja) {
   return DIAS_ABERTOS.includes(diaSemana) && hora >= 18 && hora < HORA_FECHA[diaSemana];
 }
 
+/**
+ * Consulta `configuracoes.modo_loja` no Supabase (via getMenuData, já
+ * cacheado) e resolve se a loja está aberta agora — mesma regra usada no
+ * system prompt, exposta aqui pra quem precisar decidir algo (ex: mandar o
+ * aviso automático de loja fechada em server.js) sem duplicar a lógica de
+ * horário/modo manual.
+ */
+export async function lojaEstaAberta() {
+  const { configuracoes } = await getMenuData();
+  return estaAbertoAgora(configuracoes.modo_loja || 'automatico');
+}
+
 function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }

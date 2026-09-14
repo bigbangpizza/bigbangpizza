@@ -1,7 +1,7 @@
 import express from 'express';
 import cron from 'node-cron';
 import { config } from './config.js';
-import { buildSystemPrompt } from './systemPrompt.js';
+import { buildSystemPrompt, lojaEstaAberta } from './systemPrompt.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { baixarMediaBase64 } from './evolutionApi.js';
@@ -232,6 +232,15 @@ function tratarMensagemPropria(numero, messageId) {
   );
 }
 
+// Aviso automático de loja fechada — disparado literalmente (sem passar pela
+// Claude) só na primeira mensagem de uma conversa nova (ver ehConversaNova
+// abaixo) enquanto a loja está fechada. Da segunda mensagem em diante da
+// mesma conversa, o atendimento segue normal pela Claude (que já sabe que a
+// loja está fechada via buildSystemPrompt e pode, por exemplo, anotar um
+// pedido pra quando reabrir) — evita repetir esse aviso a cada mensagem.
+const MENSAGEM_LOJA_FECHADA =
+  'Olá! Obrigado por entrar em contato com a Big Bang Pizza! No momento estamos fechados, mas ficamos felizes com sua preferência. Funcionamos de quinta a domingo, das 18h às 23h (quinta e domingo) e das 18h às 00h (sexta e sábado). Assim que abrirmos, ficaremos felizes em te atender!';
+
 /**
  * Processa um lote de content blocks (uma ou mais mensagens do cliente
  * acumuladas pela fila acima) como um único turno de conversa: chama a
@@ -259,6 +268,14 @@ async function processarLote(numero, nomeContato, userContent) {
   // começado durante a janela de debounce da fila.
   if (estaPausadoPorHumano(numero)) {
     console.log(`[atendimentoHumano] numero=${numero} pausado — mensagem guardada, bot não respondeu`);
+    return;
+  }
+
+  if (ehConversaNova && !(await lojaEstaAberta())) {
+    await enviarRespostaHumanizada(numero, MENSAGEM_LOJA_FECHADA);
+    historico.push({ role: 'assistant', content: [textBlock(MENSAGEM_LOJA_FECHADA)] });
+    aplicarLimiteHistorico(historico);
+    await persistirHistorico(numero, historico);
     return;
   }
 
