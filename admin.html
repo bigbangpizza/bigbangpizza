@@ -2154,11 +2154,12 @@ const STATUS_LABEL = {aguardando:'Aguardando',aceito_preparando:'Aceito/Preparan
 
 // Mensagens de confirmação automática via WhatsApp — disparadas ao mudar o status
 // de um pedido por qualquer botão de ação (dropdown do kanban, modo cozinha, swipe).
-// "aceito" e "preparando" viraram um único status/mensagem (aceito_preparando).
+// "aceito" e "preparando" viraram um único status (aceito_preparando); usa o texto
+// de "preparando" porque é a informação mais relevante pro cliente nesse momento.
+// "entregue" não dispara mensagem automática (decisão de produto).
 const STATUS_WPP_MSGS = {
-  aceito_preparando: nome => `Oi ${nome}! Seu pedido foi aceito e já está no forno 🍕🔥 Previsão: 35-60 min. Explosão de Sabor a caminho!`,
-  saiu:              () => `🛵 Saiu pra entrega! Chega em instantes 🍕`,
-  entregue:          () => `🎉 Pedido entregue! Bom apetite e obrigado por escolher a Big Bang. Explosão de Sabor! Se puder, deixa sua avaliação aqui, ajuda muito a gente: https://g.page/r/CU3K37525rpHEAE/review`
+  aceito_preparando: nome => `Oi ${nome}! Seu pedido está em preparo e logo logo sua explosão de sabor sai para entrega!`,
+  saiu:              nome => `Oi ${nome}! Sua Big Bang Pizza está a caminho!`
 };
 
 // Normaliza o campo pedidos.whatsapp (texto livre, sem máscara na origem) para o
