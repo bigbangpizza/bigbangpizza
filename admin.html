@@ -324,6 +324,12 @@ input:checked+.sl::before{transform:translateX(20px);}
         </div>
       </div>
 
+      <!-- AVISO: WHATSAPP DO ENTREGADOR NÃO CONFIGURADO -->
+      <div id="aviso-entregador" class="hidden" style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div style="font-size:13px;font-weight:600;color:#facc15;">⚠️ WhatsApp do entregador não configurado — o aviso automático de "saiu para entrega" não será enviado.</div>
+        <button class="bt" style="padding:8px 16px;font-size:12px;font-weight:700;" onclick="show('aparencia')">⚙️ Configurar agora</button>
+      </div>
+
       <!-- ATALHOS RÁPIDOS -->
       <div class="shortcuts-grid" id="shortcuts-grid">
         <div class="shortcut-card" onclick="show('pedidos')">
@@ -622,6 +628,7 @@ input:checked+.sl::before{transform:translateX(20px);}
         <div class="fg"><label>Instagram (@usuario)</label><input type="text" id="ap-info-instagram" placeholder="@bigbangpizza"></div>
         <div class="fg"><label>Horário de funcionamento (texto exibido no site)</label><input type="text" id="ap-info-horario" placeholder="Qui e Dom 18h às 23h | Sex e Sáb 18h às 00h"></div>
         <div class="fg"><label>Slogan do rodapé</label><input type="text" id="ap-info-rodape" placeholder="Explosão de Sabor 🍕🔥💥"></div>
+        <div class="fg"><label>WhatsApp do Entregador (DDI+DDD+número, ex: 5571993738823)</label><input type="text" id="ap-info-whatsapp-entregador" placeholder="5571993738823"></div>
         <button class="btn-new" onclick="salvarInfoGeral()">💾 Salvar Informações</button>
       </div>
 
@@ -969,6 +976,7 @@ function entrarApp(tipo) {
   if (sub) sub.textContent = `✅ Autenticado via Supabase Auth — sessão segura com JWT`;
   loadDash();
   loadModoLoja();
+  carregarWhatsappEntregador();
   atualizarBotaoAlertas();
   iniciarMonitorPedidos();
 }
@@ -1399,6 +1407,22 @@ async function setModoLoja(modo) {
   updateLojaUI(modo);
   showToastAdmin(modo === 'aberta' ? '🟢 Loja ABERTA!' : modo === 'fechada' ? '🔴 Loja FECHADA!' : '⚙️ Modo automático!');
   registrarHistorico(`Modo da loja alterado para ${modo === 'aberta' ? 'Forçada Aberta' : modo === 'fechada' ? 'Forçada Fechada' : 'Automático'}`);
+}
+
+// ═══════════════════════════════════════════════════════
+// WHATSAPP DO ENTREGADOR — carregado uma vez no login e mantido em cache pra
+// poder abrir o wa.me de forma síncrona (mesmo gesto de clique) quando o
+// pedido for marcado como "saiu", igual ao mesmo cuidado já tomado com
+// enviarWhatsAppStatus() mais abaixo. Sem cache, um fetch aqui no meio do
+// clique quebraria o gesto do usuário e o navegador bloquearia o popup.
+// ═══════════════════════════════════════════════════════
+let whatsappEntregadorCache = '';
+
+async function carregarWhatsappEntregador(){
+  const data = await api('configuracoes', 'chave=eq.whatsapp_entregador');
+  whatsappEntregadorCache = data[0]?.valor || '';
+  const aviso = document.getElementById('aviso-entregador');
+  if (aviso) aviso.classList.toggle('hidden', !!whatsappEntregadorCache);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2054,7 +2078,7 @@ function renderPedidoCard(p){
   const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
   const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
   const mostrarTimer=(bucket==='aguardando'||bucket==='aceito_preparando');
-  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
+  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
@@ -2183,6 +2207,36 @@ function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw){
 }
 
 /**
+ * Dispara o aviso de "nova entrega" pro WhatsApp do entregador (tabela
+ * `configuracoes`, chave whatsapp_entregador — ver carregarWhatsappEntregador,
+ * que mantém o número em cache pro open funcionar de forma síncrona igual
+ * ao enviarWhatsAppStatus acima). Lê os dados do pedido direto do dataset
+ * do card (nome/endereco/complemento/bairro/total/pagamento/itens), sem
+ * nenhum fetch no meio do clique.
+ */
+function enviarWhatsAppEntregador(dataset){
+  if(!dataset) return;
+  const numero = normalizarWhatsapp(whatsappEntregadorCache);
+  if(!numero){ showToastAdmin('⚠️ WhatsApp do entregador não configurado — configure na aba Aparência.'); return; }
+
+  const endereco = dataset.endereco || '';
+  const complemento = dataset.complemento || '';
+  const enderecoCompleto = complemento ? `${endereco} - ${complemento}` : endereco;
+  const enderecoMaps = [endereco, dataset.bairro, 'Lauro de Freitas - BA'].filter(Boolean).join(', ');
+  const itensResumo = (dataset.itens || '').split(' | ').filter(Boolean).join(', ');
+
+  const msg = `NOVA ENTREGA - Big Bang Pizza\n\n`
+    + `Cliente: ${dataset.nome || ''}\n`
+    + `Endereço: ${enderecoCompleto}\n`
+    + `Maps: https://maps.google.com/?q=${encodeURIComponent(enderecoMaps)}\n`
+    + `Valor: ${brl(parseFloat(dataset.total) || 0)}\n`
+    + `Pagamento: ${dataset.pagamento || ''}\n`
+    + `Itens: ${itensResumo}`;
+
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+/**
  * @param {string} statusEsperado bucket que a UI acreditava ser o status
  *   atual do pedido quando disparou essa mudança (ex: o que estava
  *   selecionado no dropdown, ou o `data-status` do card no momento do
@@ -2200,6 +2254,7 @@ async function atualizarStatus(id,status,cardEl,statusEsperado){
   // dano de um falso positivo é mínimo: wa.me só abre um rascunho de
   // mensagem, ninguém é enviado sem o Gabriel apertar enviar manualmente.
   if(STATUS_WPP_MSGS[status]) enviarWhatsAppStatus(status, cardEl?.dataset?.nome, cardEl?.dataset?.whatsapp);
+  if(status==='saiu') enviarWhatsAppEntregador(cardEl?.dataset);
 
   const linhas = await updSeStatus('pedidos', id, statusEsperado, {status});
 
@@ -2489,7 +2544,7 @@ async function loadCozinha(){
     const avanco = bucket === 'aguardando'
       ? {status:'aceito_preparando', label:'✅🔥 Aceitar e Preparar'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
-    return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}">
+    return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}">
       <div class="cozinha-num">#${p.id}</div>
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
@@ -2987,6 +3042,7 @@ async function loadAparencia(){
   document.getElementById('ap-info-instagram').value = apConfigsAtuais.info_instagram || '';
   document.getElementById('ap-info-horario').value = apConfigsAtuais.info_horario || '';
   document.getElementById('ap-info-rodape').value = apConfigsAtuais.info_rodape_slogan || '';
+  document.getElementById('ap-info-whatsapp-entregador').value = apConfigsAtuais.whatsapp_entregador || '';
 
   document.getElementById('ap-subtitulo-salgadas').value = apConfigsAtuais.subtitulo_salgadas || '';
   document.getElementById('ap-subtitulo-doces').value = apConfigsAtuais.subtitulo_doces || '';
@@ -3141,8 +3197,10 @@ async function salvarInfoGeral(){
     info_instagram: document.getElementById('ap-info-instagram').value.trim(),
     info_horario: document.getElementById('ap-info-horario').value.trim(),
     info_rodape_slogan: document.getElementById('ap-info-rodape').value.trim(),
+    whatsapp_entregador: document.getElementById('ap-info-whatsapp-entregador').value.trim(),
   });
   showToastAdmin(ok ? '✅ Informações salvas!' : '⚠️ Erro ao salvar.');
+  carregarWhatsappEntregador();
 }
 
 // --- SEÇÃO 5: TEXTOS DAS SEÇÕES ---
