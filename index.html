@@ -35,7 +35,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#CC1100">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
-<meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta a domingo das 18h às 00h.">
+<meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h.">
 
 <!-- Open Graph / compartilhamento (WhatsApp, Instagram, redes sociais) -->
 <meta property="og:title" content="Big Bang Pizza — Explosão de Sabor em Lauro de Freitas">
@@ -77,7 +77,13 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
   "openingHoursSpecification": [
     {
       "@type": "OpeningHoursSpecification",
-      "dayOfWeek": ["Thursday", "Friday", "Saturday", "Sunday"],
+      "dayOfWeek": ["Thursday", "Sunday"],
+      "opens": "18:00",
+      "closes": "23:00"
+    },
+    {
+      "@type": "OpeningHoursSpecification",
+      "dayOfWeek": ["Friday", "Saturday"],
       "opens": "18:00",
       "closes": "00:00"
     }
@@ -474,7 +480,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <picture><source srcset="logo-hero.webp" type="image/webp"><img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza" width="700" height="700"></picture>
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1><span id="hero-slogan">Pizza artesanal,</span><br><em id="hero-destaque">explosão de sabor</em></h1>
-  <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Quinta a domingo, das 18h às 00h.</p>
+  <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
   <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
     <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
@@ -644,7 +650,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <a href="https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9" target="_blank">🛵 iFood</a>
     <a href="https://instagram.com/bigbangpz" id="footer-instagram" target="_blank">📷 @bigbangpz</a>
   </div>
-  <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Quinta a Domingo | 18h às 00h</div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Qui e Dom 18h às 23h | Sex e Sáb 18h às 00h</div>
   <div class="footer-copy">© 2026 Big Bang Pizza — Todos os direitos reservados</div>
 </footer>
 
@@ -810,21 +816,30 @@ function updateStatus() {
   const day = now.getDay();
   const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
   const diasAbertos = [0,4,5,6];
-  
+  // Hora de fechamento por dia da semana (24 = meia-noite).
+  // Quinta (4) e domingo (0) fecham às 23h; sexta (5) e sábado (6) à meia-noite.
+  const horaFecha = {0: 23, 4: 23, 5: 24, 6: 24};
+  const fechaHoje = horaFecha[day] || 24;
+
   let open;
   if (modoLojaOverride === 'aberta') { open = true; }
   else if (modoLojaOverride === 'fechada') { open = false; }
-  else { open = diasAbertos.includes(day) && h >= 18 && h < 24; }
+  else { open = diasAbertos.includes(day) && h >= 18 && h < fechaHoje; }
   const b = document.getElementById('status-banner');
 
   if (open) {
-    // Calcula quanto tempo falta para fechar (meia-noite)
-    const totalSecs = (23 - h) * 3600 + (59 - m) * 60 + (59 - s);
-    const hh = Math.floor(totalSecs / 3600);
-    const mm = Math.floor((totalSecs % 3600) / 60);
-    const ss = totalSecs % 60;
+    // Calcula quanto tempo falta para fechar
+    const totalSecs = (fechaHoje - 1 - h) * 3600 + (59 - m) * 60 + (59 - s);
     b.className = 'open';
-    b.textContent = `🟢 Aberto agora! Fechamos em ${hh}h ${mm}m ${ss}s`;
+    if (totalSecs <= 0) {
+      // Só acontece com a loja aberta manualmente fora do horário — sem contagem
+      b.textContent = `🟢 Aberto agora!`;
+    } else {
+      const hh = Math.floor(totalSecs / 3600);
+      const mm = Math.floor((totalSecs % 3600) / 60);
+      const ss = totalSecs % 60;
+      b.textContent = `🟢 Aberto agora! Fechamos em ${hh}h ${mm}m ${ss}s`;
+    }
   } else {
     // Calcula próxima abertura
     let daysUntil = 0;
@@ -1563,7 +1578,7 @@ async function finalizarPedido() {
   else { estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24; }
   
   if (!estaAberto) {
-    alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta a domingo das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
+    alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
     return;
   }
 

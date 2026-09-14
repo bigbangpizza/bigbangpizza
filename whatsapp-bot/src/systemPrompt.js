@@ -5,12 +5,15 @@ import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAbertoRecente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
+// Hora de fechamento por dia da semana (24 = meia-noite).
+// Quinta e domingo fecham às 23h; sexta e sábado à meia-noite.
+const HORA_FECHA = { 0: 23, 4: 23, 5: 24, 6: 24 };
 
 function estaAbertoAgora(modoLoja) {
   if (modoLoja === 'aberta') return true;
   if (modoLoja === 'fechada') return false;
   const { diaSemana, hora } = getAgoraNoBrasil();
-  return DIAS_ABERTOS.includes(diaSemana) && hora >= 18 && hora < 24;
+  return DIAS_ABERTOS.includes(diaSemana) && hora >= 18 && hora < HORA_FECHA[diaSemana];
 }
 
 function brl(v) {
@@ -214,7 +217,7 @@ Se o cliente disser um bairro que não está na lista abaixo, não corte com um 
 - Se a loja estiver fechada, ainda dá pra anotar o pedido, mas avise que ele só será preparado quando reabrirmos (não prometa entrega imediata).
 
 ## Horário de funcionamento
-Quinta a domingo, das 18h às 00h (horário de Lauro de Freitas/BA).
+Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
 Status agora: ${aberto ? 'ABERTO ✅' : 'FECHADO 🔴'}. ${aberto ? '' : 'Se o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.'}
 ${blocoPedidoRecente}${blocoClienteConhecido}
 ## Como fechar um pedido pelo WhatsApp
