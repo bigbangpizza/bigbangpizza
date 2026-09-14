@@ -2110,7 +2110,7 @@ function renderPedidoCard(p){
         <option value="saiu"             ${bucket==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
         <option value="entregue"         ${bucket==='entregue'?'selected':''}>🏁 Entregue</option>
       </select>
-      <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Imprimir</button>
+      <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
       <button class="bp" onclick="abrirModEditarBorda(${p.id})">🧀 Borda</button>
@@ -2286,6 +2286,7 @@ async function atualizarStatus(id,status,cardEl,statusEsperado){
   }
 
   if(status==='entregue') { await baixarEstoquePedido(id); await incrementarUsoCupom(id); }
+  if(status==='aceito_preparando') imprimirPedido(id);
   registrarHistorico(`Pedido #${id} marcado como ${STATUS_LABEL[status]||status}`);
   loadPedidos();
   return true;
@@ -2414,36 +2415,99 @@ async function salvarBordaPedido(){
   else { alert('Erro ao salvar!'); }
 }
 
+// ═══════════════════════════════════════════════════════
+// CUPOM TÉRMICO 80mm — impressora Kapbom KA-1445 (ou qualquer térmica ESC/POS
+// via driver Windows). Textos fixos do cupom saem sem acento de propósito:
+// impressoras térmicas baratas costumas usar uma codepage (ex: CP860/CP437)
+// que não mapeia corretamente caracteres acentuados via impressão do
+// navegador, e imprime lixo no lugar. Campos vindos do banco (nome,
+// endereço, itens, observação) passam pela mesma normalização por segurança
+// — ver semAcentoImpressao().
+// ═══════════════════════════════════════════════════════
+const CUPOM_LARGURA = 32;
+const CUPOM_LINHA = '='.repeat(CUPOM_LARGURA);
+const CUPOM_TRACO = '-'.repeat(CUPOM_LARGURA);
+
+const MAPA_SEM_ACENTO_IMPRESSAO = {
+  'á':'a','à':'a','ã':'a','â':'a','ä':'a','Á':'A','À':'A','Ã':'A','Â':'A','Ä':'A',
+  'é':'e','è':'e','ê':'e','ë':'e','É':'E','È':'E','Ê':'E','Ë':'E',
+  'í':'i','ì':'i','î':'i','ï':'i','Í':'I','Ì':'I','Î':'I','Ï':'I',
+  'ó':'o','ò':'o','õ':'o','ô':'o','ö':'o','Ó':'O','Ò':'O','Õ':'O','Ô':'O','Ö':'O',
+  'ú':'u','ù':'u','û':'u','ü':'u','Ú':'U','Ù':'U','Û':'U','Ü':'U',
+  'ç':'c','Ç':'C','ñ':'n','Ñ':'N',
+};
+const REGEX_ACENTO_IMPRESSAO = new RegExp(Object.keys(MAPA_SEM_ACENTO_IMPRESSAO).join('|'), 'g');
+function semAcentoImpressao(s){
+  return (s||'').replace(REGEX_ACENTO_IMPRESSAO, c => MAPA_SEM_ACENTO_IMPRESSAO[c]);
+}
+
+function cupomCentralizar(texto){
+  const t = texto.slice(0, CUPOM_LARGURA);
+  const espacos = Math.max(0, Math.floor((CUPOM_LARGURA - t.length) / 2));
+  return ' '.repeat(espacos) + t;
+}
+
+function cupomLinhaValor(label, valor){
+  const espacos = Math.max(1, CUPOM_LARGURA - label.length - valor.length);
+  return label + ' '.repeat(espacos) + valor;
+}
+
+function montarCupomTermico(p){
+  const dt = new Date(p.created_at);
+  const dataStr = dt.toLocaleDateString('pt-BR');
+  const horaStr = dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const nome = semAcentoImpressao(p.nome||'');
+  const endereco = semAcentoImpressao(p.endereco||'') + (p.complemento ? ' - '+semAcentoImpressao(p.complemento) : '');
+  const bairro = semAcentoImpressao(p.bairro||'');
+  const pagamento = semAcentoImpressao(p.pagamento||'');
+  const itensLinhas = (p.itens||'').split(' | ').filter(Boolean).map(i=>esc(semAcentoImpressao(i))).join('\n');
+  const temDesconto = Number(p.desconto||0) > 0;
+
+  return `${cupomCentralizar('BIG BANG PIZZA')}
+${cupomCentralizar('Explosao de Sabor')}
+${CUPOM_LINHA}
+Pedido: #${p.id}
+Data: ${dataStr} ${horaStr}
+${CUPOM_LINHA}
+Cliente: ${esc(nome)}
+Endereco: ${esc(endereco)}
+Bairro: ${esc(bairro)}
+${CUPOM_LINHA}
+<strong>*** ITENS DO PEDIDO ***</strong>
+
+<strong>${itensLinhas}</strong>
+
+${CUPOM_LINHA}
+${p.observacao ? `<strong>*** OBSERVACAO DO CLIENTE ***</strong>\n<strong>${esc(semAcentoImpressao(p.observacao))}</strong>\n${CUPOM_LINHA}\n` : ''}${cupomLinhaValor('Subtotal:', brl(p.subtotal||0))}
+${temDesconto ? cupomLinhaValor('Desconto:', '-'+brl(p.desconto||0))+'\n' : ''}${cupomLinhaValor('Frete:', brl(p.frete||0))}
+${CUPOM_TRACO}
+<strong>*** TOTAL: ${brl(p.total||0)} ***</strong>
+${CUPOM_TRACO}
+Pagamento: <strong>*** ${esc(pagamento)} ***</strong>
+${CUPOM_LINHA}
+${cupomCentralizar('Obrigado pela preferencia!')}
+${cupomCentralizar('Big Bang Pizza')}
+${CUPOM_LINHA}`;
+}
+
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
   if(!dados||!dados[0]) return;
   const p=dados[0];
-  const dataHora=new Date(p.created_at).toLocaleString('pt-BR');
   const jan=window.open('','_blank','width=420,height=680');
+  if(!jan){ showToastAdmin('⚠️ O navegador bloqueou a janela de impressão.'); return; }
   jan.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido #${p.id}</title>
-<style>body{font-family:monospace;font-size:13px;padding:20px;color:#000;}h1{font-size:18px;text-align:center;margin-bottom:4px;}.sub{text-align:center;font-size:11px;color:#555;margin-bottom:12px;}hr{border:none;border-top:1px dashed #333;margin:10px 0;}.row{display:flex;justify-content:space-between;margin-bottom:3px;}.item{padding:4px 0;border-bottom:1px dashed #ddd;font-weight:bold;}.total{font-size:17px;font-weight:bold;text-align:right;margin-top:8px;}.obs{background:#fff8e1;border:1px solid #f59e0b;padding:8px;border-radius:4px;font-weight:bold;margin-top:6px;}.footer{text-align:center;font-size:10px;color:#888;margin-top:14px;}@media print{.btn{display:none;}}</style>
+<style>
+@page{ size:80mm auto; margin:0; }
+*{ box-sizing:border-box; }
+body{ width:80mm; margin:0; padding:2mm; font-family:'Courier New',Courier,monospace; font-size:12px; line-height:1.4; color:#000; background:#fff; }
+pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:inherit; }
+.btn-imprimir{ display:block; width:100%; margin-top:3mm; padding:10px; background:#CC1100; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
+@media print{ .btn-imprimir{ display:none !important; } }
+</style>
 </head><body>
-<h1>🍕 BIG BANG PIZZA</h1>
-<div class="sub">Delivery em Lauro de Freitas — (71) 99373-8823</div>
-<hr>
-<div class="row"><span>Pedido</span><strong>#${p.id}</strong></div>
-<div class="row"><span>Data/Hora</span><strong>${esc(dataHora)}</strong></div>
-<hr>
-<div class="row"><span>Cliente</span><strong>${esc(p.nome)}</strong></div>
-<div class="row"><span>WhatsApp</span><strong>${esc(p.whatsapp||'—')}</strong></div>
-<div class="row"><span>Bairro</span><strong>${esc(p.bairro||'—')}</strong></div>
-<div class="row"><span>Endereço</span><strong>${esc(p.endereco||'—')}${p.complemento?' — '+esc(p.complemento):''}</strong></div>
-<div class="row"><span>Pagamento</span><strong>${esc(p.pagamento||'—')}</strong></div>
-<hr>
-<div style="font-size:11px;color:#555;font-weight:bold;margin-bottom:6px;">ITENS DO PEDIDO</div>
-${(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="item">${esc(i)}</div>`).join('')}
-${p.observacao?`<div class="obs">⚠️ OBS: ${esc(p.observacao)}</div>`:''}
-<hr>
-<div class="row"><span>Subtotal</span><span>${brl(p.subtotal||0)}</span></div>
-<div class="row"><span>Frete</span><span>${p.frete==0?'Grátis':brl(p.frete||0)}</span></div>
-<div class="total">TOTAL: ${brl(p.total||0)}</div>
-<div class="footer">Big Bang Pizza — bigbangpizza.com.br</div>
-<br><button class="btn" onclick="window.print()" style="width:100%;padding:10px;background:#CC1100;color:white;border:none;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ IMPRIMIR</button>
+<pre>${montarCupomTermico(p)}</pre>
+<button class="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
 </body></html>`);
   jan.document.close();
   jan.focus();
