@@ -85,6 +85,15 @@ export const config = {
   // (monitoramento externo, ex: UptimeRobot) — ver src/uptimeAlert.js.
   uptimeWebhookSecret: process.env.UPTIME_WEBHOOK_SECRET || '',
 
+  // Mesma ideia novamente, mas pro endpoint /admin/extrair-pedido (aba
+  // Pedidos > "Lançar pedido manual" do admin.html) — pede pra Claude API
+  // estruturar um texto livre colado pelo Gabriel. Diferente dos dois
+  // segredos acima (que são opcionais e sem eles o endpoint fica aberto),
+  // este é obrigatório: sem ele configurado, o endpoint recusa toda
+  // chamada, porque processa texto arbitrário via Claude API a um custo por
+  // chamada e não deve ficar exposto publicamente sem proteção alguma.
+  adminApiSecret: process.env.ADMIN_API_SECRET || '',
+
   // Quantas mensagens (pares usuário/assistente) manter por contato, pra dar
   // contexto de conversa. Vale tanto pro histórico em Redis quanto pro
   // fallback em memória (ver historicoRedis.js).

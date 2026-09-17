@@ -7,6 +7,7 @@ import { transcreverAudio } from './transcribe.js';
 import { baixarMediaBase64 } from './evolutionApi.js';
 import { enviarRespostaHumanizada } from './respostaHumanizada.js';
 import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
+import { extrairPedidoManual } from './manualOrderExtractTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
 import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
@@ -146,6 +147,44 @@ app.post('/alerta-uptime', (req, res) => {
   processarAlertaUptime(req.body).catch((err) => {
     console.error('[alerta-uptime] erro inesperado ao processar:', err);
   });
+});
+
+// Endpoint usado só pelo admin.html (aba Pedidos > "Lançar pedido manual")
+// pra estruturar, via Claude API, um texto livre (conversa de WhatsApp
+// colada pelo Gabriel) num pedido — sem gravar nada aqui, só devolve os
+// dados extraídos pra revisão na tela de confirmação. Protegido por
+// ?secret=..., igual /webhook e /alerta-uptime acima, mas aqui é
+// obrigatório (ver config.adminApiSecret): processa texto arbitrário via
+// Claude API a um custo por chamada, não pode ficar aberto sem proteção.
+// CORS liberado só pro domínio do site (o browser do Gabriel é quem chama
+// isso direto, não um outro servidor) — sem isso o navegador bloqueia a
+// resposta antes mesmo dela chegar ao admin.html.
+const ADMIN_CORS_ORIGIN = 'https://bigbangpizza.com.br';
+
+app.options('/admin/extrair-pedido', (req, res) => {
+  res.set('Access-Control-Allow-Origin', ADMIN_CORS_ORIGIN);
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+
+app.post('/admin/extrair-pedido', async (req, res) => {
+  res.set('Access-Control-Allow-Origin', ADMIN_CORS_ORIGIN);
+
+  if (!config.adminApiSecret || req.query.secret !== config.adminApiSecret) {
+    return res.sendStatus(401);
+  }
+
+  const texto = (req.body?.texto || '').trim();
+  if (!texto) return res.status(400).json({ erro: 'Campo "texto" vazio ou ausente.' });
+
+  try {
+    const pedidoExtraido = await extrairPedidoManual(texto);
+    res.json(pedidoExtraido);
+  } catch (err) {
+    console.error('[admin/extrair-pedido] falha ao extrair pedido:', err);
+    res.status(500).json({ erro: 'Não foi possível interpretar esse texto agora. Tente de novo em instantes.' });
+  }
 });
 
 async function processarWebhook(body) {

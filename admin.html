@@ -414,7 +414,10 @@ input:checked+.sl::before{transform:translateX(20px);}
 
     <!-- PEDIDOS -->
     <div id="pg-pedidos" class="hidden">
-      <div class="page-title">PEDIDOS</div><div class="page-sub">Pedidos recebidos em tempo real — autorefresh 30s 🍕</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div><div class="page-title">PEDIDOS</div><div class="page-sub">Pedidos recebidos em tempo real — autorefresh 30s 🍕</div></div>
+        <button class="btn-new" onclick="abrirPedidoManual()">📝 Lançar pedido manual</button>
+      </div>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col" data-status="aguardando">
           <div class="kanban-col-head" style="border-color:#ff4444;">
@@ -782,6 +785,15 @@ input:checked+.sl::before{transform:translateX(20px);}
 const SB = 'https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK = 'sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 const ADMIN_EMAIL = 'bigbangpz@outlook.com';
+
+// Servidor do bot do WhatsApp (Railway) — reaproveitado aqui só pelo endpoint
+// /admin/extrair-pedido (aba Pedidos > "Lançar pedido manual"), que usa a
+// mesma chave da Claude API já configurada no bot pra estruturar um texto
+// livre. Protegido por ?secret=..., igual /webhook e /alerta-uptime do bot —
+// ADMIN_API_SECRET aqui precisa ser IDÊNTICO à variável de ambiente
+// ADMIN_API_SECRET configurada no Railway (ver whatsapp-bot/.env.example).
+const BOT_API_URL = 'https://bigbangpizza-production.up.railway.app';
+const ADMIN_API_SECRET = '2531d7b69c7ae642591384b93eae600cc871f24d63d7a635';
 
 // ═══════════════════════════════════════════════════════
 // TEMA CLARO/ESCURO
@@ -1731,7 +1743,10 @@ async function openMod(type, id=null) {
   document.getElementById('modal').classList.add('open');
 }
 
-function closeMod(){ document.getElementById('modal').classList.remove('open'); }
+function closeMod(){
+  document.getElementById('modal').classList.remove('open');
+  document.querySelector('#modal .md').style.width = ''; // reseta a largura customizada do modal de pedido manual (abrirPedidoManual)
+}
 
 async function saveItem() {
   const type=curTable, tbl=type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
@@ -2517,6 +2532,426 @@ strong{ font-weight:900; font-size:1.3em; line-height:1.45; }
   jan.document.close();
   jan.focus();
   setTimeout(()=>jan.print(), 400);
+}
+
+// ═══════════════════════════════════════════════════════
+// PEDIDO MANUAL — atendimento direto pelo WhatsApp (fora do bot), lançado
+// aqui depois. Fluxo em 2 telas dentro do mesmo #modal genérico: (1) cola/
+// digita o texto livre e pede pra Claude API estruturar contra o cardápio
+// real (endpoint /admin/extrair-pedido do bot, ver whatsapp-bot/src/
+// manualOrderExtractTool.js); (2) tela de confirmação totalmente editável —
+// a IA pode errar a interpretação, então NADA é gravado antes do Gabriel
+// revisar/corrigir cada campo e clicar em "Lançar pedido". Grava com
+// origem:'manual' pra diferenciar de pedidos do site/bot nos relatórios.
+// ═══════════════════════════════════════════════════════
+const ENDERECO_LOJA_MANUAL = 'Rua Nilton Calmon, 96 - Centro, Lauro de Freitas - BA';
+const PAGAMENTO_TEXTO_MANUAL = {
+  presencial: 'Presencial (dinheiro/cartão na entrega)',
+  pix: 'Pix (aguardando pagamento)',
+  cartao_link: 'Cartão via link Ton (aguardando envio do link)',
+};
+const BORDA_NOME_MANUAL = { catupiry: 'Catupiry', cheddar: 'Cheddar', chocolate: 'Chocolate' };
+const ITEM_PEDIDO_MANUAL_VAZIO = () => ({ tipo:'', tamanho:'', produto1Id:null, produto2Id:null, borda:'', qty:1, obs:'', _sabor1Texto:'', _sabor2Texto:'' });
+
+function abrirPedidoManual(){
+  window.__pedidoManualState = null;
+  window.__pedidoManualMenu = null;
+  document.querySelector('#modal .md').style.width = 'min(640px,100%)';
+  document.getElementById('mod-title').textContent = '📝 Lançar pedido manual';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg">
+      <label>Cole ou digite o pedido (ex: texto copiado da conversa do WhatsApp)</label>
+      <textarea id="pm-texto" rows="9" placeholder="Ex: Oi, queria uma pizza grande de calabresa com borda catupiry e uma coca 2L. Rua Nilton Calmon 123, bairro Centro. Pago no pix. Nome: Maria"></textarea>
+    </div>
+    <div id="pm-erro" style="color:#ff4444;font-size:13px;margin-top:4px;"></div>
+  `;
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = false;
+  btn.textContent = '🤖 PROCESSAR COM IA';
+  btn.onclick = processarPedidoManualIA;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function processarPedidoManualIA(){
+  const texto = document.getElementById('pm-texto').value.trim();
+  const erroEl = document.getElementById('pm-erro');
+  erroEl.textContent = '';
+  if(!texto){ erroEl.textContent = 'Cole ou digite o texto do pedido antes de processar.'; return; }
+
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processando...';
+
+  try {
+    const [extraido, menu] = await Promise.all([
+      fetch(`${BOT_API_URL}/admin/extrair-pedido?secret=${encodeURIComponent(ADMIN_API_SECRET)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto })
+      }).then(async r => {
+        if(!r.ok){ const body = await r.json().catch(()=>({})); throw new Error(body.erro || `Falha ao processar (HTTP ${r.status}).`); }
+        return r.json();
+      }),
+      carregarMenuPedidoManual()
+    ]);
+    montarEstadoPedidoManual(extraido, menu);
+    renderPedidoManualConfirmacao();
+  } catch(e) {
+    console.error('processarPedidoManualIA', e);
+    erroEl.textContent = '⚠️ ' + (e.message || 'Não foi possível processar o texto agora.');
+    btn.disabled = false;
+    btn.textContent = '🤖 PROCESSAR COM IA';
+  }
+}
+
+async function carregarMenuPedidoManual(){
+  const [salgadas, doces, combos, bebidas, bairros, cfg] = await Promise.all([
+    api('pizzas_salgadas', 'ativo=eq.true'),
+    api('pizzas_doces', 'ativo=eq.true'),
+    api('combos', 'ativo=eq.true'),
+    api('bebidas', 'ativo=eq.true'),
+    api('bairros', 'ativo=eq.true'),
+    carregarConfigs(),
+  ]);
+  return {
+    salgadas, doces, combos, bebidas, bairros,
+    bordaSalgada: parseFloat(cfg.borda_preco_salgada) || 12,
+    bordaDoce: parseFloat(cfg.borda_preco_doce) || 12,
+  };
+}
+
+function normalizarTextoPedidoManual(s){
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+}
+
+function catalogoPedidoManualPorTipo(menu, tipo){
+  return { pizza_salgada: menu.salgadas, pizza_doce: menu.doces, combo: menu.combos, bebida: menu.bebidas }[tipo] || [];
+}
+
+/** Mesma lógica de busca tolerante a acento/maiúscula do bot (buscarPorNome em whatsapp-bot/src/orderTool.js) — mantida em sincronia manualmente, já que os dois runtimes (browser/Node) não compartilham módulo. */
+function buscarProdutoPedidoManual(lista, nome){
+  const alvo = normalizarTextoPedidoManual(nome);
+  if(!alvo) return null;
+  const exatos = lista.filter(p => normalizarTextoPedidoManual(p.nome) === alvo);
+  if(exatos.length === 1) return exatos[0];
+  if(exatos.length > 1) return null;
+  const parciais = lista.filter(p => {
+    const n = normalizarTextoPedidoManual(p.nome);
+    return n.includes(alvo) || alvo.includes(n);
+  });
+  return parciais.length === 1 ? parciais[0] : null;
+}
+
+function montarEstadoPedidoManual(extraido, menu){
+  window.__pedidoManualMenu = menu;
+  const bairroEncontrado = extraido.bairro ? buscarProdutoPedidoManual(menu.bairros, extraido.bairro) : null;
+  const pagamentoValido = ['presencial','pix','cartao_link'].includes(extraido.forma_pagamento) ? extraido.forma_pagamento : '';
+
+  const itens = (extraido.itens||[]).map(it => {
+    const tipo = ['pizza_salgada','pizza_doce','combo','bebida'].includes(it.tipo) ? it.tipo : '';
+    const catalogo = catalogoPedidoManualPorTipo(menu, tipo);
+    const p1 = it.sabor1 ? buscarProdutoPedidoManual(catalogo, it.sabor1) : null;
+    const p2 = it.sabor2 ? buscarProdutoPedidoManual(catalogo, it.sabor2) : null;
+    const bordaValida = ['catupiry','cheddar','chocolate'].includes(it.borda) ? it.borda : '';
+    return {
+      tipo,
+      tamanho: tipo==='pizza_salgada' ? (['Grande','Família'].includes(it.tamanho) ? it.tamanho : 'Grande') : '',
+      produto1Id: p1 ? p1.id : null,
+      produto2Id: p2 ? p2.id : null,
+      borda: bordaValida,
+      qty: Math.max(1, Math.trunc(Number(it.quantidade)||1)),
+      obs: it.obs || '',
+      _sabor1Texto: it.sabor1 || '',
+      _sabor2Texto: it.sabor2 || '',
+    };
+  });
+  if(!itens.length) itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
+
+  window.__pedidoManualState = {
+    nome: extraido.nome || '',
+    whatsapp: extraido.whatsapp || '',
+    retirada: false,
+    endereco: extraido.endereco || '',
+    complemento: extraido.complemento || '',
+    bairroNome: bairroEncontrado ? bairroEncontrado.nome : '',
+    pagamento: pagamentoValido,
+    observacao: extraido.observacao_geral || '',
+    itens,
+  };
+}
+
+function calcPrecoItemPedidoManual(item, menu){
+  if(!item.tipo || !item.produto1Id) return null;
+  const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
+  const p1 = catalogo.find(p => p.id === item.produto1Id);
+  if(!p1) return null;
+  let precoUnitario, nomeExibicao;
+  if(item.tipo==='pizza_salgada'){
+    if(!item.tamanho) return null;
+    const campo = item.tamanho==='Grande' ? 'preco_grande' : 'preco_familia';
+    if(p1[campo]==null) return null;
+    if(item.produto2Id){
+      const p2 = catalogo.find(p => p.id === item.produto2Id);
+      if(!p2 || p2[campo]==null) return null;
+      precoUnitario = +(p1[campo]/2 + p2[campo]/2).toFixed(2);
+      nomeExibicao = `Pizza ${item.tamanho} — ½ ${p1.nome} + ½ ${p2.nome}`;
+    } else {
+      precoUnitario = p1[campo];
+      nomeExibicao = `Pizza ${item.tamanho} — ${p1.nome}`;
+    }
+  } else {
+    const prefixo = item.tipo==='pizza_doce' ? 'Doce ' : '';
+    precoUnitario = p1.preco;
+    nomeExibicao = `${prefixo}${p1.nome}`;
+  }
+  if(item.borda){
+    const precoBorda = item.tipo==='pizza_doce' ? menu.bordaDoce : menu.bordaSalgada;
+    precoUnitario = +(precoUnitario + precoBorda).toFixed(2);
+    nomeExibicao += ` — Borda ${BORDA_NOME_MANUAL[item.borda]}`;
+  }
+  return { precoUnitario, nomeExibicao };
+}
+
+function renderPedidoManualConfirmacao(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+  document.getElementById('mod-title').textContent = '📝 Confirmar pedido manual';
+
+  document.getElementById('mod-body').innerHTML = `
+    <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.</div>
+    <div class="fr">
+      <div class="fg"><label>Nome do cliente</label><input id="pm-nome" value="${esc(st.nome)}" oninput="pmAtualizarCampo('nome',this.value)"></div>
+      <div class="fg"><label>WhatsApp</label><input id="pm-whatsapp" value="${esc(st.whatsapp)}" oninput="pmAtualizarCampo('whatsapp',this.value)"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:13px;cursor:pointer;">
+      <input type="checkbox" id="pm-retirada" ${st.retirada?'checked':''} onchange="pmToggleRetirada(this.checked)"> Retirada no local (sem entrega)
+    </label>
+    <div id="pm-entrega-fields" ${st.retirada?'style="display:none;"':''}>
+      <div class="fg"><label>Endereço</label><input id="pm-endereco" value="${esc(st.endereco)}" oninput="pmAtualizarCampo('endereco',this.value)"></div>
+      <div class="fr">
+        <div class="fg"><label>Complemento</label><input id="pm-complemento" value="${esc(st.complemento)}" oninput="pmAtualizarCampo('complemento',this.value)"></div>
+        <div class="fg"><label>Bairro</label>
+          <select id="pm-bairro" onchange="pmAtualizarCampo('bairroNome',this.value)">
+            <option value="">-- selecione --</option>
+            ${menu.bairros.map(b=>`<option value="${esc(b.nome)}" ${st.bairroNome===b.nome?'selected':''}>${esc(b.nome)} (${Number(b.frete)>0?brl(b.frete):'grátis'})</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="fg"><label>Forma de pagamento</label>
+      <select id="pm-pagamento" onchange="pmAtualizarCampo('pagamento',this.value)">
+        <option value="" ${!st.pagamento?'selected':''}>-- selecione --</option>
+        <option value="presencial" ${st.pagamento==='presencial'?'selected':''}>Presencial (dinheiro/cartão)</option>
+        <option value="pix" ${st.pagamento==='pix'?'selected':''}>Pix</option>
+        <option value="cartao_link" ${st.pagamento==='cartao_link'?'selected':''}>Cartão via link (Ton)</option>
+      </select>
+    </div>
+    <div class="fg"><label>Observação geral</label><textarea id="pm-obs" oninput="pmAtualizarCampo('observacao',this.value)">${esc(st.observacao)}</textarea></div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase;margin:16px 0 8px;">🍕 Itens</div>
+    <div id="pm-itens">${st.itens.map((item,i) => renderItemPedidoManual(item,i,menu)).join('')}</div>
+    <button type="button" class="bc" style="width:100%;margin-top:4px;" onclick="pmAdicionarItem()">+ Adicionar item</button>
+
+    <div id="pm-resumo" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-input);font-size:14px;"></div>
+  `;
+  atualizarResumoPedidoManual();
+
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = false;
+  btn.textContent = 'LANÇAR PEDIDO';
+  btn.onclick = salvarPedidoManual;
+}
+
+function renderItemPedidoManual(item, i, menu){
+  const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
+  const opcoesBorda = item.tipo==='pizza_salgada' ? [{id:'',nome:'Sem borda'},{id:'catupiry',nome:'Catupiry'},{id:'cheddar',nome:'Cheddar'}]
+    : item.tipo==='pizza_doce' ? [{id:'',nome:'Sem borda'},{id:'chocolate',nome:'Chocolate'}]
+    : [];
+  const precoInfo = calcPrecoItemPedidoManual(item, menu);
+  const avisoSabor1 = item.tipo && !item.produto1Id && item._sabor1Texto
+    ? `<div style="font-size:11px;color:#facc15;">⚠️ IA leu "${esc(item._sabor1Texto)}" — não achei esse nome no cardápio, selecione manualmente.</div>` : '';
+
+  return `<div class="bc2" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:10px;">
+    <div class="fr">
+      <div class="fg" style="margin-bottom:0;"><label>Tipo</label>
+        <select onchange="pmAtualizarItem(${i},'tipo',this.value)">
+          <option value="">-- selecione --</option>
+          <option value="pizza_salgada" ${item.tipo==='pizza_salgada'?'selected':''}>Pizza salgada</option>
+          <option value="pizza_doce" ${item.tipo==='pizza_doce'?'selected':''}>Pizza doce</option>
+          <option value="combo" ${item.tipo==='combo'?'selected':''}>Combo</option>
+          <option value="bebida" ${item.tipo==='bebida'?'selected':''}>Bebida</option>
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:0;"><label>Quantidade</label><input type="number" min="1" value="${item.qty}" onchange="pmAtualizarItem(${i},'qty',this.value)"></div>
+    </div>
+    ${item.tipo ? `<div class="fg" style="margin-bottom:0;"><label>${item.tipo==='pizza_salgada'?'Sabor 1':'Item'}</label>
+      <select onchange="pmAtualizarItem(${i},'produto1Id',this.value)">
+        <option value="">-- selecione --</option>
+        ${catalogo.map(p=>`<option value="${p.id}" ${item.produto1Id===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}
+      </select>
+      ${avisoSabor1}
+    </div>` : ''}
+    ${item.tipo==='pizza_salgada' ? `<div class="fr">
+      <div class="fg" style="margin-bottom:0;"><label>Tamanho</label>
+        <select onchange="pmAtualizarItem(${i},'tamanho',this.value)">
+          <option value="Grande" ${item.tamanho==='Grande'?'selected':''}>Grande</option>
+          <option value="Família" ${item.tamanho==='Família'?'selected':''}>Família</option>
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:0;"><label>Sabor 2 (meio a meio)</label>
+        <select onchange="pmAtualizarItem(${i},'produto2Id',this.value)">
+          <option value="">Nenhum (sabor único)</option>
+          ${catalogo.map(p=>`<option value="${p.id}" ${item.produto2Id===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}
+        </select>
+      </div>
+    </div>` : ''}
+    ${opcoesBorda.length ? `<div class="fg" style="margin-bottom:0;"><label>Borda</label>
+      <select onchange="pmAtualizarItem(${i},'borda',this.value)">
+        ${opcoesBorda.map(o=>`<option value="${o.id}" ${item.borda===o.id?'selected':''}>${o.nome}</option>`).join('')}
+      </select>
+    </div>` : ''}
+    <div class="fg" style="margin-bottom:0;"><label>Observação do item</label><input value="${esc(item.obs)}" onchange="pmAtualizarItem(${i},'obs',this.value)"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:13px;font-weight:700;color:${precoInfo?'var(--text-primary)':'#ff4444'};">${precoInfo ? brl(precoInfo.precoUnitario*item.qty) : '⚠️ item incompleto'}</div>
+      <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
+    </div>
+  </div>`;
+}
+
+function pmAtualizarCampo(campo, valor){
+  window.__pedidoManualState[campo] = valor;
+  if(campo==='bairroNome') atualizarResumoPedidoManual();
+}
+
+function pmToggleRetirada(checked){
+  window.__pedidoManualState.retirada = checked;
+  const el = document.getElementById('pm-entrega-fields');
+  if(el) el.style.display = checked ? 'none' : '';
+  atualizarResumoPedidoManual();
+}
+
+function pmRerenderItens(){
+  document.getElementById('pm-itens').innerHTML = window.__pedidoManualState.itens.map((it,idx) => renderItemPedidoManual(it,idx,window.__pedidoManualMenu)).join('');
+  atualizarResumoPedidoManual();
+}
+
+function pmAtualizarItem(i, campo, valor){
+  const item = window.__pedidoManualState.itens[i];
+  if(campo==='tipo'){
+    item.tipo = valor;
+    item.produto1Id = null;
+    item.produto2Id = null;
+    item.borda = '';
+    item.tamanho = valor==='pizza_salgada' ? 'Grande' : '';
+  } else if(campo==='qty'){
+    item.qty = Math.max(1, Math.trunc(Number(valor)||1));
+  } else if(campo==='produto1Id' || campo==='produto2Id'){
+    item[campo] = valor ? Number(valor) : null;
+  } else {
+    item[campo] = valor;
+  }
+  pmRerenderItens();
+}
+
+function pmAdicionarItem(){
+  window.__pedidoManualState.itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
+  pmRerenderItens();
+}
+
+function pmRemoverItem(i){
+  window.__pedidoManualState.itens.splice(i,1);
+  if(!window.__pedidoManualState.itens.length) window.__pedidoManualState.itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
+  pmRerenderItens();
+}
+
+function atualizarResumoPedidoManual(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+  const el = document.getElementById('pm-resumo');
+  if(!st || !menu || !el) return;
+
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  const algumIncompleto = precos.some(p => !p);
+  const subtotal = precos.reduce((s,p,i) => s + (p ? p.precoUnitario*st.itens[i].qty : 0), 0);
+  const bairro = st.retirada ? { frete: 0 } : menu.bairros.find(b => b.nome===st.bairroNome);
+  const frete = bairro ? Number(bairro.frete)||0 : 0;
+  const total = subtotal + frete;
+
+  el.innerHTML = `
+    ${algumIncompleto ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Tem item incompleto — não dá pra lançar até corrigir.</div>` : ''}
+    ${!st.retirada && !bairro ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Selecione o bairro.</div>` : ''}
+    <div>Subtotal: <strong>${brl(subtotal)}</strong></div>
+    <div>Frete: <strong>${brl(frete)}</strong></div>
+    <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(total)}</strong></div>
+  `;
+}
+
+async function salvarPedidoManual(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+
+  if(!st.nome.trim()){ showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
+  if(!st.pagamento){ showToastAdmin('⚠️ Selecione a forma de pagamento.'); return; }
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  if(!precos.length || precos.some(p => !p)){ showToastAdmin('⚠️ Tem item incompleto — selecione tipo/sabor/tamanho de todos os itens.'); return; }
+
+  let bairroNome, frete;
+  if(st.retirada){
+    bairroNome = 'Retirada no local';
+    frete = 0;
+  } else {
+    if(!st.endereco.trim()){ showToastAdmin('⚠️ Informe o endereço.'); return; }
+    const bairro = menu.bairros.find(b => b.nome===st.bairroNome);
+    if(!bairro){ showToastAdmin('⚠️ Selecione o bairro.'); return; }
+    bairroNome = bairro.nome;
+    frete = Number(bairro.frete)||0;
+  }
+
+  const itensJson = st.itens.map((it,i) => {
+    const catalogo = catalogoPedidoManualPorTipo(menu, it.tipo);
+    const p1 = catalogo.find(p => p.id===it.produto1Id);
+    const p2 = it.produto2Id ? catalogo.find(p => p.id===it.produto2Id) : null;
+    const campoPreco = it.tamanho==='Grande' ? 'preco_grande' : 'preco_familia';
+    const sabores = it.tipo==='pizza_salgada'
+      ? (p2 ? [{id:p1.id,nome:p1.nome,preco:p1[campoPreco]},{id:p2.id,nome:p2.nome,preco:p2[campoPreco]}] : [{id:p1.id,nome:p1.nome,preco:p1[campoPreco]}])
+      : [{nome:p1.nome,preco:p1.preco}];
+    const borda = it.borda ? { id: it.borda, nome: BORDA_NOME_MANUAL[it.borda], preco: it.tipo==='pizza_doce'?menu.bordaDoce:menu.bordaSalgada } : null;
+    return {
+      tipo: it.tipo==='pizza_salgada' ? 'pizza' : 'simples',
+      tabela: it.tipo==='pizza_salgada' ? 'pizzas_salgadas' : null,
+      tamanho: it.tipo==='pizza_salgada' ? it.tamanho : null,
+      sabores,
+      borda,
+      precoUnitario: precos[i].precoUnitario,
+      qty: it.qty,
+      obs: it.obs || null,
+    };
+  });
+
+  const itensTexto = itensJson.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
+  const subtotal = +itensJson.reduce((s,it) => s+it.precoUnitario*it.qty, 0).toFixed(2);
+  const total = +(subtotal + frete).toFixed(2);
+
+  const ok = await ins('pedidos', {
+    nome: st.nome.trim(),
+    whatsapp: st.whatsapp.trim() || null,
+    endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
+    complemento: st.complemento.trim() || null,
+    bairro: bairroNome,
+    pagamento: PAGAMENTO_TEXTO_MANUAL[st.pagamento],
+    observacao: st.observacao.trim() || null,
+    status: 'aguardando',
+    origem: 'manual',
+    itens: itensTexto,
+    itens_json: itensJson,
+    subtotal,
+    desconto: 0,
+    frete,
+    total,
+  });
+
+  if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); }
+  else { showToastAdmin('⚠️ Erro ao lançar o pedido.'); }
 }
 
 // ═══════════════════════════════════════════════════════

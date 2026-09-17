@@ -28,11 +28,11 @@ export async function lojaEstaAberta() {
   return estaAbertoAgora(configuracoes.modo_loja || 'automatico');
 }
 
-function brl(v) {
+export function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
 
-function formatarSalgadas(lista) {
+export function formatarSalgadas(lista) {
   if (!lista.length) return '(nenhuma pizza salgada ativa no momento)';
   return lista
     .map((p) => {
@@ -47,26 +47,26 @@ function formatarSalgadas(lista) {
     .join('\n');
 }
 
-function formatarDoces(lista) {
+export function formatarDoces(lista) {
   if (!lista.length) return '(nenhuma pizza doce ativa no momento)';
   return lista
     .map((p) => `- ${p.nome}${p.descricao ? ` — ${p.descricao}` : ''} (${brl(p.preco)})`)
     .join('\n');
 }
 
-function formatarCombos(lista) {
+export function formatarCombos(lista) {
   if (!lista.length) return '(nenhum combo ativo no momento)';
   return lista
     .map((c) => `- ${c.nome}${c.descricao ? ` — ${c.descricao}` : ''} (${brl(c.preco)})`)
     .join('\n');
 }
 
-function formatarBebidas(lista) {
+export function formatarBebidas(lista) {
   if (!lista.length) return '(nenhuma bebida ativa no momento)';
   return lista.map((b) => `- ${b.nome} (${brl(b.preco)})`).join('\n');
 }
 
-function formatarBairros(lista) {
+export function formatarBairros(lista) {
   if (!lista.length) return '(nenhum bairro cadastrado no momento)';
   return lista
     .map((b) => `- ${b.nome}: ${Number(b.frete) === 0 ? 'frete grátis' : `frete ${brl(b.frete)}`}`)

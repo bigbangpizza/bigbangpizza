@@ -8,7 +8,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // ferramentas repetidamente. Na prática, criar um pedido usa 1.
 const MAX_TOOL_ITERATIONS = 4;
 
-async function callMessagesApi(systemPrompt, messages, tools) {
+async function callMessagesApi(systemPrompt, messages, tools, toolChoice) {
   const body = {
     model: config.anthropic.model,
     max_tokens: config.anthropic.maxTokens,
@@ -16,6 +16,7 @@ async function callMessagesApi(systemPrompt, messages, tools) {
     messages,
   };
   if (tools?.length) body.tools = tools;
+  if (toolChoice) body.tool_choice = toolChoice;
 
   const r = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
@@ -118,6 +119,32 @@ export async function conversarComFerramentas(systemPrompt, historicoExistente, 
       'Desculpa, tive um problema pra finalizar isso agora 😕 pode tentar de novo em instantes ou me chamar em texto que eu te ajudo manualmente?',
     novasMensagens,
   };
+}
+
+/**
+ * Chamada de extração estruturada: força a Claude a chamar UMA ferramenta
+ * específica (`tool_choice`) e devolve só o `input` dela — usado quando a
+ * resposta que interessa é sempre dados estruturados, nunca texto solto
+ * (ex: interpretar um pedido manual digitado pelo Gabriel, ver
+ * manualOrderExtractTool.js). Diferente de conversarComFerramentas(), não
+ * executa a ferramenta nem faz idas-e-voltas — só extrai o que a Claude
+ * preencheu.
+ *
+ * @param {string} systemPrompt
+ * @param {string} userText
+ * @param {object} tool definição da tool no formato da Anthropic Messages API
+ * @returns {Promise<any>} o campo `input` do tool_use retornado
+ */
+export async function extrairComFerramenta(systemPrompt, userText, tool) {
+  const data = await callMessagesApi(
+    systemPrompt,
+    [{ role: 'user', content: [textBlock(userText)] }],
+    [tool],
+    { type: 'tool', name: tool.name }
+  );
+  const toolUse = (data.content || []).find((b) => b.type === 'tool_use');
+  if (!toolUse) throw new Error('A Claude não retornou a extração esperada (nenhum tool_use na resposta).');
+  return toolUse.input;
 }
 
 /** Monta um content block de texto (formato Anthropic Messages API). */
