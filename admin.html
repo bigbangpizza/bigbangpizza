@@ -2500,10 +2500,15 @@ async function imprimirPedido(id){
 <style>
 @page{ size:80mm auto; margin:0; }
 *{ box-sizing:border-box; }
-body{ width:80mm; margin:0; padding:2mm; font-family:'Courier New',Courier,monospace; font-size:12px; line-height:1.4; color:#000; background:#fff; }
-pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:inherit; }
+body{ width:80mm; margin:0; padding:2mm; font-family:Consolas,'Lucida Console','DejaVu Sans Mono',monospace; font-size:15px; font-weight:700; line-height:1.45; color:#000000; background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:inherit; font-weight:inherit; color:#000000; }
+strong{ font-weight:900; font-size:1.3em; line-height:1.45; }
 .btn-imprimir{ display:block; width:100%; margin-top:3mm; padding:10px; background:#CC1100; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; }
-@media print{ .btn-imprimir{ display:none !important; } }
+@media print{
+  .btn-imprimir{ display:none !important; }
+  body, pre{ color:#000000 !important; font-weight:700 !important; font-size:15px !important; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  strong{ font-weight:900 !important; font-size:1.3em !important; }
+}
 </style>
 </head><body>
 <pre>${montarCupomTermico(p)}</pre>
