@@ -126,8 +126,21 @@ function blocoItensEEndereco(p){
     </div>`:''}`;
 }
 
+// pedidos.created_at vem do Postgres como "YYYY-MM-DD HH:MM:SS[.ffffff]" (sempre
+// UTC, mas sem sufixo "Z") — sem isso, `new Date(stringCrua)` é interpretado como
+// horário LOCAL DO NAVEGADOR (quirk do JS), então o valor cru em UTC aparecia como
+// se já fosse hora de Bahia, mostrando ~3h a mais. Mesma causa raiz já corrigida no
+// relatório do admin (ver parseUTC/dataBahiaISO em admin.html) — corrigido aqui do
+// mesmo jeito: força UTC no parse e formata explicitamente em America/Bahia.
+function parseUTC(pgTimestamp){
+  if(!pgTimestamp) return null;
+  const iso = pgTimestamp.includes('T') ? pgTimestamp : pgTimestamp.replace(' ','T');
+  return new Date(iso.endsWith('Z') ? iso : iso+'Z');
+}
+
 function renderPedido(p){
-  const hora=p.created_at?new Date(p.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+  const dataCriacao=parseUTC(p.created_at);
+  const hora=dataCriacao?dataCriacao.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'}):'';
 
   if(p.status==='cancelado'){
     document.getElementById('card').innerHTML=`

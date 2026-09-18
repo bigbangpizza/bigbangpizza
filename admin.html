@@ -1570,11 +1570,11 @@ function renderSalesChart(pedidos){
     const d = new Date(); d.setDate(d.getDate()-i); d.setHours(0,0,0,0);
     dias.push(d);
   }
+  // Agrupa por dia-calendário em Bahia (não no fuso do navegador) — mesmo
+  // motivo do parseUTC/dataBahiaISO abaixo: created_at é UTC sem sufixo "Z".
   const totais = dias.map(dia=>{
-    return entregues.filter(p=>{
-      const dp = new Date(p.created_at);
-      return dp.getFullYear()===dia.getFullYear() && dp.getMonth()===dia.getMonth() && dp.getDate()===dia.getDate();
-    }).reduce((s,p)=>s+(p.total||0),0);
+    const diaISO = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(dia);
+    return entregues.filter(p => dataBahiaISO(p.created_at)===diaISO).reduce((s,p)=>s+(p.total||0),0);
   });
   const labels = dias.map(d=>d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','').slice(0,3));
   _salesChartData = { dias, totais, labels };
@@ -2087,8 +2087,8 @@ function toggleEntregues(){
 }
 
 function renderPedidoCard(p){
-  const dt=new Date(p.created_at);
-  const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const dt=parseUTC(p.created_at)||new Date();
+  const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'});
   const bucket=statusBucket(p.status);
   const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
   const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
@@ -2468,9 +2468,9 @@ function cupomLinhaValor(label, valor){
 }
 
 function montarCupomTermico(p){
-  const dt = new Date(p.created_at);
-  const dataStr = dt.toLocaleDateString('pt-BR');
-  const horaStr = dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  const dt = parseUTC(p.created_at)||new Date();
+  const dataStr = dt.toLocaleDateString('pt-BR', {timeZone:'America/Bahia'});
+  const horaStr = dt.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', timeZone:'America/Bahia'});
   const nome = semAcentoImpressao(p.nome||'');
   const endereco = semAcentoImpressao(p.endereco||'') + (p.complemento ? ' - '+semAcentoImpressao(p.complemento) : '');
   const bairro = semAcentoImpressao(p.bairro||'');
@@ -4012,7 +4012,7 @@ async function exportarCSV(){
   const rows=data.map(p=>[
     p.id,esc(p.nome),esc(p.bairro),esc(p.endereco),esc(p.complemento),esc(p.pagamento),esc(p.whatsapp),esc(p.itens),
     String(p.subtotal||0).replace('.',','),String(p.frete||0).replace('.',','),String(p.total||0).replace('.',','),
-    p.status||'', new Date(p.created_at).toLocaleString('pt-BR')
+    p.status||'', (parseUTC(p.created_at)||new Date()).toLocaleString('pt-BR', {timeZone:'America/Bahia'})
   ].join(';'));
   const csv='﻿'+h.join(';')+'\n'+rows.join('\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
@@ -4244,7 +4244,7 @@ async function loadClientes() {
   }
 
   const rows = clientes.map(p => {
-    const dt = new Date(p.created_at);
+    const dt = parseUTC(p.created_at)||new Date();
     const diasDesdeUltimo = Math.floor((Date.now() - dt.getTime()) / 86400000);
     const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp === p.whatsapp) || (!x.whatsapp && x.nome === p.nome));
     const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
@@ -4252,7 +4252,7 @@ async function loadClientes() {
     const seg = SEGMENTO_INFO[segmento];
     const ultimaReativacao = p.whatsapp ? ultimaReativacaoPorWhatsapp.get(p.whatsapp) : null;
     const avisoReativacao = ultimaReativacao
-      ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">✅ Reativação enviada em ${new Date(ultimaReativacao).toLocaleDateString('pt-BR')}</div>`
+      ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">✅ Reativação enviada em ${new Date(ultimaReativacao).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>`
       : '';
     return `<tr>
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
@@ -4260,7 +4260,7 @@ async function loadClientes() {
       <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
       <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}</td>
       <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
-      <td data-label="Último Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR')}</td>
+      <td data-label="Último Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</td>
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
       <td data-label="Ação">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -4335,7 +4335,7 @@ async function loadCupons() {
     const validade = c.validade ? new Date(c.validade + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
     const usos = c.usos_max ? `${usosAtuais}/${c.usos_max}` : `${usosAtuais} / ilimitado`;
     const campanhaTag = c.contagem_desde
-      ? `<br><span style="font-size:10px;color:rgba(74,222,128,.7);">🔄 desde ${new Date(c.contagem_desde).toLocaleDateString('pt-BR')}</span>`
+      ? `<br><span style="font-size:10px;color:rgba(74,222,128,.7);">🔄 desde ${parseUTC(c.contagem_desde).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</span>`
       : '';
     return `<tr>
       <td data-label="Código"><strong style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--orange);">${c.codigo}</strong></td>
@@ -4429,7 +4429,7 @@ async function openModCupom(id = null) {
       </label>
       <div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;">
         ${item.contagem_desde
-          ? `Contando usos desde ${new Date(item.contagem_desde).toLocaleString('pt-BR')}. Marque a caixa acima pra relançar como campanha nova (ex: "primeiros ${item.usos_max || 'N'} pedidos") sem herdar o uso já contado até aqui.`
+          ? `Contando usos desde ${parseUTC(item.contagem_desde).toLocaleString('pt-BR', {timeZone:'America/Bahia'})}. Marque a caixa acima pra relançar como campanha nova (ex: "primeiros ${item.usos_max || 'N'} pedidos") sem herdar o uso já contado até aqui.`
           : `Hoje conta o uso desde a criação do cupom. Marque a caixa acima pra começar a contar só a partir de agora (útil pra relançar como campanha "primeiros ${item.usos_max || 'N'} pedidos").`}
       </div>
     </div>`;
@@ -4488,7 +4488,7 @@ async function exportarClientesCSV() {
   const headers = ['Nome','WhatsApp','Bairro','Endereço','Total Pedidos','Data 1º Pedido'];
   const rows = clientes.map(p => {
     const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp===p.whatsapp)||(!x.whatsapp&&x.nome===p.nome));
-    return [p.nome, p.whatsapp||'', p.bairro||'', p.endereco||'', pedidosCliente.length, new Date(p.created_at).toLocaleDateString('pt-BR')];
+    return [p.nome, p.whatsapp||'', p.bairro||'', p.endereco||'', pedidosCliente.length, (parseUTC(p.created_at)||new Date()).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})];
   });
   const csv = [headers,...rows].map(r=>r.join(';')).join('\n');
   const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
