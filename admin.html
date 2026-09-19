@@ -2550,7 +2550,7 @@ strong{ font-weight:900; font-size:1.3em; line-height:1.45; }
 <button class="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
 <script>
 window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });
-</script>
+<\/script>
 </body></html>`;
   const blobUrl = URL.createObjectURL(new Blob([html], {type:'text/html'}));
   window.open(blobUrl,'_blank','noopener,width=420,height=680');
