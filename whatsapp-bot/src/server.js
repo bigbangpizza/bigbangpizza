@@ -18,6 +18,7 @@ import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
 import { processarAlertaUptime } from './uptimeAlert.js';
 import { ehEcoDoBot, ativarPausaHumana, estaPausadoPorHumano } from './atendimentoHumanoUtil.js';
+import { extrairTokenRastreioDoSite, tratarNotificacaoPedidoDoSite } from './siteOrderNotice.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -235,6 +236,19 @@ async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, 
   const atual = anterior
     .catch(() => {}) // uma falha na mensagem anterior não deve travar as próximas desse número
     .then(async () => {
+      // Mensagem automática do checkout do site (contém o link de rastreio,
+      // logo o token do pedido que o site JÁ gravou) — nunca processa como
+      // pedido novo pela Claude, senão duplica (ver siteOrderNotice.js pro
+      // bug real que isso corrige, confirmado em produção no pedido #230).
+      // Checado ANTES de extrairConteudoMensagem: é sempre texto puro, não
+      // precisa do processamento de áudio/imagem.
+      const textoPlano = mensagem.conversation || mensagem.extendedTextMessage?.text || '';
+      const tokenSite = extrairTokenRastreioDoSite(textoPlano);
+      if (tokenSite) {
+        await tratarNotificacaoPedidoDoSite(numero, tokenSite);
+        return;
+      }
+
       let userContent;
       try {
         userContent = await extrairConteudoMensagem(mensagem, messageId);

@@ -173,3 +173,33 @@ export async function inserirPedido(pedido) {
   const [row] = await rBusca.json();
   return { id: row?.id ?? null, rastreioToken };
 }
+
+/**
+ * Busca um pedido pelo `rastreio_token` via a mesma RPC pública
+ * `rastrear_pedido` que o rastreio.html usa — funciona com a chave anon
+ * (não depende de SUPABASE_SERVICE_ROLE_KEY estar configurada, diferente
+ * de buscarPedidoAbertoRecente em pedidoStatusUtil.js).
+ *
+ * Usada por siteOrderNotice.js pra reconhecer a mensagem automática que o
+ * checkout do site manda pro WhatsApp (contém o link de rastreio, logo o
+ * token) como uma NOTIFICAÇÃO de um pedido que o site já gravou — nunca
+ * como um pedido novo pra Claude processar. Ver comentário completo em
+ * siteOrderNotice.js sobre o bug de duplicidade que isso corrige.
+ * @returns {Promise<object|null>} o pedido (mesmos campos que rastrear_pedido
+ *   retorna: id, nome, itens, status, created_at, total, endereco,
+ *   complemento, bairro) ou null se ainda não existir pra esse token.
+ */
+export async function buscarPedidoPorToken(token) {
+  if (!token) return null;
+  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/rastrear_pedido`, {
+    method: 'POST',
+    headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ p_token: token }),
+  });
+  if (!r.ok) {
+    console.error('[supabase] erro ao buscar pedido por token:', r.status, await r.text().catch(() => ''));
+    return null;
+  }
+  const rows = await r.json();
+  return rows?.[0] || null;
+}
