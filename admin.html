@@ -2505,13 +2505,29 @@ ${cupomCentralizar('Big Bang Pizza')}
 ${CUPOM_LINHA}`;
 }
 
+// A impressão do cupom abre numa janela separada e dispara window.print()
+// sozinha (sem o Gabriel precisar clicar) — mas window.print() é BLOQUEANTE:
+// trava a execução de JS daquela janela até alguém interagir com o diálogo
+// nativo do Windows. Como essa janela é aberta a partir da MESMA origem do
+// admin, o Chrome costuma colocar as duas no mesmo processo — se o diálogo
+// de impressão ficar parado (escondido atrás da janela, impressora
+// ocupada/offline, etc.), a aba do admin inteira trava junto, sem nenhum
+// erro visível. Foi exatamente isso que aconteceu em produção: só a aba do
+// admin travava, na tela de Pedidos (onde o auto-print dispara ao aceitar
+// pedido), resolvido abrindo uma aba nova (processo novo, sem o diálogo
+// preso). Duas mitigações aqui, dentro do que a API do navegador permite
+// controlar (não dá pra GARANTIR isolamento de processo via JS puro):
+//   1) Navega a janela pra uma URL de verdade (Blob), não about:blank +
+//      document.write — ajuda o Chrome a alocar um processo separado.
+//   2) O auto-print roda de DENTRO do próprio popup (script embutido no
+//      HTML), nunca mais chamado pelo setTimeout da aba do admin — assim a
+//      call stack que entra no window.print() bloqueante é sempre a do
+//      popup, nunca a do admin.
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
   if(!dados||!dados[0]) return;
   const p=dados[0];
-  const jan=window.open('','_blank','width=420,height=680');
-  if(!jan){ showToastAdmin('⚠️ O navegador bloqueou a janela de impressão.'); return; }
-  jan.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido #${p.id}</title>
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pedido #${p.id}</title>
 <style>
 @page{ size:80mm auto; margin:0; }
 *{ box-sizing:border-box; }
@@ -2528,10 +2544,17 @@ strong{ font-weight:900; font-size:1.3em; line-height:1.45; }
 </head><body>
 <pre>${montarCupomTermico(p)}</pre>
 <button class="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
-</body></html>`);
-  jan.document.close();
+<script>
+window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });
+</script>
+</body></html>`;
+  const blobUrl = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+  const jan=window.open(blobUrl,'_blank','width=420,height=680');
+  if(!jan){ showToastAdmin('⚠️ O navegador bloqueou a janela de impressão.'); URL.revokeObjectURL(blobUrl); return; }
   jan.focus();
-  setTimeout(()=>jan.print(), 400);
+  // Só revoga depois de um tempo — a janela precisa terminar de carregar o
+  // Blob antes dele poder ser liberado.
+  setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
 }
 
 // ═══════════════════════════════════════════════════════
