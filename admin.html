@@ -2509,20 +2509,24 @@ ${CUPOM_LINHA}`;
 // sozinha (sem o Gabriel precisar clicar) — mas window.print() é BLOQUEANTE:
 // trava a execução de JS daquela janela até alguém interagir com o diálogo
 // nativo do Windows. Como essa janela é aberta a partir da MESMA origem do
-// admin, o Chrome costuma colocar as duas no mesmo processo — se o diálogo
-// de impressão ficar parado (escondido atrás da janela, impressora
-// ocupada/offline, etc.), a aba do admin inteira trava junto, sem nenhum
-// erro visível. Foi exatamente isso que aconteceu em produção: só a aba do
-// admin travava, na tela de Pedidos (onde o auto-print dispara ao aceitar
-// pedido), resolvido abrindo uma aba nova (processo novo, sem o diálogo
-// preso). Duas mitigações aqui, dentro do que a API do navegador permite
-// controlar (não dá pra GARANTIR isolamento de processo via JS puro):
-//   1) Navega a janela pra uma URL de verdade (Blob), não about:blank +
-//      document.write — ajuda o Chrome a alocar um processo separado.
-//   2) O auto-print roda de DENTRO do próprio popup (script embutido no
-//      HTML), nunca mais chamado pelo setTimeout da aba do admin — assim a
-//      call stack que entra no window.print() bloqueante é sempre a do
-//      popup, nunca a do admin.
+// admin, o Chrome costuma colocar as duas no MESMO processo/thread de JS —
+// se o diálogo de impressão ficar parado (escondido atrás da janela,
+// impressora ocupada/offline, etc.), a aba do admin inteira trava junto,
+// sem nenhum erro visível. Foi exatamente isso que aconteceu em produção
+// (só a aba do admin travava, na tela de Pedidos, resolvido abrindo uma
+// aba nova) — e REPRODUZIDO e CONFIRMADO ao vivo: só navegar a janela pra
+// um Blob e rodar o print() de dentro do próprio popup (em vez do
+// setTimeout do admin chamar jan.print()) NÃO foi suficiente — a aba do
+// admin ainda travava, porque as duas janelas continuavam no mesmo
+// processo mesmo assim.
+// O único jeito que realmente isolou num processo separado (testado ao
+// vivo depois da mudança: a aba do admin respondeu normalmente com o
+// popup aberto) foi abrir com a flag "noopener". Efeito colateral aceito:
+// com noopener, window.open() SEMPRE retorna null (não dá mais pra saber
+// se a janela foi bloqueada pelo navegador ou se abriu normal) — então
+// não tem mais como mostrar aviso de "pop-up bloqueado" nem chamar
+// .focus() nela. Troca que vale a pena: o botão "🖨️ Reimprimir" continua
+// disponível como alternativa manual se por acaso não abrir.
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
   if(!dados||!dados[0]) return;
@@ -2549,9 +2553,7 @@ window.addEventListener('load', function(){ setTimeout(function(){ window.print(
 </script>
 </body></html>`;
   const blobUrl = URL.createObjectURL(new Blob([html], {type:'text/html'}));
-  const jan=window.open(blobUrl,'_blank','width=420,height=680');
-  if(!jan){ showToastAdmin('⚠️ O navegador bloqueou a janela de impressão.'); URL.revokeObjectURL(blobUrl); return; }
-  jan.focus();
+  window.open(blobUrl,'_blank','noopener,width=420,height=680');
   // Só revoga depois de um tempo — a janela precisa terminar de carregar o
   // Blob antes dele poder ser liberado.
   setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
