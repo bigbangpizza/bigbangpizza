@@ -65,6 +65,41 @@ export async function buscarPedidoAbertoRecente(numero, janelaMinutos, camposExt
   return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
 }
 
+// Diferente de STATUS_EM_ABERTO acima (usado só pro bloqueio técnico de
+// duplicata em orderTool.js) — inclui "saiu" também, porque um pedido a
+// caminho da entrega igualmente conta como "ativo" pro cliente: o bot
+// precisa saber disso pra nunca convidar ele a montar um pedido novo
+// enquanto esse estiver rolando.
+const STATUS_PEDIDO_ATIVO = ['aguardando', 'aceito_preparando', 'aceito', 'preparando', 'saiu'];
+
+/**
+ * Busca o pedido ATIVO mais recente do cliente, SEM limite de tempo —
+ * diferente de `buscarPedidoAbertoRecente` acima (janela curta de minutos,
+ * pensada só pro bloqueio/contexto de duplicata logo após o checkout). Sem
+ * limite de tempo aqui porque o status já É o sinal real de "ainda em
+ * aberto": um pedido não fica "aguardando"/"preparando"/"saiu" por dias
+ * numa pizzaria que só funciona ~6h/dia.
+ *
+ * Usada por `montarBlocoPedidoAtivo` (systemPrompt.js) pra manter o bot
+ * ciente ao LONGO DE TODA a conversa — não só nas primeiras mensagens —
+ * de que o cliente já tem um pedido rodando. Bug que isso corrige: depois
+ * que a janela curta de "pedido recente" expirava (20 min por padrão), o
+ * bot esquecia completamente do pedido em andamento e voltava a convidar
+ * o cliente a "montar um pedido", mesmo tendo acabado de responder
+ * corretamente sobre esse mesmo pedido segundos antes.
+ */
+export async function buscarPedidoAtivoDoCliente(numero, camposExtras = '') {
+  const numeroNormalizado = normalizarWhatsapp(numero);
+  if (!numeroNormalizado) return null;
+
+  const select = camposExtras ? `${CAMPOS_BASE},${camposExtras}` : CAMPOS_BASE;
+  const pedidos = await selectComoAdmin(
+    'pedidos',
+    `select=${select}&whatsapp=not.is.null&status=in.(${STATUS_PEDIDO_ATIVO.join(',')})&order=created_at.desc`
+  );
+  return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
+}
+
 /**
  * Busca o histórico completo (todo o tempo, sem janela) de um cliente pelo
  * telefone — usado só pelo reconhecimento de cliente recorrente no início de

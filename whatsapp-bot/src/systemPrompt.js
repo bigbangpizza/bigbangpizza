@@ -1,8 +1,7 @@
 import { getMenuData } from './supabaseData.js';
-import { getAgoraNoBrasil, minutosEntre, parseComoUTC, diasEntre } from './dataUtils.js';
-import { config } from './config.js';
+import { getAgoraNoBrasil, parseComoUTC, diasEntre } from './dataUtils.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
-import { buscarPedidoAbertoRecente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
+import { buscarPedidoAtivoDoCliente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 // Hora de fechamento por dia da semana (24 = meia-noite).
@@ -73,30 +72,41 @@ export function formatarBairros(lista) {
     .join('\n');
 }
 
+const STATUS_LABEL_PEDIDO_ATIVO = {
+  aguardando: 'aguardando a cozinha aceitar',
+  aceito_preparando: 'sendo preparado',
+  aceito: 'sendo preparado',
+  preparando: 'sendo preparado',
+  saiu: 'saiu para entrega, a caminho',
+};
+
 /**
- * Se o cliente já tem um pedido em aberto recente (aguardando/aceito_
- * preparando, criado dentro de PEDIDO_DUPLICADO_CONTEXTO_MINUTOS), monta um
- * bloco de aviso pro system prompt — dá contexto pra Claude decidir com bom
- * senso se a mensagem atual é sobre ESSE pedido (não duplicar) ou é
- * realmente um pedido novo (proceder normalmente). Cenário típico: cliente
- * fecha pelo site e manda em seguida a mensagem pré-preenchida do WhatsApp
- * (botão "Enviar pelo WhatsApp"), que sem esse aviso o bot tratava como um
- * pedido novo — ver a checagem técnica complementar em orderTool.js, que
- * bloqueia mesmo se a Claude não seguir esta instrução.
+ * Se o cliente já tem um pedido ATIVO (aguardando/aceito_preparando/saiu,
+ * SEM limite de tempo — ver buscarPedidoAtivoDoCliente), monta um bloco de
+ * contexto pro system prompt. Roda a CADA mensagem da conversa (não só a
+ * primeira), porque é exatamente aí que o bug que isso corrige acontecia:
+ * a versão antiga (montarBlocoPedidoRecente) só enxergava o pedido dentro
+ * de uma janela curta de minutos (pensada pra evitar duplicata logo após o
+ * checkout do site) — passado esse tempo, o bot "esquecia" completamente
+ * do pedido em andamento e voltava a convidar o cliente a montar um pedido
+ * novo, mesmo tendo acabado de responder corretamente sobre esse mesmo
+ * pedido (ex: cliente pergunta "quanto tempo pra chegar?", bot responde
+ * certo o prazo mas termina com "quer aproveitar e já ir escolhendo o
+ * pedido?" — contradizendo a própria resposta).
  */
-async function montarBlocoPedidoRecente(numero) {
+async function montarBlocoPedidoAtivo(numero) {
   if (!numero || !temServiceRoleConfigurada()) return '';
   let pedido;
   try {
-    pedido = await buscarPedidoAbertoRecente(numero, config.pedidoDuplicadoContextoMinutos, 'itens,bairro,total');
+    pedido = await buscarPedidoAtivoDoCliente(numero, 'itens,bairro,total,status');
   } catch (err) {
-    console.error('[systemPrompt] falha ao checar pedido recente do cliente (seguindo sem o aviso):', err);
+    console.error('[systemPrompt] falha ao checar pedido ativo do cliente (seguindo sem o aviso):', err);
     return '';
   }
   if (!pedido) return '';
 
-  const minAtras = minutosEntre(parseComoUTC(pedido.created_at), new Date());
-  return `\n## Pedido recente em aberto deste cliente\nEste cliente já tem um pedido em aberto, feito há ${minAtras} min: Pedido #${pedido.id} — ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)}. Pode ter sido feito pelo site (às vezes o cliente manda a mensagem de confirmação do WhatsApp logo em seguida, achando que precisa confirmar por aqui também).\nAntes de seguir com "Como fechar um pedido" abaixo:\n- Se a mensagem do cliente parecer ser sobre ESSE pedido (confirmação, dúvida, agradecimento, ou repete os mesmos itens/dados), NÃO chame \`criar_pedido\` de novo — responda sobre esse pedido existente e pergunte se é sobre ele.\n- Só chame \`criar_pedido\` normalmente se o cliente pedir claramente algo novo ou diferente (outros itens, ou disser explicitamente que é um pedido à parte).\n`;
+  const statusTexto = STATUS_LABEL_PEDIDO_ATIVO[pedido.status] || 'em andamento';
+  return `\n## Pedido ativo deste cliente (vale pra QUALQUER mensagem da conversa, não só a primeira)\nEste cliente JÁ TEM um pedido em andamento — Pedido #${pedido.id}: ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)} — está ${statusTexto}.\n- NUNCA convide nem pergunte se ele quer "montar um pedido", "escolher os itens" ou qualquer variação disso enquanto esse pedido estiver ativo — ele já tem um rodando. Isso vale mesmo que a pergunta dele não seja sobre o pedido (ex: dúvida geral, elogio) — não aproveite a deixa pra oferecer fechar pedido novo.\n- Se ele perguntar sobre prazo, status ou andamento, responda com base NESSE pedido (tempo estimado de entrega é 35-60 min contados da CRIAÇÃO do pedido, não deste momento da conversa).\n- Se a mensagem parecer ser sobre ESSE pedido (dúvida, confirmação, agradecimento, ou repete os mesmos itens/dados), responda normalmente sem chamar \`criar_pedido\` de novo.\n- SÓ chame \`criar_pedido\` se o cliente pedir CLARAMENTE algo adicional ou um pedido à parte (ex: "quero pedir mais uma pizza também", "esse é um pedido separado").\n`;
 }
 
 function diasAtras(dataISO) {
@@ -175,7 +185,7 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const aberto = estaAbertoAgora(configuracoes.modo_loja || 'automatico');
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';
-  const blocoPedidoRecente = await montarBlocoPedidoRecente(numero);
+  const blocoPedidoAtivo = await montarBlocoPedidoAtivo(numero);
   const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
 
   // Mesmas chaves/fallback que orderTool.js usa pra calcular o preço real da
@@ -231,7 +241,7 @@ Se o cliente disser um bairro que não está na lista abaixo, não corte com um 
 ## Horário de funcionamento
 Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
 Status agora: ${aberto ? 'ABERTO ✅' : 'FECHADO 🔴'}. ${aberto ? '' : 'Se o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.'}
-${blocoPedidoRecente}${blocoClienteConhecido}
+${blocoPedidoAtivo}${blocoClienteConhecido}
 ## Como fechar um pedido pelo WhatsApp
 Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule etapas:
 

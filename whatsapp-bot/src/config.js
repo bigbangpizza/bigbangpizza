@@ -50,19 +50,19 @@ export const config = {
   // antes do abandonedCartJob.js mandar a mensagem de recuperação.
   abandonedCartMinutos: Number(process.env.ABANDONED_CART_MINUTOS || 25),
 
-  // Duas janelas usadas pra evitar pedido duplicado (ver orderTool.js e
-  // systemPrompt.js) — cenário típico: cliente fecha pedido pelo site e em
-  // seguida manda a mensagem pré-preenchida do WhatsApp, que o bot processa
-  // como se fosse um pedido novo.
-  //   - pedidoDuplicadoContextoMinutos: janela maior, usada só pra AVISAR a
-  //     Claude que o cliente já tem um pedido em aberto recente, deixando-a
-  //     decidir com bom senso se a mensagem atual é sobre esse pedido ou é
-  //     um pedido novo de verdade.
-  //   - pedidoDuplicadoBloqueioMinutos: janela menor e mais estrita, usada
-  //     como rede de segurança técnica logo antes do INSERT — só bloqueia
-  //     se o pedido novo tiver os MESMOS itens e bairro de um pedido aberto
-  //     recente (não é uma regra vaga, é comparação exata).
-  pedidoDuplicadoContextoMinutos: Number(process.env.PEDIDO_DUPLICADO_CONTEXTO_MINUTOS || 20),
+  // Janela usada como rede de segurança técnica contra pedido duplicado,
+  // logo antes do INSERT em orderTool.js — só bloqueia se o pedido novo
+  // tiver os MESMOS itens e bairro de um pedido aberto recente (comparação
+  // exata, não uma regra vaga). Cenário típico: cliente fecha pedido pelo
+  // site e em seguida manda a mensagem pré-preenchida do WhatsApp, que sem
+  // essa rede o bot processaria como se fosse um pedido novo — a primeira
+  // linha de defesa pra isso é siteOrderNotice.js (reconhece a mensagem do
+  // site pelo token e nem deixa chegar na Claude), esta é só o backup.
+  // (Existiu também um pedidoDuplicadoContextoMinutos, janela maior usada
+  // só pra AVISAR a Claude sobre pedido recente — substituído por
+  // montarBlocoPedidoAtivo em systemPrompt.js, que não tem janela de tempo:
+  // manter só uma janela curta aqui fazia o bot "esquecer" do pedido em
+  // aberto depois de alguns minutos e voltar a oferecer montar um novo.)
   pedidoDuplicadoBloqueioMinutos: Number(process.env.PEDIDO_DUPLICADO_BLOQUEIO_MINUTOS || 10),
 
   // Minutos que o bot fica em silêncio pra um número depois de detectar que
