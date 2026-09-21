@@ -39,7 +39,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 
 <!-- Open Graph / compartilhamento (WhatsApp, Instagram, redes sociais) -->
 <meta property="og:title" content="Big Bang Pizza — Explosão de Sabor em Lauro de Freitas">
-<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. Peça pelo site e ganhe 10% OFF com o cupom BIGBANG10!">
+<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. Peça pelo site e ganhe 10% OFF com o cupom EXPLODIU10!">
 <meta property="og:image" content="https://static-images.ifood.com.br/pratos/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9/202606110927_665A_i.jpg">
 <meta property="og:url" content="https://bigbangpizza.com.br">
 <meta property="og:type" content="restaurant">
@@ -526,8 +526,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 <!-- BANNER CUPOM -->
 <div class="cupom-banner" id="cupom-banner">
-  <h3>🎉 OFERTA DE LANÇAMENTO — 10% OFF com o cupom BIGBANG10!</h3>
-  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG10'})">BIGBANG10</div>
+  <h3>🎉 MÊS DE DESCONTO — 10% OFF com o cupom EXPLODIU10!</h3>
+  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'EXPLODIU10'})">EXPLODIU10</div>
   <div class="cupom-restantes" id="cupom-restantes">Carregando cupons...</div>
 </div>
 
@@ -1917,10 +1917,16 @@ function animarOdometroRestantes(elId, valorFinal, digitosMin){
   requestAnimationFrame(quadro);
 }
 
+// Código do cupom em destaque no banner da home — trocar aqui é o único
+// lugar que precisa mudar quando a campanha for renovada (ex: BIGBANG10 →
+// EXPLODIU10), já que loadCupomRestantes() abaixo reaproveita essa
+// constante em todas as chamadas.
+const CUPOM_BANNER_CODIGO = 'EXPLODIU10';
+
 async function loadCupomRestantes() {
-  // Só esconde o banner se o BIGBANG10 (cupom em destaque) estiver esgotado/inativo
+  // Só esconde o banner se o cupom em destaque estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.BIGBANG10&select=usos_max,usos_atuais,ativo,contagem_desde`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.${CUPOM_BANNER_CODIGO}&select=usos_max,usos_atuais,ativo,contagem_desde`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
@@ -1934,7 +1940,7 @@ async function loadCupomRestantes() {
     // contagem_desde marca o início de uma campanha "primeiros N pedidos"
     // relançada — conta em tempo real a partir dali em vez do usos_atuais
     // (que pode incluir uso anterior ao relançamento, ou ficar atrasado).
-    const usosReais = cupom.contagem_desde ? await contarUsosCupom('BIGBANG10', cupom.contagem_desde) : (cupom.usos_atuais || 0);
+    const usosReais = cupom.contagem_desde ? await contarUsosCupom(CUPOM_BANNER_CODIGO, cupom.contagem_desde) : (cupom.usos_atuais || 0);
     if (cupom.usos_max != null && usosReais >= cupom.usos_max) {
       if (banner) banner.style.display = 'none';
       return;
@@ -2108,14 +2114,14 @@ function toast(msg) {
   obs.observe(secaoMapa);
 })();
 
-// Registra view_promotion quando o banner do cupom BIGBANG10 aparece na tela
+// Registra view_promotion quando o banner do cupom em destaque aparece na tela
 (() => {
   const banner = document.getElementById('cupom-banner');
   if (!banner) return;
   const obsPromo = new IntersectionObserver((entries) => {
     if (!entries.some(e => e.isIntersecting)) return;
     obsPromo.disconnect();
-    gtag('event', 'view_promotion', {promotion_name: 'BIGBANG10', creative_name: 'banner_cupom'});
+    gtag('event', 'view_promotion', {promotion_name: CUPOM_BANNER_CODIGO, creative_name: 'banner_cupom'});
   }, { threshold: 0.5 });
   obsPromo.observe(banner);
 })();

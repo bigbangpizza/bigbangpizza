@@ -50,7 +50,7 @@ export const CRIAR_PEDIDO_TOOL = {
       cupom: {
         type: 'string',
         description:
-          'Código do cupom de desconto, apenas se o cliente mencionar um explicitamente (ex: "BIGBANG10"). O sistema ' +
+          'Código do cupom de desconto, apenas se o cliente mencionar um explicitamente (ex: "EXPLODIU10"). O sistema ' +
           'valida se existe, está ativo e ainda tem uso disponível. Se for inválido, o pedido é registrado normalmente ' +
           'sem desconto e a resposta vem com um aviso pra você repassar ao cliente — nunca deixe de fechar o pedido ' +
           'por causa de um cupom inválido. Omita este campo se o cliente não mencionar nenhum cupom.',
