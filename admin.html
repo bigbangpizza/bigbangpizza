@@ -2086,6 +2086,20 @@ function toggleEntregues(){
   loadPedidos();
 }
 
+// Bordas de verdade que o pedido tem (a partir de itens_json), sem
+// duplicar nome se mais de uma pizza usar a mesma borda — usado pro botão
+// da borda no card distinguir visualmente "tem borda" de "sem borda"
+// (antes era sempre o mesmo botão neutro pras duas situações, o que já
+// gerou confusão: um pedido com sabor "Calabresa com Catupiry" — Catupiry
+// no NOME do sabor, cardápio normal, nada a ver com borda recheada — foi
+// lido por engano como se tivesse borda, só porque o botão "🧀 Borda"
+// aparece em todo card igual, tenha borda ou não).
+function bordasDoPedido(p){
+  const itens = Array.isArray(p.itens_json) ? p.itens_json : [];
+  const nomes = itens.filter(i => i?.borda?.nome).map(i => i.borda.nome);
+  return [...new Set(nomes)];
+}
+
 function renderPedidoCard(p){
   const dt=parseUTC(p.created_at)||new Date();
   const hora=dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'});
@@ -2093,6 +2107,7 @@ function renderPedidoCard(p){
   const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
   const itensHtml=(p.itens||'').split(' | ').filter(Boolean).map(i=>`<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:14px;font-weight:600;">🍕 ${esc(i)}</div>`).join('');
   const mostrarTimer=(bucket==='aguardando'||bucket==='aceito_preparando');
+  const bordas=bordasDoPedido(p);
   return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
@@ -2128,7 +2143,7 @@ function renderPedidoCard(p){
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
-      <button class="bp" onclick="abrirModEditarBorda(${p.id})">🧀 Borda</button>
+      <button class="bp" onclick="abrirModEditarBorda(${p.id})"${bordas.length?` style="background:rgba(255,107,0,0.18);color:var(--orange);border:1px solid rgba(255,107,0,0.45);font-weight:700;"`:''}>${bordas.length?`🧀 Borda: ${esc(bordas.join(', '))}`:'+ Borda'}</button>
       <button class="bd" onclick="remPedido(${p.id})">🗑️</button>
     </div>
   </div>`;
