@@ -416,7 +416,16 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .cupom-banner h3{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1.5px;position:relative;}
 .cupom-banner p{font-size:14px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
 .cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:4px;padding:10px 28px;border-radius:9px;margin:11px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;cursor:pointer;animation:cupom-blink 1.7s ease-in-out infinite;}
-.cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;}
+.cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
+/* Contador "vivo" das vagas restantes — puramente visual (o número final
+   sempre é o valor real vindo do Supabase, calculado em loadCupomRestantes();
+   isso aqui só anima COMO ele aparece, nunca inventa um valor diferente). */
+.cupom-live-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0;animation:cupom-live-pulse 1.6s ease-in-out infinite;}
+@keyframes cupom-live-pulse{0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,0.55);}50%{box-shadow:0 0 0 5px rgba(74,222,128,0);}}
+.cupom-odometro{display:inline-flex;gap:2px;vertical-align:middle;}
+.cupom-odometro .dig{display:inline-block;min-width:13px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.25);border-radius:4px;padding:1px 4px;font-family:'Bebas Neue',sans-serif;font-size:15px;line-height:1.3;color:#fff;text-align:center;font-variant-numeric:tabular-nums;box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);}
+.cupom-odometro .dig.tick{animation:cupom-dig-tick .35s ease;}
+@keyframes cupom-dig-tick{0%{transform:translateY(-35%);opacity:0;}60%{transform:translateY(5%);opacity:1;}100%{transform:translateY(0);opacity:1;}}
 
 /* CAMPO CUPOM NO CHECKOUT */
 .cupom-input-wrap{display:flex;gap:8px;}
@@ -1873,6 +1882,35 @@ async function contarUsosCupom(codigo, desde) {
   return await r.json();
 }
 
+// Anima a contagem de 0 até `valorFinal` num efeito tipo odômetro — puramente
+// visual, o valor com que a animação TERMINA é sempre exatamente `valorFinal`
+// (o número real calculado em loadCupomRestantes, sem multiplicador nem ajuste
+// nenhum). `digitosMin` só define quantos dígitos mostrar (com zero à
+// esquerda), pra manter a largura fixa tipo contador mecânico.
+function animarOdometroRestantes(elId, valorFinal, digitosMin){
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const duracaoMs = 700;
+  const inicio = performance.now();
+  function desenhar(valor, comTick){
+    el.innerHTML = String(valor).padStart(digitosMin, '0').split('').map(d =>
+      `<span class="dig${comTick ? ' tick' : ''}">${d}</span>`
+    ).join('');
+  }
+  function quadro(agora){
+    const t = Math.min(1, (agora - inicio) / duracaoMs);
+    const easeOut = 1 - Math.pow(1 - t, 3);
+    if (t < 1) {
+      desenhar(Math.round(easeOut * valorFinal), false);
+      requestAnimationFrame(quadro);
+    } else {
+      desenhar(valorFinal, true);
+      setTimeout(() => el.querySelectorAll('.dig').forEach(d => d.classList.remove('tick')), 400);
+    }
+  }
+  requestAnimationFrame(quadro);
+}
+
 async function loadCupomRestantes() {
   // Só esconde o banner se o BIGBANG10 (cupom em destaque) estiver esgotado/inativo
   try {
@@ -1896,7 +1934,15 @@ async function loadCupomRestantes() {
       return;
     }
     const restantes = cupom.usos_max != null ? cupom.usos_max - usosReais : null;
-    if (el) el.textContent = restantes !== null ? `Restam ${restantes} de ${cupom.usos_max} vagas — corre antes que acabe!` : '⚡ Cupom de lançamento!';
+    if (el) {
+      if (restantes !== null) {
+        const digitosMin = String(cupom.usos_max).length;
+        el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>Restam <span class="cupom-odometro" id="cupom-odometro"></span> de ${cupom.usos_max} vagas — corre antes que acabe!`;
+        animarOdometroRestantes('cupom-odometro', restantes, digitosMin);
+      } else {
+        el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>⚡ Cupom de lançamento!`;
+      }
+    }
   } catch(e) {
     const el = document.getElementById('cupom-restantes');
     if (el) el.textContent = '⚡ Válido para os primeiros 50 pedidos!';
