@@ -417,7 +417,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .cupom-banner p{font-size:14px;color:rgba(255,255,255,0.85);margin-top:2px;position:relative;}
 .cupom-code{display:inline-block;background:white;color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:4px;padding:10px 28px;border-radius:9px;margin:11px 0;border:2px dashed rgba(204,0,0,0.3);position:relative;cursor:pointer;animation:cupom-blink 1.7s ease-in-out infinite;}
 .cupom-restantes{font-size:13px;color:rgba(255,255,255,0.7);position:relative;display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
-/* Contador "vivo" das vagas restantes — puramente visual (o número final
+/* Contador "vivo" dos cupons restantes — puramente visual (o número final
    sempre é o valor real vindo do Supabase, calculado em loadCupomRestantes();
    isso aqui só anima COMO ele aparece, nunca inventa um valor diferente). */
 .cupom-live-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0;animation:cupom-live-pulse 1.6s ease-in-out infinite;}
@@ -528,7 +528,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 <div class="cupom-banner" id="cupom-banner">
   <h3>🎉 OFERTA DE LANÇAMENTO — 10% OFF com o cupom BIGBANG10!</h3>
   <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG10'})">BIGBANG10</div>
-  <div class="cupom-restantes" id="cupom-restantes">Carregando vagas...</div>
+  <div class="cupom-restantes" id="cupom-restantes">Carregando cupons...</div>
 </div>
 
 <div id="combos" style="background:#0a0a0a;padding:44px 0;">
@@ -1943,7 +1943,7 @@ async function loadCupomRestantes() {
     if (el) {
       if (restantes !== null) {
         const digitosMin = String(cupom.usos_max).length;
-        el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>Restam <span class="cupom-odometro" id="cupom-odometro"></span> de ${cupom.usos_max} vagas — corre antes que acabe!`;
+        el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>Restam <span class="cupom-odometro" id="cupom-odometro"></span> de ${cupom.usos_max} cupons — corre antes que acabe!`;
         animarOdometroRestantes('cupom-odometro', restantes, digitosMin);
       } else {
         el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>⚡ Cupom de lançamento!`;
@@ -1951,7 +1951,7 @@ async function loadCupomRestantes() {
     }
   } catch(e) {
     const el = document.getElementById('cupom-restantes');
-    if (el) el.textContent = '⚡ Válido para os primeiros 50 pedidos!';
+    if (el) el.textContent = '⚡ Válido para os primeiros 100 pedidos!';
   }
 }
 loadCupomRestantes();
@@ -1987,7 +1987,7 @@ async function validarCupomCodigo(codigo) {
       // contagem_desde (campanha relançada) usa contagem real via RPC;
       // sem isso, cai no comportamento antigo (usos_atuais).
       const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : (cupom.usos_atuais || 0);
-      if (usosReais >= cupom.usos_max) return { valido: false, motivo: 'Cupom esgotado! Todas as vagas foram utilizadas.' };
+      if (usosReais >= cupom.usos_max) return { valido: false, motivo: 'Cupom esgotado! Todos os cupons foram utilizados.' };
     }
     return { valido: true, cupom };
   } catch(e) {
