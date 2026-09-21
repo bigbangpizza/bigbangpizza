@@ -1890,13 +1890,19 @@ async function contarUsosCupom(codigo, desde) {
 function animarOdometroRestantes(elId, valorFinal, digitosMin){
   const el = document.getElementById(elId);
   if (!el) return;
-  const duracaoMs = 700;
-  const inicio = performance.now();
   function desenhar(valor, comTick){
     el.innerHTML = String(valor).padStart(digitosMin, '0').split('').map(d =>
       `<span class="dig${comTick ? ' tick' : ''}">${d}</span>`
     ).join('');
   }
+  // Mostra o valor real JÁ, de forma síncrona — requestAnimationFrame fica
+  // pausado em aba em segundo plano/sem foco, e sem isso o contador ficava
+  // vazio indefinidamente até o usuário voltar pra aba. A animação abaixo é
+  // só um embelezamento por cima; se ela nunca rodar, o número certo já
+  // está na tela mesmo assim.
+  desenhar(valorFinal, false);
+  const duracaoMs = 700;
+  const inicio = performance.now();
   function quadro(agora){
     const t = Math.min(1, (agora - inicio) / duracaoMs);
     const easeOut = 1 - Math.pow(1 - t, 3);
