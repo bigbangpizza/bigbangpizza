@@ -198,6 +198,11 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 
 /* PIZZA CARDS */
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.cat-salgada{margin-bottom:34px;}
+.cat-salgada:last-child{margin-bottom:0;}
+.cat-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--red);}
+.cat-title{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:30px;letter-spacing:.5px;line-height:1;}
+.cat-preco{font-size:14px;font-weight:700;color:var(--red);}
 .pizza-card{background:white;border-radius:var(--radius-card);overflow:hidden;border:1px solid var(--cream-dark);transition:box-shadow 0.2s,transform 0.2s;display:flex;flex-direction:column;box-shadow:var(--shadow-card);}
 .pizza-card:hover{box-shadow:var(--shadow-card-hover);transform:translateY(-3px);}
 .pizza-card img{width:100%;height:clamp(170px,30vw,230px);object-fit:cover;display:block;}
@@ -554,7 +559,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
       <input class="search-input" id="busca-pizza" type="text" placeholder="Buscar pizza... ex: frango, atum, calabresa" oninput="filtrarPizzas(this.value)">
     </div>
     <p class="section-sub">Todas disponíveis meio a meio 🍕</p>
-    <div class="menu-grid" id="salgadas-grid"><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div></div>
+    <div id="salgadas-grid"><div class="menu-grid"><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div><div class="skeleton-card light"></div></div></div>
   </div>
 </div>
 
@@ -1031,11 +1036,29 @@ function renderPizzaCard(p) {
       </div>
     </div>`;
 }
+// Categorias das pizzas salgadas (coluna `categoria`), na ordem em que as
+// seções aparecem no cardápio. Dentro de cada uma, vale o campo `ordem`.
+const CATEGORIAS_SALGADAS = [
+  { id: 'tradicional', titulo: 'Tradicionais' },
+  { id: 'especial', titulo: 'Especiais' },
+  { id: 'premium', titulo: 'Premium' },
+];
 async function loadSalgadas() {
   const data = await api('pizzas_salgadas', 'ativo=eq.true');
-  salgadasCache = data;
-  data.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_salgada', price: p.preco_grande}));
-  document.getElementById('salgadas-grid').innerHTML = data.map(renderPizzaCard).join('');
+  const grupos = CATEGORIAS_SALGADAS.map(c => ({
+    ...c,
+    itens: data.filter(p => (p.categoria || 'tradicional') === c.id).sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.id - b.id),
+  }));
+  salgadasCache = grupos.flatMap(g => g.itens);
+  salgadasCache.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_salgada', price: p.preco_grande}));
+  document.getElementById('salgadas-grid').innerHTML = grupos.filter(g => g.itens.length).map(g => `
+    <div class="cat-salgada">
+      <div class="cat-head">
+        <h3 class="cat-title">${g.titulo}</h3>
+        <span class="cat-preco">a partir de ${brl(Math.min(...g.itens.map(p => p.preco_grande)))}</span>
+      </div>
+      <div class="menu-grid">${g.itens.map(renderPizzaCard).join('')}</div>
+    </div>`).join('');
 }
 
 async function loadDoces() {
@@ -1319,8 +1342,8 @@ function renderSelectsMeio() {
   m1.innerHTML = '<option value="">Escolha...</option>';
   m2.innerHTML = '<option value="">Escolha...</option>';
   modalState.sabores.forEach(s => {
-    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco/2)}`, s.id));
-    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco/2)}`, s.id));
+    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
+    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
   });
   if (modalState.sabor1) m1.value = modalState.sabor1.id;
   if (modalState.sabor2) m2.value = modalState.sabor2.id;
@@ -1354,7 +1377,8 @@ function atualizarResumo() {
     if (!s1 || !s2) { btn.disabled = true; resumo.textContent = ''; return; }
     if (s1.id === s2.id) { aviso.style.display = 'block'; btn.disabled = true; resumo.textContent = ''; return; }
     btn.disabled = false;
-    resumo.textContent = brl((s1.preco/2) + (s2.preco/2) + precoBorda);
+    // Meio a meio cobra o preço do sabor mais caro (não a média das metades).
+    resumo.textContent = brl(Math.max(s1.preco, s2.preco) + precoBorda);
   }
 }
 
@@ -1376,7 +1400,7 @@ function confirmModalSabor() {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
     if (!s1 || !s2 || s1.id === s2.id) return;
     sabores = [s1, s2];
-    precoUnitario = +((s1.preco/2) + (s2.preco/2) + precoBorda).toFixed(2);
+    precoUnitario = +(Math.max(s1.preco, s2.preco) + precoBorda).toFixed(2);
     nomeExibicao = `Pizza ${modalState.tamanho} — ½ ${s1.nome} + ½ ${s2.nome}`;
   }
   if (modalState.borda) nomeExibicao += ` — Borda ${modalState.borda.nome}`;
@@ -1858,6 +1882,10 @@ function filtrarPizzas(termo) {
     const nome = card.querySelector('.pizza-name')?.textContent?.toLowerCase() || '';
     const desc = card.querySelector('.pizza-desc')?.textContent?.toLowerCase() || '';
     card.style.display = (!t || nome.includes(t) || desc.includes(t)) ? '' : 'none';
+  });
+  // Esconde a seção (título da categoria) que ficou sem nenhum sabor visível.
+  document.querySelectorAll('#salgadas-grid .cat-salgada').forEach(sec => {
+    sec.style.display = [...sec.querySelectorAll('.pizza-card')].some(c => c.style.display !== 'none') ? '' : 'none';
   });
   // Debounce: só registra a busca depois que o usuário para de digitar,
   // pra não disparar um evento a cada letra.

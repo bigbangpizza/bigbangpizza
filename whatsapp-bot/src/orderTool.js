@@ -159,8 +159,8 @@ function precoBorda(menuData, tipoItem) {
  * Processa e valida a lista de itens do pedido contra o cardápio real,
  * recalculando os preços a partir dos dados do Supabase (nunca confia em
  * preço que a IA eventualmente tenha citado na conversa). Pizza salgada
- * meio a meio usa a mesma regra do site: preço = soma das metades de cada
- * sabor no tamanho escolhido. Exportada porque editOrderTool.js reaproveita
+ * meio a meio usa a mesma regra do site: preço = o do sabor mais caro dos
+ * dois no tamanho escolhido. Exportada porque editOrderTool.js reaproveita
  * a mesma validação/precificação ao editar os itens de um pedido existente.
  * @returns {{itensProcessados: Array, erros: string[]}}
  */
@@ -220,7 +220,7 @@ export function processarItens(itensInput, menuData) {
           { id: encontrado1.id, nome: encontrado1.nome, preco: encontrado1[campoPreco] },
           { id: encontrado2.id, nome: encontrado2.nome, preco: encontrado2[campoPreco] },
         ];
-        precoUnitario = +(sabores[0].preco / 2 + sabores[1].preco / 2).toFixed(2);
+        precoUnitario = Math.max(sabores[0].preco, sabores[1].preco);
         nomeExibicao = `Pizza ${tamanho} — ½ ${encontrado1.nome} + ½ ${encontrado2.nome}`;
       } else {
         sabores = [{ id: encontrado1.id, nome: encontrado1.nome, preco: encontrado1[campoPreco] }];

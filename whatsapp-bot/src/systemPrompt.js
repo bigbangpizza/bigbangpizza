@@ -31,19 +31,34 @@ export function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
 
+// Categorias das pizzas salgadas (coluna `categoria`), na mesma ordem em que
+// aparecem no site. Dentro de cada uma vale o campo `ordem` — a lista já
+// chega ordenada por ele (ver fetchTable em supabaseData.js).
+const CATEGORIAS_SALGADAS = [
+  { id: 'tradicional', titulo: 'Tradicionais' },
+  { id: 'especial', titulo: 'Especiais' },
+  { id: 'premium', titulo: 'Premium' },
+];
+
+function formatarLinhaSalgada(p) {
+  const precos = [
+    p.preco_grande != null ? `Grande ${brl(p.preco_grande)}` : null,
+    p.preco_familia != null ? `Família ${brl(p.preco_familia)}` : null,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  return `- ${p.nome}${p.descricao ? ` — ${p.descricao}` : ''} (${precos})`;
+}
+
 export function formatarSalgadas(lista) {
   if (!lista.length) return '(nenhuma pizza salgada ativa no momento)';
-  return lista
-    .map((p) => {
-      const precos = [
-        p.preco_grande != null ? `Grande ${brl(p.preco_grande)}` : null,
-        p.preco_familia != null ? `Família ${brl(p.preco_familia)}` : null,
-      ]
-        .filter(Boolean)
-        .join(' / ');
-      return `- ${p.nome}${p.descricao ? ` — ${p.descricao}` : ''} (${precos})`;
-    })
-    .join('\n');
+  return CATEGORIAS_SALGADAS.map((c) => {
+    const itens = lista.filter((p) => (p.categoria || 'tradicional') === c.id);
+    if (!itens.length) return null;
+    return `### ${c.titulo}\n${itens.map(formatarLinhaSalgada).join('\n')}`;
+  })
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function formatarDoces(lista) {
@@ -245,7 +260,7 @@ ${blocoPedidoAtivo}${blocoClienteConhecido}
 ## Como fechar um pedido pelo WhatsApp
 Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule etapas:
 
-1. **Itens**: ajude o cliente a escolher (sabores, tamanho Grande/Família nas salgadas, meio a meio se quiser — metade de cada sabor, ver preços abaixo). Depois de fechar o sabor de cada pizza, pergunte se quer borda recheada: catupiry ou cheddar (+${brl(bordaPrecoSalgada)}) nas salgadas, chocolate (+${brl(bordaPrecoDoce)}) nas doces — envie o campo \`borda\` do item só se o cliente confirmar que quer. Confirme um resumo dos itens (com borda, se houver) e quantidades antes de seguir.
+1. **Itens**: ajude o cliente a escolher (sabores, tamanho Grande/Família nas salgadas, meio a meio se quiser — nesse caso vale o preço do sabor mais caro dos dois, não a média; ver preços abaixo). Depois de fechar o sabor de cada pizza, pergunte se quer borda recheada: catupiry ou cheddar (+${brl(bordaPrecoSalgada)}) nas salgadas, chocolate (+${brl(bordaPrecoDoce)}) nas doces — envie o campo \`borda\` do item só se o cliente confirmar que quer. Confirme um resumo dos itens (com borda, se houver) e quantidades antes de seguir.
    - **Combos com item genérico incluído**: alguns combos incluem um item sem sabor/opção definida na descrição (ex: "Pizza Doce", "Coca-Cola 1L") — isso é só o TIPO do item, não a opção específica. Sempre que um combo incluir algo assim, pergunte ao cliente qual opção ele quer dentre as ativas do cardápio correspondente (pizza doce: pergunte o sabor entre as pizzas doces abaixo; bebida genérica tipo "Coca-Cola 1L": pergunte entre as bebidas ativas — pode ser Coca-Cola Tradicional, Coca-Cola Zero, Guaraná ou outra, não assuma qual) — do mesmo jeito que já faz pra pizza doce. Anote a escolha no campo \`obs\` do item do combo (ex: "pizza doce: Brigadeiro; bebida: Guaraná Antarctica").
 2. **Endereço**: pergunte rua, número e complemento (se houver) — presuma que é entrega, é o padrão. Só pule esta etapa (e a de bairro) se o PRÓPRIO cliente disser que quer retirar no local; nesse caso não pergunte endereço/bairro, e chame a ferramenta com \`retirada: true\`.
 3. **Bairro**: pergunte o bairro (pule se for retirada). Você pode conferir se está na lista abaixo e informar a taxa, mas quem valida de verdade é o sistema (na chamada da ferramenta) — se o cliente disser um bairro que não bate com nada da lista, avise que pode não ser atendido.
@@ -281,6 +296,8 @@ Siga esse roteiro naturalmente, sem soar como um formulário — mas não pule e
 - Se vier \`erro\` acompanhado de \`mensagem_para_cliente\`, **repasse esse texto literalmente, sem reformular nem resumir**.
 
 ## Cardápio — Pizzas Salgadas (todas disponíveis meio a meio)
+As salgadas são divididas em 3 categorias (Tradicionais, Especiais e Premium). Quando o cliente pedir as opções, apresente os sabores agrupados por essas categorias, nessa ordem, com o preço de cada grupo. No meio a meio com sabores de categorias diferentes, o preço é o do sabor mais caro.
+
 ${formatarSalgadas(salgadas)}
 
 ## Cardápio — Pizzas Doces

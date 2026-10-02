@@ -1678,14 +1678,33 @@ window.addEventListener('resize', ()=>{ if(!document.getElementById('pg-dashboar
 // ═══════════════════════════════════════════════════════
 let tableDataCache = {};
 
+// Categorias das pizzas salgadas (coluna `categoria`) com o preço padrão de
+// cada uma — usado pra agrupar a lista, preencher o formulário e avisar
+// quando um sabor está com preço diferente do padrão da categoria dele.
+const CATEGORIAS_SALGADAS = [
+  { id:'tradicional', titulo:'Tradicionais', grande:55.9, familia:61.9 },
+  { id:'especial', titulo:'Especiais', grande:64.9, familia:71.9 },
+  { id:'premium', titulo:'Premium', grande:71.9, familia:78.9 },
+];
+function categoriaSalgada(id){ return CATEGORIAS_SALGADAS.find(c => c.id===id) || CATEGORIAS_SALGADAS[0]; }
+// Família é opcional no cadastro — sabor sem preço Família não conta como fora do padrão.
+function precoForaDoPadrao(catId, grande, familia){
+  const c = categoriaSalgada(catId);
+  const difere = (v, padrao) => v!=null && v!=='' && !isNaN(v) && Math.abs(Number(v)-padrao) > 0.004;
+  return difere(grande, c.grande) || difere(familia, c.familia);
+}
+
 async function loadTable(type) {
   const tbl = type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
   const data = await api(tbl);
   tableDataCache[type] = data;
-  const rows = data.map(item => {
-    const pr = item.preco_grande !== undefined
+  const linha = item => {
+    let pr = item.preco_grande !== undefined
       ? (item.preco_familia ? `${brl(item.preco_grande)} / Fam ${brl(item.preco_familia)}` : brl(item.preco_grande))
       : brl(item.preco||0);
+    if(type==='salgadas' && precoForaDoPadrao(item.categoria, item.preco_grande, item.preco_familia)){
+      pr += ` <span title="Preço diferente do padrão da categoria" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:20px;background:rgba(250,204,21,.15);color:#facc15;font-size:10px;font-weight:700;white-space:nowrap;">⚠️ fora do padrão</span>`;
+    }
     return `<tr data-id="${item.id}">
       <td data-label="Ordem" class="drag-col"><span class="drag-handle" title="Arraste para reordenar">☰</span></td>
       <td data-label="Foto">${item.foto_url?`<img src="${item.foto_url}" alt="">`: '—'}</td>
@@ -1698,7 +1717,25 @@ async function loadTable(type) {
         <button class="bd" onclick="remItem('${tbl}',${item.id},'${type}')">🗑️</button>
       </div></td>
     </tr>`;
-  }).join('');
+  };
+  if(type==='salgadas'){
+    // Um <tbody> por categoria: o arrastar-e-soltar trabalha dentro do
+    // tbody da linha, então a reordenação fica restrita à própria categoria
+    // (pra trocar um sabor de categoria, usa o formulário de edição).
+    const grupos = CATEGORIAS_SALGADAS.map(c => {
+      const itens = data.filter(i => categoriaSalgada(i.categoria).id===c.id);
+      return `<tbody><tr><td colspan="6" style="background:rgba(255,255,255,.04);padding:10px 12px;">
+          <strong style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--orange);">${c.titulo}</strong>
+          <span style="margin-left:8px;font-size:12px;color:rgba(255,255,255,.5);">Grande ${brl(c.grande)} / Família ${brl(c.familia)} · ${itens.length} ${itens.length===1?'sabor':'sabores'}</span>
+        </td></tr></tbody>
+        <tbody>${itens.map(linha).join('')}</tbody>`;
+    }).join('');
+    document.getElementById('t-'+type).innerHTML = `<table>
+      <thead><tr><th></th><th>Foto</th><th>Nome</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead>
+      ${grupos}</table>`;
+    return;
+  }
+  const rows = data.map(linha).join('');
   document.getElementById('t-'+type).innerHTML = `<table>
     <thead><tr><th></th><th>Foto</th><th>Nome</th><th>Preço</th><th>Status</th><th>Ações</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3)">Nenhum item.</td></tr>'}</tbody></table>`;
@@ -1722,11 +1759,21 @@ async function openMod(type, id=null) {
   document.getElementById('mod-title').textContent=(id?'Editar ':'Novo ')+titles[type];
   let body=`<div class="fg"><label>Nome</label><input id="fn" value="${item.nome||''}"></div>`;
   if(type==='salgadas'){
+    // Sabor novo já nasce na primeira categoria, com o preço padrão dela e no fim da fila.
+    const cat = categoriaSalgada(item.categoria);
+    const novo = !id;
     body+=`<div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
     <div class="fr">
-      <div class="fg"><label>Preço Grande (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco_grande||''}"></div>
-      <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${item.preco_familia||''}" placeholder="Opcional"></div>
+      <div class="fg"><label>Categoria</label><select id="fcat" onchange="aoTrocarCategoriaSalgada()">
+        ${CATEGORIAS_SALGADAS.map(c=>`<option value="${c.id}" ${c.id===cat.id?'selected':''}>${c.titulo} — ${brl(c.grande)} / ${brl(c.familia)}</option>`).join('')}
+      </select></div>
+      <div class="fg"><label>Ordem na categoria</label><input id="ford" type="number" step="1" min="1" value="${novo?proximaOrdemSalgada(cat.id,null):(item.ordem??'')}"></div>
     </div>
+    <div class="fr">
+      <div class="fg"><label>Preço Grande (R$)</label><input id="fp" type="number" step="0.01" value="${novo?cat.grande:(item.preco_grande||'')}" oninput="atualizarAvisoPrecoSalgada()"></div>
+      <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${novo?cat.familia:(item.preco_familia||'')}" placeholder="Opcional" oninput="atualizarAvisoPrecoSalgada()"></div>
+    </div>
+    <div id="fcat-aviso" style="display:none;margin:-4px 0 13px;padding:8px 11px;border-radius:7px;background:rgba(250,204,21,.12);color:#facc15;font-size:12px;font-weight:600;"></div>
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
     <div class="fg"><label>Tag (ex: 🔥 Mais Pedido)</label><input id="ftag" value="${item.tag||''}"></div>`;
   } else if(type==='bebidas'){
@@ -1740,7 +1787,35 @@ async function openMod(type, id=null) {
     <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>`;
   }
   document.getElementById('mod-body').innerHTML=body;
+  if(type==='salgadas') atualizarAvisoPrecoSalgada();
   document.getElementById('modal').classList.add('open');
+}
+
+// Próxima posição livre no fim da categoria (ignorando o próprio sabor em edição).
+function proximaOrdemSalgada(catId, ignorarId){
+  const ordens = (tableDataCache.salgadas||[])
+    .filter(i => categoriaSalgada(i.categoria).id===catId && String(i.id)!==String(ignorarId))
+    .map(i => i.ordem||0);
+  return ordens.length ? Math.max(...ordens)+1 : 1;
+}
+
+// Trocar a categoria preenche os preços padrão dela e joga o sabor pro fim
+// da nova categoria — os campos continuam editáveis.
+function aoTrocarCategoriaSalgada(){
+  const c = categoriaSalgada(document.getElementById('fcat').value);
+  document.getElementById('fp').value = c.grande;
+  document.getElementById('fpf').value = c.familia;
+  document.getElementById('ford').value = proximaOrdemSalgada(c.id, editId);
+  atualizarAvisoPrecoSalgada();
+}
+
+function atualizarAvisoPrecoSalgada(){
+  const aviso = document.getElementById('fcat-aviso');
+  if(!aviso) return;
+  const c = categoriaSalgada(document.getElementById('fcat').value);
+  const fora = precoForaDoPadrao(c.id, parseFloat(document.getElementById('fp').value), parseFloat(document.getElementById('fpf').value));
+  aviso.style.display = fora ? '' : 'none';
+  aviso.textContent = fora ? `⚠️ Preço diferente do padrão de ${c.titulo} (Grande ${brl(c.grande)} / Família ${brl(c.familia)}).` : '';
 }
 
 function closeMod(){
@@ -1760,13 +1835,16 @@ async function saveItem() {
     const fpf=document.getElementById('fpf').value;
     data.preco_familia=fpf?parseFloat(fpf):null;
     data.descricao=document.getElementById('fd').value.trim();
+    data.categoria=categoriaSalgada(document.getElementById('fcat').value).id;
+    const ord=parseInt(document.getElementById('ford').value,10);
+    data.ordem=Number.isFinite(ord)?ord:proximaOrdemSalgada(data.categoria, editId);
   } else if(type==='bebidas'){
     data.preco=parseFloat(document.getElementById('fp').value);
   } else {
     data.preco=parseFloat(document.getElementById('fp').value);
     data.descricao=document.getElementById('fd')?.value.trim()||'';
   }
-  if(!editId){
+  if(!editId && type!=='salgadas'){
     const cache=tableDataCache[type]||[];
     data.ordem=cache.length?Math.max(...cache.map(i=>i.ordem||0))+1:0;
   }
@@ -1836,7 +1914,10 @@ async function finalizarDrag() {
   const cache = tableDataCache[type] || [];
   const ids = [...tbody.querySelectorAll('tr[data-id]')].map(r => r.dataset.id);
   const changes = [];
-  ids.forEach((id, i) => {
+  // Salgadas: o tbody é o da categoria, e a ordem dentro dela começa em 1.
+  const base = type === 'salgadas' ? 1 : 0;
+  ids.forEach((id, idx) => {
+    const i = idx + base;
     const item = cache.find(x => String(x.id) === String(id));
     if (item && item.ordem !== i) { item.ordem = i; changes.push([id, i]); }
   });
@@ -2733,7 +2814,8 @@ function calcPrecoItemPedidoManual(item, menu){
     if(item.produto2Id){
       const p2 = catalogo.find(p => p.id === item.produto2Id);
       if(!p2 || p2[campo]==null) return null;
-      precoUnitario = +(p1[campo]/2 + p2[campo]/2).toFixed(2);
+      // Meio a meio cobra o preço do sabor mais caro (mesma regra do site e do bot).
+      precoUnitario = Math.max(p1[campo], p2[campo]);
       nomeExibicao = `Pizza ${item.tamanho} — ½ ${p1.nome} + ½ ${p2.nome}`;
     } else {
       precoUnitario = p1[campo];
