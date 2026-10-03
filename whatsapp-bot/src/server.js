@@ -11,6 +11,7 @@ import { extrairPedidoManual } from './manualOrderExtractTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
 import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
 import { CHAMAR_ATENDENTE_TOOL, criarExecutorChamarAtendente } from './humanHandoffTool.js';
+import { VERIFICAR_BAIRRO_TOOL, criarExecutorVerificarBairro } from './bairroMatch.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
 import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
@@ -336,12 +337,13 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
     editar_pedido: criarExecutorEditarPedido({ numero }),
     chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),
+    verificar_bairro: criarExecutorVerificarBairro(),
   };
 
   const resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);

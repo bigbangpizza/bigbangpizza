@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { getMenuData, inserirPedido, validarCupom } from './supabaseData.js';
+import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
 import { enviarTexto } from './evolutionApi.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
@@ -38,7 +39,11 @@ export const CRIAR_PEDIDO_TOOL = {
       bairro: {
         type: 'string',
         description:
-          'Nome do bairro exatamente como o cliente disse — o sistema valida contra a lista real de bairros atendidos. Dispensado se "retirada" for true.',
+          'Nome do bairro exatamente como o cliente disse — o sistema reconhece apelidos e pequenos erros de digitação e valida contra a lista real de bairros atendidos. Dispensado se "retirada" for true.',
+      },
+      cep: {
+        type: 'string',
+        description: 'CEP do endereço, se o cliente informou (só números ou com hífen). Usado pra identificar o bairro quando o nome não foi reconhecido.',
       },
       forma_pagamento: {
         type: 'string',
@@ -303,10 +308,10 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
     if (input.retirada) {
       bairroEncontrado = { nome: 'Retirada no local', frete: 0 };
     } else {
-      bairroEncontrado = buscarPorNome(menuData.bairros, 'nome', input.bairro);
+      const { bairro, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep);
+      bairroEncontrado = bairro;
       if (!bairroEncontrado) {
-        const listaBairros = menuData.bairros.map((b) => b.nome).join(', ');
-        erros.push(`O bairro "${input.bairro}" não está na nossa área de entrega. Bairros atendidos: ${listaBairros}.`);
+        erros.push(mensagemBairroNaoReconhecido(menuData.bairros, input.bairro, input.cep, cepInfo));
       }
       if (!input.endereco || !input.endereco.trim()) {
         erros.push('O endereço (rua e número) não foi informado.');

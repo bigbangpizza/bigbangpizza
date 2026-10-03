@@ -691,7 +691,11 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)" inputmode="numeric" maxlength="16" oninput="formatarTelefoneInput(this)">
     <div class="campo-hint">Digite DDD + número, ex: 71991234567</div>
-    <select id="f-bairro" onchange="calcFrete()"><option value="">Selecione o bairro *</option></select>
+    <select id="f-bairro" onchange="onBairroChange()"><option value="">Selecione o bairro *</option></select>
+    <div id="bairro-outro" style="display:none;">
+      <input type="text" id="f-bairro-outro" placeholder="Qual é o seu bairro?">
+      <div class="campo-hint" style="color:var(--red);font-weight:600;">Fale com a gente pelo WhatsApp para confirmar a entrega no seu bairro. O botão abaixo já envia o seu pedido pra gente.</div>
+    </div>
     <div class="checkout-form-label"><span class="cfl-icon">💳</span> Pagamento</div>
     <select id="f-pagamento"><option value="">Forma de pagamento *</option><option>Pix</option><option>Dinheiro</option><option>Maquininha de cartão</option></select>
     <div>
@@ -709,7 +713,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
-    <button class="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
+    <button class="btn-finalizar" id="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
   </div>
   </div>
 </div>
@@ -746,6 +750,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
+const BAIRRO_OUTRO = 'outro'; // valor da opção "Meu bairro não está na lista" no checkout
 let modalState = null;
 let WPP_NUMBER = '5571993738823';
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
@@ -1119,6 +1124,10 @@ async function loadBairros() {
     doTier.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`)));
     sel.appendChild(g);
   });
+  // Bairro que não está na lista não bloqueia o pedido: o cliente fala com a
+  // gente pelo WhatsApp pra confirmar a entrega (ver onBairroChange).
+  sel.appendChild(new Option('Meu bairro não está na lista', BAIRRO_OUTRO));
+  if (idSelecionado === BAIRRO_OUTRO) sel.value = BAIRRO_OUTRO;
 
   // Preserva o bairro já selecionado (ex: cliente no meio do checkout) se ele
   // continuar ativo depois de um reload disparado pelo watcher de publicação
@@ -1546,7 +1555,26 @@ async function registrarCarrinhoAbandonado() {
   } catch(e) { console.error('Erro ao registrar carrinho abandonado:', e); }
 }
 function calcFrete() { updateTotals(); }
-function getFrete() { const v=document.getElementById('f-bairro').value; return v?parseFloat(v.split('|')[1]):null; }
+function bairroForaDaLista() { return document.getElementById('f-bairro').value === BAIRRO_OUTRO; }
+function onBairroChange() {
+  const outro = bairroForaDaLista();
+  document.getElementById('bairro-outro').style.display = outro ? '' : 'none';
+  document.getElementById('btn-finalizar').textContent = outro ? '💬 Confirmar entrega pelo WhatsApp' : '💬 Enviar pelo WhatsApp';
+  calcFrete();
+}
+function getFrete() { const v=document.getElementById('f-bairro').value; return v && v!==BAIRRO_OUTRO?parseFloat(v.split('|')[1]):null; }
+
+// Bairro fora da lista: não registra o pedido (frete e área ainda não
+// confirmados) — manda o pedido pelo WhatsApp pra equipe confirmar a entrega.
+function enviarPedidoBairroForaDaLista(nome, end, comp, pag) {
+  const bairroDigitado = document.getElementById('f-bairro-outro').value.trim();
+  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
+  const itens = cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
+  const obsVal = document.getElementById('f-obs').value.trim();
+  const msg = `Olá! Quero fazer um pedido, mas meu bairro não está na lista do site. Vocês entregam aqui?\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bairroDigitado || '(não informado)'}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: ${brl(sub)} (frete a confirmar)\n💳 Pagamento: ${pag}`;
+  gtag('event', 'bairro_fora_da_lista', {bairro: bairroDigitado});
+  window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+}
 function updateTotals() {
   const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
   const fr = getFrete()||0;
@@ -1575,6 +1603,7 @@ async function finalizarPedido() {
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
   if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); return; }
+  if (bRaw === BAIRRO_OUTRO) { enviarPedidoBairroForaDaLista(nome, end, comp, pag); return; }
   const wppRaw = document.getElementById('f-whatsapp').value;
   if (wppRaw.trim() && !telefoneEhValido(wppRaw)) {
     alert('WhatsApp inválido! Digite DDD + número (10 ou 11 dígitos), ex: 71991234567.');

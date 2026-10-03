@@ -1,7 +1,8 @@
 import { getMenuData } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
-import { processarItens, buscarPorNome, PAGAMENTO_TEXTO } from './orderTool.js';
+import { processarItens, PAGAMENTO_TEXTO } from './orderTool.js';
+import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
 
 const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto';
 
@@ -62,8 +63,9 @@ export const EDITAR_PEDIDO_TOOL = {
       complemento: { type: 'string', description: 'Novo complemento. Omita se não vai mudar.' },
       bairro: {
         type: 'string',
-        description: 'Novo bairro, exatamente como o cliente disse — validado contra a área de entrega real. Omita se o bairro não vai mudar.',
+        description: 'Novo bairro, exatamente como o cliente disse — o sistema reconhece apelidos e pequenos erros de digitação e valida contra a área de entrega real. Omita se o bairro não vai mudar.',
       },
+      cep: { type: 'string', description: 'CEP do novo endereço, se o cliente informou. Usado pra identificar o bairro quando o nome não foi reconhecido.' },
       forma_pagamento: {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link'],
@@ -163,10 +165,9 @@ export function criarExecutorEditarPedido({ numero }) {
     let freteFinal = Number(pedido.frete) || 0;
     let bairroFinal = pedido.bairro;
     if (input.bairro) {
-      const bairroEncontrado = buscarPorNome(menuData.bairros, 'nome', input.bairro);
+      const { bairro: bairroEncontrado, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep);
       if (!bairroEncontrado) {
-        const listaBairros = menuData.bairros.map((b) => b.nome).join(', ');
-        erros.push(`O bairro "${input.bairro}" não está na nossa área de entrega. Bairros atendidos: ${listaBairros}.`);
+        erros.push(mensagemBairroNaoReconhecido(menuData.bairros, input.bairro, input.cep, cepInfo));
       } else {
         freteFinal = Number(bairroEncontrado.frete) || 0;
         bairroFinal = bairroEncontrado.nome;

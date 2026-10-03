@@ -1972,7 +1972,7 @@ function grupoLabelFrete(frete) {
 
 function bairroCardHTML(b) {
   return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
-    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Grátis':brl(b.frete)}</div></div>
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Grátis':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;">também: ${esc(b.apelidos.join(', '))}</div>`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
       <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
@@ -1989,7 +1989,7 @@ function grupoBairrosHTML(label, freteKey, items) {
 }
 
 function renderBairros() {
-  const data = bairrosBusca ? bairrosCache.filter(b => b.nome.toLowerCase().includes(bairrosBusca)) : bairrosCache;
+  const data = bairrosBusca ? bairrosCache.filter(b => b.nome.toLowerCase().includes(bairrosBusca) || (b.apelidos||[]).some(a => a.toLowerCase().includes(bairrosBusca))) : bairrosCache;
   if (!data.length) { document.getElementById('t-bairros').innerHTML = '<div class="loading">Nenhum bairro encontrado.</div>'; return; }
   const ativos = data.filter(b => b.ativo);
   const inativos = data.filter(b => !b.ativo);
@@ -2036,6 +2036,8 @@ async function openModBairro(id = null) {
   document.getElementById('mod-title').textContent = id ? 'Editar Bairro' : 'Novo Bairro';
   document.getElementById('mod-body').innerHTML = `
     <div class="fg"><label>Nome do Bairro</label><input id="bai-nome" value="${esc(item.nome||'')}" placeholder="Ex: Centro"></div>
+    <div class="fg"><label>Apelidos (separados por vírgula)</label><input id="bai-apelidos" value="${esc((item.apelidos||[]).join(', '))}" placeholder="Ex: Lauro Centro, Centro de Lauro">
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">Outros nomes que os clientes usam pra este bairro. O bot já ignora acento, maiúscula e pequenos erros de digitação.</div></div>
     <div class="fg">
       <label>Frete</label>
       <select id="bai-frete-sel" onchange="atualizarFretePersonalizado()">
@@ -2077,7 +2079,8 @@ async function saveBairro() {
     frete = parseFloat(sel);
   }
   const ativo = document.getElementById('bai-ativo').value === 'true';
-  const data = { nome, frete, ativo };
+  const apelidos = [...new Set(document.getElementById('bai-apelidos').value.split(',').map(a => a.trim()).filter(Boolean))];
+  const data = { nome, frete, ativo, apelidos };
   if (!editId) data.ordem = bairrosCache.length ? Math.max(...bairrosCache.map(b => b.ordem||0)) + 1 : 0;
   const ok = editId ? await upd('bairros', editId, data) : await ins('bairros', data);
   if (ok) { closeMod(); loadBairros(); showToastAdmin('✅ Bairro salvo!'); }
