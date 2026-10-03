@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { getMenuData, inserirPedido, calcularCheckout } from './supabaseData.js';
 import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
+import { montarResumoPedido, textoWhatsApp } from './resumoPedido.js';
 import { enviarTexto } from './evolutionApi.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
@@ -428,10 +429,22 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       });
     }
 
+    const linkRastreio = rastreioToken ? `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}` : null;
+    // A confirmação que vai pro cliente é montada pelo código (server.js), com
+    // o valor de cada item — mesmo formato do admin e do rastreio.
+    ultimaConfirmacaoPorNumero.set(numero, {
+      tipo: 'criado',
+      pedido: { ...pedido, id: pedidoId },
+      linkRastreio,
+      avisoCupom,
+      formaPagamento: input.forma_pagamento,
+      retirada: Boolean(input.retirada),
+    });
+
     return {
       sucesso: true,
       pedido_id: pedidoId,
-      link_rastreio: rastreioToken ? `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}` : null,
+      link_rastreio: linkRastreio,
       itens: itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`),
       subtotal: Number(checkout.subtotal),
       oferta_pizza_doce: checkout.oferta_doce?.aplicada ? { preco: checkout.oferta_doce.preco, economia: checkout.oferta_doce.economia } : null,
@@ -477,6 +490,35 @@ export const CALCULAR_TOTAL_TOOL = {
 
 // numero -> { linhaFreteGratis } do último calcular_total desta mensagem do cliente.
 export const ultimoResumoPorNumero = new Map();
+
+// numero -> pedido criado/editado nesta mensagem do cliente; o server.js usa
+// pra mandar a confirmação com o valor de cada item (montada pelo código).
+export const ultimaConfirmacaoPorNumero = new Map();
+
+/**
+ * Confirmação do pedido pro WhatsApp — itens com valor, adicionais, descontos,
+ * subtotal, frete e total (resumoPedido.js, mesmo formato do admin e do
+ * rastreio), mais pagamento, prazo e link. Cada bloco separado por linha em
+ * branco vira uma mensagem.
+ */
+export function montarConfirmacaoPedido(conf, { nomesDoces, lojaAberta }) {
+  const p = conf.pedido;
+  const resumo = montarResumoPedido(p, nomesDoces);
+  const blocos = [`${conf.tipo === 'editado' ? 'Pedido' : 'Pedido'} #${p.id ?? ''} ${conf.tipo === 'editado' ? 'atualizado' : 'registrado'}.\n${textoWhatsApp(resumo)}`.replace('# ', '')];
+  if (conf.avisoCupom) blocos.push(`${conf.avisoCupom.startsWith('O cupom') ? '' : 'O cupom não foi aplicado: '}${conf.avisoCupom}`);
+  if (conf.tipo === 'criado') {
+    if (conf.formaPagamento === 'pix') blocos.push('Pagamento via Pix: pode enviar o comprovante por aqui.');
+    else if (conf.formaPagamento === 'cartao_link') blocos.push('O link de pagamento do cartão chega em instantes.');
+    else blocos.push('Pagamento na entrega.');
+    if (conf.retirada) blocos.push(`Retirada na loja: ${p.endereco}.`);
+    blocos.push(
+      lojaAberta
+        ? `Tempo estimado: 35 a 60 minutos.${conf.linkRastreio ? `\nAcompanhe por aqui: ${conf.linkRastreio}` : ''}`
+        : `A loja está fechada agora; o pedido entra em preparo assim que abrirmos.${conf.linkRastreio ? `\nAcompanhe por aqui: ${conf.linkRastreio}` : ''}`
+    );
+  }
+  return blocos.join('\n\n');
+}
 
 export function criarExecutorCalcularTotal({ numero }) {
   return async function executarCalcularTotal(input) {

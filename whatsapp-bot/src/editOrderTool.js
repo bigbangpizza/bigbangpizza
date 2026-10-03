@@ -1,7 +1,7 @@
 import { getMenuData, calcularCheckout } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
-import { processarItens, PAGAMENTO_TEXTO } from './orderTool.js';
+import { processarItens, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero } from './orderTool.js';
 import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
 
 const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto,cupom';
@@ -243,6 +243,8 @@ export function criarExecutorEditarPedido({ numero }) {
     }
 
     console.log(`[edicao] pedido=${pedido.id} numero=${numero} resultado=editado campos=${Object.keys(patch).join(',')}`);
+    // Confirmação com o valor de cada item, montada pelo código (server.js).
+    ultimaConfirmacaoPorNumero.set(numero, { tipo: 'editado', pedido: { ...pedido, ...patch, ...(linhasAfetadas[0] || {}) }, avisoCupom });
     return {
       sucesso: true,
       pedido_id: pedido.id,

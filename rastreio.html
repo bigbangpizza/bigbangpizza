@@ -77,6 +77,7 @@ h1,h2{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;}
 <img class="logo" src="logo-header.png" alt="Big Bang Pizza">
 <div class="card" id="card"><div class="loading">Carregando seu pedido...</div></div>
 
+<script src="resumo-pedido.js"></script>
 <script>
 const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
@@ -110,14 +111,23 @@ function renderErro(msg){
   </div>`;
 }
 
+// Nomes das pizzas doces (minúsculos) pra rotular "Pizza doce" no resumo.
+let nomesDoces=new Set();
+async function carregarNomesDoces(){
+  try{
+    const r=await fetch(`${SB}/rest/v1/pizzas_doces?select=nome`,{headers:{apikey:SK,Authorization:'Bearer '+SK}});
+    if(r.ok) nomesDoces=new Set((await r.json()).map(d=>String(d.nome).toLowerCase()));
+  }catch(e){}
+}
+
 function blocoItensEEndereco(p){
-  const itens=(p.itens||'').split(' | ').filter(Boolean);
   const endereco=[p.endereco,p.complemento].filter(Boolean).join(', ');
+  // Valor de cada item, adicionais, descontos e total — mesmo formato do admin e do WhatsApp (resumo-pedido.js).
+  const resumo=ResumoPedido.montarResumoPedido(p, nomesDoces);
   return `
     <div class="itens-box">
       <div class="itens-title">Seu pedido</div>
-      ${itens.map(i=>`<div class="item-row">🍕 ${esc(i)}</div>`).join('')}
-      <div class="total-row"><span>TOTAL</span><span>R$ ${esc(Number(p.total||0).toFixed(2).replace('.',','))}</span></div>
+      <div style="font-size:13.5px;color:rgba(255,255,255,0.8);">${ResumoPedido.html(resumo, esc)}</div>
     </div>
     ${endereco||p.bairro?`<div class="itens-box">
       <div class="itens-title">Endereço de entrega</div>
@@ -199,7 +209,7 @@ async function carregarPedido(){
   }catch(e){ renderErro('Não foi possível buscar seu pedido agora. Tente novamente em instantes.'); }
 }
 
-carregarPedido();
+carregarNomesDoces().finally(carregarPedido);
 setInterval(carregarPedido,18000);
 </script>
 </body>

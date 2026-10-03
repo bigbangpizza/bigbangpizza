@@ -2,6 +2,7 @@ import express from 'express';
 import cron from 'node-cron';
 import { config } from './config.js';
 import { buildSystemPrompt, lojaEstaAberta } from './systemPrompt.js';
+import { getMenuData } from './supabaseData.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { baixarMediaBase64 } from './evolutionApi.js';
@@ -13,6 +14,8 @@ import {
   criarExecutorCalcularTotal,
   ultimoResumoPorNumero,
   aplicarLinhaFreteGratis,
+  ultimaConfirmacaoPorNumero,
+  montarConfirmacaoPedido,
 } from './orderTool.js';
 import { extrairPedidoManual } from './manualOrderExtractTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
@@ -355,6 +358,7 @@ async function processarLote(numero, nomeContato, userContent) {
   };
 
   ultimoResumoPorNumero.delete(numero);
+  ultimaConfirmacaoPorNumero.delete(numero);
   const resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
   const { novasMensagens } = resultado;
   let { textoResposta } = resultado;
@@ -362,6 +366,21 @@ async function processarLote(numero, nomeContato, userContent) {
   // "Faltam R$ X para frete grátis" vem do cálculo oficial (calcular_total),
   // nunca do modelo.
   textoResposta = aplicarLinhaFreteGratis(numero, textoResposta);
+
+  // Pedido registrado/editado nesta mensagem: a confirmação (com o valor de
+  // cada item, mesmo formato do admin e do rastreio) é montada pelo código, não
+  // pelo modelo — e é ela que fica no histórico.
+  const confirmacao = ultimaConfirmacaoPorNumero.get(numero);
+  ultimaConfirmacaoPorNumero.delete(numero);
+  if (confirmacao) {
+    const { doces } = await getMenuData();
+    textoResposta = montarConfirmacaoPedido(confirmacao, {
+      nomesDoces: new Set(doces.map((d) => String(d.nome).toLowerCase())),
+      lojaAberta: await lojaEstaAberta(),
+    });
+    const ultima = novasMensagens[novasMensagens.length - 1];
+    if (ultima?.role === 'assistant') ultima.content = [textBlock(textoResposta)];
+  }
 
   // A Luiza sempre se apresenta na primeira mensagem da conversa. O prompt
   // já pede isso, mas quando a primeira ação do modelo é chamar uma

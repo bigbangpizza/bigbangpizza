@@ -2,6 +2,7 @@ import { getMenuData, buscarPedidoPorToken } from './supabaseData.js';
 import { enviarRespostaHumanizada } from './respostaHumanizada.js';
 import { enviarTexto } from './evolutionApi.js';
 import { config } from './config.js';
+import { montarResumoPedido, textoWhatsApp } from './resumoPedido.js';
 
 // ═══════════════════════════════════════════════════════
 // Detecta a mensagem automática que o checkout do site (index.html) manda
@@ -92,7 +93,20 @@ export async function tratarNotificacaoPedidoDoSite(numero, token) {
 
   if (pedido) {
     const primeiroNome = (pedido.nome || '').trim().split(/\s+/)[0] || '';
-    await enviarRespostaHumanizada(numero, `Recebi seu pedido aqui${primeiroNome ? ', ' + primeiroNome : ''}! 🍕 Já tá na nossa fila, só aguardar.`);
+    // Confirma com o valor de cada item e o total gravado — mesmo formato do
+    // admin e do rastreio (resumoPedido.js). Se o resumo falhar, manda só o
+    // reconhecimento simples de antes.
+    let resumoTexto = '';
+    try {
+      const { doces } = await getMenuData();
+      resumoTexto = textoWhatsApp(montarResumoPedido(pedido, new Set(doces.map((d) => String(d.nome).toLowerCase()))));
+    } catch (err) {
+      console.error('[siteOrderNotice] falha ao montar o resumo do pedido (seguindo sem):', err);
+    }
+    await enviarRespostaHumanizada(
+      numero,
+      `Recebi seu pedido #${pedido.id} aqui${primeiroNome ? ', ' + primeiroNome : ''}! Já está na nossa fila.${resumoTexto ? `\n${resumoTexto}` : ''}`
+    );
     return;
   }
 
