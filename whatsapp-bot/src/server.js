@@ -10,6 +10,7 @@ import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
 import { extrairPedidoManual } from './manualOrderExtractTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
 import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
+import { CHAMAR_ATENDENTE_TOOL, criarExecutorChamarAtendente } from './humanHandoffTool.js';
 import { rodarReativacaoDiaria } from './reactivationJob.js';
 import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
@@ -291,8 +292,10 @@ function tratarMensagemPropria(numero, messageId) {
 // mesma conversa, o atendimento segue normal pela Claude (que já sabe que a
 // loja está fechada via buildSystemPrompt e pode, por exemplo, anotar um
 // pedido pra quando reabrir) — evita repetir esse aviso a cada mensagem.
+const APRESENTACAO_LUIZA = 'Oi, aqui é a Luiza, da Big Bang Pizza.';
+
 const MENSAGEM_LOJA_FECHADA =
-  'Olá! Obrigado por entrar em contato com a Big Bang Pizza! No momento estamos fechados, mas ficamos felizes com sua preferência. Funcionamos de quinta a domingo, das 18h às 23h (quinta e domingo) e das 18h às 00h (sexta e sábado). Assim que abrirmos, ficaremos felizes em te atender!';
+  `${APRESENTACAO_LUIZA} No momento estamos fechados. Funcionamos de quinta a domingo: quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h. Assim que abrirmos, será um prazer te atender.`;
 
 /**
  * Processa um lote de content blocks (uma ou mais mensagens do cliente
@@ -333,14 +336,25 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
     editar_pedido: criarExecutorEditarPedido({ numero }),
+    chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),
   };
 
-  const { textoResposta, novasMensagens } = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
+  const resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
+  const { novasMensagens } = resultado;
+  let { textoResposta } = resultado;
+
+  // A Luiza sempre se apresenta na primeira mensagem da conversa. O prompt
+  // já pede isso, mas quando a primeira ação do modelo é chamar uma
+  // ferramenta (ex: chamar_atendente numa encomenda) ele às vezes pula a
+  // apresentação — esta é a garantia.
+  if (ehConversaNova && !/luiza/i.test(textoResposta)) {
+    textoResposta = `${APRESENTACAO_LUIZA}\n\n${textoResposta}`;
+  }
 
   historico.push(...novasMensagens);
   aplicarLimiteHistorico(historico);

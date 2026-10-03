@@ -33,17 +33,36 @@ export function temServiceRoleConfigurada() {
   return Boolean(config.supabase.serviceRoleKey);
 }
 
-/** SELECT genérico com a service_role key — só para uso interno do cron. */
+/**
+ * SELECT genérico com a service_role key — só para uso interno do cron.
+ *
+ * Tenta de novo uma vez (após 1s) se a leitura falhar: já aconteceu de o
+ * PostgREST devolver 400 com corpo vazio ({"code":"","message":""}) quando
+ * a conexão dele com o Postgres caiu no meio da requisição (logs do
+ * Supabase em 2026-10-02 07:50 UTC: "SSL error: decryption failed or bad
+ * record mac" / "Connection reset by peer"), o que derrubava a rodada
+ * inteira do badReviewsJob. Como é só leitura, repetir é seguro.
+ */
 export async function selectComoAdmin(table, query = '') {
   const temSelect = /(^|&)select=/.test(query);
   const finalQuery = temSelect ? query : `${query}${query ? '&' : ''}select=*`;
   const url = `${config.supabase.url}/rest/v1/${table}?${finalQuery}`;
-  const r = await fetch(url, { headers: headers() });
-  if (!r.ok) {
-    const errBody = await r.text().catch(() => '');
-    throw new Error(`Falha ao ler ${table} (service_role) (${r.status}): ${errBody}`);
+  let ultimoErro;
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const r = await fetch(url, { headers: headers() });
+      if (r.ok) return r.json();
+      const errBody = await r.text().catch(() => '');
+      ultimoErro = new Error(`Falha ao ler ${table} (service_role) (${r.status}): ${errBody}`);
+    } catch (err) {
+      ultimoErro = err;
+    }
+    if (tentativa === 1) {
+      console.warn(`[supabaseAdmin] leitura de ${table} falhou, tentando de novo em 1s:`, ultimoErro.message);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
-  return r.json();
+  throw ultimoErro;
 }
 
 /** INSERT genérico com a service_role key — só para uso interno do cron. */
