@@ -50,7 +50,7 @@ export const CRIAR_PEDIDO_TOOL = {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link'],
         description:
-          '"presencial" = dinheiro/cartão na entrega; "pix" = pagamento via Pix; "cartao_link" = link de pagamento (Ton) enviado depois.',
+          '"presencial" = dinheiro/cartão na entrega (maquininha) — é o caso quando o cliente diz só "cartão", "débito" ou "crédito"; "pix" = pagamento via Pix; "cartao_link" = link de pagamento (Ton) enviado depois, SÓ se o cliente pedir link/pagamento online.',
       },
       observacao_geral: { type: 'string', description: 'Alguma observação geral do pedido (ex: sem cebola, campainha quebrada).' },
       cupom: {

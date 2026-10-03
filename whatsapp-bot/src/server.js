@@ -114,6 +114,23 @@ app.post('/webhook', (req, res) => {
 // chegar enquanto o lote anterior ainda está sendo processado, ela entra
 // na fila do próximo lote (nunca dispara processamento em paralelo).
 const JANELA_DEBOUNCE_MS = 4000;
+// Logo depois de a Luiza pedir o endereço, o cliente costuma mandar em
+// pedaços (rua, número, condomínio, apto, bairro, CEP) — espera um pouco
+// mais pra juntar tudo numa resposta só, em vez de responder a cada pedaço.
+const JANELA_DEBOUNCE_ENDERECO_MS = 8000;
+
+function ultimaFalaPediuEndereco(numero) {
+  const historico = historicoLocal.get(numero) || [];
+  for (let i = historico.length - 1; i >= 0; i--) {
+    const m = historico[i];
+    if (m.role !== 'assistant') continue;
+    const blocos = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }];
+    const texto = blocos.filter((b) => b.type === 'text').map((b) => b.text).join(' ');
+    if (!texto) continue;
+    return /endere[cç]o|bairro|\bcep\b|complemento|apartamento|n[uú]mero da casa/i.test(texto);
+  }
+  return false;
+}
 const filasPorNumero = new Map(); // numero -> { buffer, nomeContato, timer, processando }
 
 function filaDe(numero) {
@@ -130,7 +147,8 @@ function enfileirarMensagem(numero, nomeContato, blocos) {
   fila.buffer.push(...blocos);
   if (nomeContato) fila.nomeContato = nomeContato;
   if (fila.timer) clearTimeout(fila.timer);
-  fila.timer = setTimeout(() => processarFila(numero), JANELA_DEBOUNCE_MS);
+  const janela = ultimaFalaPediuEndereco(numero) ? JANELA_DEBOUNCE_ENDERECO_MS : JANELA_DEBOUNCE_MS;
+  fila.timer = setTimeout(() => processarFila(numero), janela);
 }
 
 async function processarFila(numero) {

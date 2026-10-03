@@ -48,6 +48,14 @@ function chavesDo(bairro) {
   return [bairro.nome, ...(bairro.apelidos || [])].map(normalizarBairro).filter(Boolean);
 }
 
+// Palavras de "tipo" de lugar — não distinguem um bairro de outro
+// ("Jardim do Jockey" e "Parque Jockey Clube" só têm "jockey" em comum).
+const PALAVRAS_DE_TIPO = new Set(['jardim', 'parque', 'vila', 'vilas', 'conjunto', 'residencial', 'loteamento', 'recanto', 'condominio', 'cond', 'clube', 'alto', 'novo', 'nova', 'portal', 'centro']);
+
+function palavrasDistintivas(chave) {
+  return chave.split(' ').filter((p) => p.length >= 4 && !PALAVRAS_DE_TIPO.has(p));
+}
+
 function unico(lista) {
   const ids = [...new Set(lista.map((b) => b.id))];
   return ids.length === 1 ? lista[0] : null;
@@ -70,6 +78,20 @@ export function buscarBairro(bairros, texto) {
   const contem = (maior, menor) => menor.length >= 4 && ` ${maior} `.includes(` ${menor} `);
   const parciais = bairros.filter((b) => chavesDo(b).some((k) => contem(k, alvo) || contem(alvo, k)));
   if (parciais.length) return unico(parciais);
+
+  // 2b. Mesma palavra característica, mudando só o tipo ("Jardim do Jockey" →
+  // Parque Jockey Clube). Vale só se um único bairro tiver essa palavra.
+  const palavrasAlvo = palavrasDistintivas(alvo);
+  if (palavrasAlvo.length) {
+    const casa = (p, q) => p === q || (Math.min(p.length, q.length) >= 5 && distancia(p, q) <= 1);
+    const porPalavra = bairros.filter((b) =>
+      chavesDo(b).some((k) => palavrasDistintivas(k).some((pk) => palavrasAlvo.some((pa) => casa(pa, pk))))
+    );
+    if (porPalavra.length) {
+      const achado = unico(porPalavra);
+      if (achado) return achado;
+    }
+  }
 
   // 3. Pequenos erros de digitação: o mais próximo, se só um estiver dentro da tolerância.
   let melhor = null;
@@ -104,7 +126,16 @@ export async function consultarCep(cep) {
     if (!r.ok) return null;
     const data = await r.json();
     if (data.erro) return null;
-    return { bairro: data.bairro || '', cidade: data.localidade || '', logradouro: data.logradouro || '' };
+    return {
+      bairro: data.bairro || '',
+      cidade: data.localidade || '',
+      logradouro: data.logradouro || '',
+      // Final 900-999: CEP especial (grande usuário, condomínio, caixa postal)
+      // — o bairro que o ViaCEP devolve é o do cadastro do CEP, não o do
+      // cliente. Ex. real: 42702-900 volta "Centro" pra toda a Av. Luiz
+      // Tarquínio Pontes, mas o cliente do nº 710 é do Parque Jockey Clube.
+      especial: Number(digitos.slice(5)) >= 900,
+    };
   } catch (err) {
     console.error('[bairroMatch] falha ao consultar CEP no ViaCEP:', err.message);
     return null;
@@ -121,7 +152,7 @@ export async function resolverBairro(bairros, texto, cep) {
   let cepInfo = null;
   if (!bairro && cep) {
     cepInfo = await consultarCep(cep);
-    if (cepInfo?.bairro) bairro = buscarBairro(bairros, cepInfo.bairro);
+    if (cepInfo?.bairro && !cepInfo.especial) bairro = buscarBairro(bairros, cepInfo.bairro);
   }
   return { bairro, cepInfo };
 }
@@ -133,14 +164,18 @@ export async function resolverBairro(bairros, texto, cep) {
 export function mensagemBairroNaoReconhecido(bairros, texto, cep, cepInfo) {
   const lista = bairros.map((b) => b.nome).join(', ');
   const infoCep = cep
-    ? cepInfo
-      ? ` O CEP ${cep} é do bairro "${cepInfo.bairro || '(sem bairro)'}", ${cepInfo.cidade}, que também não está na lista.`
-      : ` O CEP ${cep} não foi encontrado.`
+    ? cepInfo?.especial
+      ? ` O CEP ${cep} é um CEP especial (de condomínio ou grande usuário) e não indica o bairro do cliente — não use o bairro dele.`
+      : cepInfo
+        ? ` O CEP ${cep} é do bairro "${cepInfo.bairro || '(sem bairro)'}", ${cepInfo.cidade}, que também não está na lista.`
+        : ` O CEP ${cep} não foi encontrado.`
     : '';
   return (
     `Não reconheci o bairro "${texto || ''}" na lista de entrega.${infoCep} ` +
     'NÃO diga ao cliente que o bairro não existe, que não está na lista ou que não entregamos lá. ' +
-    (cep
+    (cep && cepInfo?.especial
+      ? 'Pergunte ao cliente o nome do bairro ou um ponto de referência (uma pergunta só) e chame esta ferramenta de novo com o campo "bairro". Se ainda assim não reconhecer, chame chamar_atendente e diga que a equipe vai confirmar a entrega por aqui.'
+      : cep
       ? 'Agora chame a ferramenta chamar_atendente (motivo: confirmar entrega no bairro informado) e diga ao cliente que a equipe vai confirmar a entrega por aqui.'
       : 'Peça o CEP ou um ponto de referência do endereço e chame esta ferramenta de novo com o campo "cep". Se o cliente não souber o CEP e pelo ponto de referência você não conseguir identificar um bairro da lista, chame chamar_atendente e diga que a equipe vai confirmar a entrega por aqui.') +
     ` Bairros cadastrados: ${lista}.`

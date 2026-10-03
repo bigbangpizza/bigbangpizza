@@ -23,8 +23,8 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
     properties: {
       nome: { type: 'string', description: 'Nome do cliente, se aparecer no texto. String vazia se não souber.' },
       whatsapp: { type: 'string', description: 'Número de WhatsApp do cliente, se aparecer no texto. String vazia se não souber.' },
-      endereco: { type: 'string', description: 'Rua e número. String vazia se não souber.' },
-      complemento: { type: 'string', description: 'Complemento do endereço (apto, ponto de referência), se houver.' },
+      endereco: { type: 'string', description: 'Rua e número. Se o endereço vier em várias mensagens, junte as partes. String vazia se não souber.' },
+      complemento: { type: 'string', description: 'Condomínio, bloco/torre, apartamento e ponto de referência, juntando todas as partes que aparecerem no texto.' },
       bairro: {
         type: 'string',
         description: 'Nome do bairro exatamente como está na lista de bairros atendidos abaixo, se conseguir identificar. String vazia se não souber ou não bater com nenhum da lista.',
@@ -32,7 +32,7 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
       forma_pagamento: {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link', ''],
-        description: '"presencial" = dinheiro/cartão na entrega, "pix" = Pix, "cartao_link" = link de pagamento (Ton). String vazia se o texto não deixar claro.',
+        description: '"presencial" = dinheiro/cartão na entrega (maquininha) — inclusive quando o texto diz só "cartão", "débito" ou "crédito"; "pix" = Pix; "cartao_link" = link de pagamento (Ton), SÓ se o texto falar em link/pagar online. String vazia se o texto não deixar claro.',
       },
       observacao_geral: { type: 'string', description: 'Observação geral do pedido (ex: sem cebola, campainha quebrada), se houver.' },
       itens: {
