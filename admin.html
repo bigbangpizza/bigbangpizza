@@ -2540,16 +2540,31 @@ async function salvarBordaPedido(){
   const pedidoOriginal = window.__bordaPedidoOriginal;
   const novoItensTexto = estado.map(i => `${i.qty}x ${nomeBaseItemPedido(i)}${i.borda ? ' — Borda '+i.borda.nome : ''}`).join(' | ');
   const novoItensJson = estado.map(({elegivel, tipoItem, ...resto}) => resto);
-  const novoSubtotal = +estado.reduce((s,i) => s + i.precoUnitario*i.qty, 0).toFixed(2);
-  const desconto = Number(pedidoOriginal.desconto) || 0;
-  const frete = Number(pedidoOriginal.frete) || 0;
+
+  // Mesma regra oficial do site/bot/gatilho: a borda pode levar o pedido acima
+  // do frete grátis, e a oferta da pizza doce / cupom continuam valendo.
+  let r;
+  try {
+    r = await calcularCheckoutPedidoManual(novoItensJson, pedidoOriginal.bairro, pedidoOriginal.whatsapp, pedidoOriginal.bairro === 'Retirada no local', pedidoOriginal.cupom, pedidoOriginal.id);
+  } catch(e) {
+    console.error('salvarBordaPedido', e);
+    showToastAdmin('⚠️ Não consegui recalcular o total. Tente de novo.'); return;
+  }
+  const bairroNaLista = r.bairro_reconhecido !== false;
+  const cupomContinua = !pedidoOriginal.cupom || r.cupom?.valido;
+  const novoSubtotal = Number(r.subtotal);
+  const desconto = cupomContinua ? Number(r.desconto) || 0 : 0;
+  const frete = bairroNaLista ? Number(r.frete) || 0 : Number(pedidoOriginal.frete) || 0;
   const novoTotal = +(novoSubtotal - desconto + frete).toFixed(2);
 
   const ok = await upd('pedidos', pedidoOriginal.id, {
     itens: novoItensTexto,
-    itens_json: novoItensJson,
+    itens_json: r.itens,
     subtotal: novoSubtotal,
+    desconto,
+    frete,
     total: novoTotal,
+    ...(cupomContinua ? {} : { cupom: null }),
   });
   if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Borda atualizada!'); }
   else { alert('Erro ao salvar!'); }
@@ -2714,6 +2729,7 @@ function abrirPedidoManual(){
       <textarea id="pm-texto" rows="9" placeholder="Ex: Oi, queria uma pizza grande de calabresa com borda catupiry e uma coca 2L. Rua Nilton Calmon 123, bairro Centro. Pago no pix. Nome: Maria"></textarea>
     </div>
     <div id="pm-erro" style="color:#ff4444;font-size:13px;margin-top:4px;"></div>
+    <button type="button" class="bc" style="width:100%;margin-top:10px;" onclick="pedidoManualSemIA()">✍️ Preencher sem IA</button>
   `;
   const btn = document.getElementById('mod-save-btn');
   btn.disabled = false;
@@ -2767,7 +2783,42 @@ async function carregarMenuPedidoManual(){
     salgadas, doces, combos, bebidas, bairros,
     bordaSalgada: parseFloat(cfg.borda_preco_salgada) || 12,
     bordaDoce: parseFloat(cfg.borda_preco_doce) || 12,
+    // Mesmos padrões da função calcular_checkout_v2 (Configurações do Bot).
+    freteGratisMinimo: Number.isFinite(parseFloat(cfg.frete_gratis_minimo)) ? parseFloat(cfg.frete_gratis_minimo) : 65,
+    fretePadrao: Number.isFinite(parseFloat(cfg.frete_padrao)) ? parseFloat(cfg.frete_padrao) : 4.99,
   };
+}
+
+// Rótulo do bairro com a regra de frete: zona base (R$ 0 no cadastro) cobra o frete padrão.
+function rotuloBairroPedidoManual(b, menu){
+  const zona = Number(b.frete) > 0 ? Number(b.frete) : menu.fretePadrao;
+  return `${b.nome} — ${brl(zona)} · grátis acima de ${brl(menu.freteGratisMinimo)}`;
+}
+
+// Opções de sabor; nas salgadas, separadas por categoria (Tradicionais, Especiais, Premium) e na ordem do cardápio.
+function opcoesSaborPedidoManual(catalogo, tipo, selecionado){
+  const opt = p => `<option value="${p.id}" ${selecionado===p.id?'selected':''}>${esc(p.nome)}</option>`;
+  if(tipo!=='pizza_salgada') return catalogo.map(opt).join('');
+  return CATEGORIAS_SALGADAS.map(c => {
+    const doGrupo = catalogo.filter(p => categoriaSalgada(p.categoria).id===c.id).sort((a,b)=>(a.ordem||0)-(b.ordem||0)||a.id-b.id);
+    return doGrupo.length ? `<optgroup label="${c.titulo}">${doGrupo.map(opt).join('')}</optgroup>` : '';
+  }).join('');
+}
+
+// Sem IA: abre a mesma tela de revisão, vazia, pra preencher na mão.
+async function pedidoManualSemIA(){
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = true;
+  try {
+    const menu = await carregarMenuPedidoManual();
+    montarEstadoPedidoManual({}, menu);
+    window.__pedidoManualState._semIA = true;
+    renderPedidoManualConfirmacao();
+  } catch(e) {
+    console.error('pedidoManualSemIA', e);
+    document.getElementById('pm-erro').textContent = '⚠️ Não consegui carregar o cardápio agora.';
+    btn.disabled = false;
+  }
 }
 
 function normalizarTextoPedidoManual(s){
@@ -2826,6 +2877,7 @@ function montarEstadoPedidoManual(extraido, menu){
     bairroNome: bairroEncontrado ? bairroEncontrado.nome : '',
     pagamento: pagamentoValido,
     observacao: extraido.observacao_geral || '',
+    cupom: (extraido.cupom || '').toUpperCase(),
     itens,
   };
 }
@@ -2869,7 +2921,7 @@ function renderPedidoManualConfirmacao(){
   document.getElementById('mod-title').textContent = '📝 Confirmar pedido manual';
 
   document.getElementById('mod-body').innerHTML = `
-    <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.</div>
+    <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">${st._semIA ? '✍️ Preencha os campos abaixo. Nada foi salvo ainda.' : '⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.'} Preços, oferta da pizza doce, frete e cupom seguem as mesmas regras do site.</div>
     <div class="fr">
       <div class="fg"><label>Nome do cliente</label><input id="pm-nome" value="${esc(st.nome)}" oninput="pmAtualizarCampo('nome',this.value)"></div>
       <div class="fg"><label>WhatsApp</label><input id="pm-whatsapp" value="${esc(st.whatsapp)}" oninput="pmAtualizarCampo('whatsapp',this.value)"></div>
@@ -2884,7 +2936,7 @@ function renderPedidoManualConfirmacao(){
         <div class="fg"><label>Bairro</label>
           <select id="pm-bairro" onchange="pmAtualizarCampo('bairroNome',this.value)">
             <option value="">-- selecione --</option>
-            ${menu.bairros.map(b=>`<option value="${esc(b.nome)}" ${st.bairroNome===b.nome?'selected':''}>${esc(b.nome)} (${Number(b.frete)>0?brl(b.frete):'grátis'})</option>`).join('')}
+            ${menu.bairros.map(b=>`<option value="${esc(b.nome)}" ${st.bairroNome===b.nome?'selected':''}>${esc(rotuloBairroPedidoManual(b, menu))}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -2897,6 +2949,7 @@ function renderPedidoManualConfirmacao(){
         <option value="cartao_link" ${st.pagamento==='cartao_link'?'selected':''}>Cartão via link (Ton)</option>
       </select>
     </div>
+    <div class="fg"><label>Cupom (opcional)</label><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"></div>
     <div class="fg"><label>Observação geral</label><textarea id="pm-obs" oninput="pmAtualizarCampo('observacao',this.value)">${esc(st.observacao)}</textarea></div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase;margin:16px 0 8px;">🍕 Itens</div>
@@ -2938,7 +2991,7 @@ function renderItemPedidoManual(item, i, menu){
     ${item.tipo ? `<div class="fg" style="margin-bottom:0;"><label>${item.tipo==='pizza_salgada'?'Sabor 1':'Item'}</label>
       <select onchange="pmAtualizarItem(${i},'produto1Id',this.value)">
         <option value="">-- selecione --</option>
-        ${catalogo.map(p=>`<option value="${p.id}" ${item.produto1Id===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}
+        ${opcoesSaborPedidoManual(catalogo, item.tipo, item.produto1Id)}
       </select>
       ${avisoSabor1}
     </div>` : ''}
@@ -2952,7 +3005,7 @@ function renderItemPedidoManual(item, i, menu){
       <div class="fg" style="margin-bottom:0;"><label>Sabor 2 (meio a meio)</label>
         <select onchange="pmAtualizarItem(${i},'produto2Id',this.value)">
           <option value="">Nenhum (sabor único)</option>
-          ${catalogo.map(p=>`<option value="${p.id}" ${item.produto2Id===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}
+          ${opcoesSaborPedidoManual(catalogo, item.tipo, item.produto2Id)}
         </select>
       </div>
     </div>` : ''}
@@ -2963,15 +3016,18 @@ function renderItemPedidoManual(item, i, menu){
     </div>` : ''}
     <div class="fg" style="margin-bottom:0;"><label>Observação do item</label><input value="${esc(item.obs)}" onchange="pmAtualizarItem(${i},'obs',this.value)"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:13px;font-weight:700;color:${precoInfo?'var(--text-primary)':'#ff4444'};">${precoInfo ? brl(precoInfo.precoUnitario*item.qty) : '⚠️ item incompleto'}</div>
+      <div id="pm-preco-${i}" style="font-size:13px;font-weight:700;color:${precoInfo?'var(--text-primary)':'#ff4444'};">${precoInfo ? brl(precoInfo.precoUnitario*item.qty) : '⚠️ item incompleto'}</div>
       <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
     </div>
   </div>`;
 }
 
+let _pmResumoTimer = null;
+function agendarResumoPedidoManual(){ clearTimeout(_pmResumoTimer); _pmResumoTimer = setTimeout(atualizarResumoPedidoManual, 400); }
+
 function pmAtualizarCampo(campo, valor){
   window.__pedidoManualState[campo] = valor;
-  if(campo==='bairroNome') atualizarResumoPedidoManual();
+  if(['bairroNome','cupom','whatsapp'].includes(campo)) agendarResumoPedidoManual();
 }
 
 function pmToggleRetirada(checked){
@@ -3044,11 +3100,11 @@ function montarItensJsonPedidoManual(st, menu, precos){
 // recalcula pedidos lançados pela equipe, então o pedido manual usa o mesmo
 // cálculo aqui — tela e banco ficam com os mesmos valores, sem o atendente
 // precisar fazer nada.
-async function calcularCheckoutPedidoManual(itensJson, bairroNome, whatsapp, retirada){
+async function calcularCheckoutPedidoManual(itensJson, bairroNome, whatsapp, retirada, cupom = null, ignorarPedidoId = null){
   const r = await authFetch(`${SB}/rest/v1/rpc/calcular_checkout_v2`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_itens: itensJson, p_bairro: bairroNome, p_cupom: null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada) }),
+    body: JSON.stringify({ p_itens: itensJson, p_bairro: bairroNome, p_cupom: cupom || null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada), p_ignorar_pedido: ignorarPedidoId }),
   });
   if(!r.ok) throw new Error('calcular_checkout_v2 respondeu ' + r.status);
   return r.json();
@@ -3077,7 +3133,7 @@ async function atualizarResumoPedidoManual(){
   el.innerHTML = `${avisos}<div style="color:rgba(255,255,255,.5);">Calculando total…</div>`;
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, st.cupom);
   } catch(e) {
     console.error('calcularCheckoutPedidoManual', e);
     if(seq === _pmResumoSeq) el.innerHTML = `${avisos}<div style="color:#ff4444;">⚠️ Não consegui calcular o total agora. Tente de novo.</div>`;
@@ -3086,9 +3142,22 @@ async function atualizarResumoPedidoManual(){
   if(seq !== _pmResumoSeq) return; // o atendente mudou algo enquanto calculava
   window.__pedidoManualCalculo = r;
   const doceOferta = (r.itens||[]).find(i => i.oferta_doce);
+  // Preço de cada item na tela: a oferta vai na primeira pizza doce (mesma escolha do servidor).
+  const idxOferta = doceOferta ? st.itens.findIndex(it => it.tipo==='pizza_doce') : -1;
+  st.itens.forEach((it, i) => {
+    const elPreco = document.getElementById(`pm-preco-${i}`);
+    if(!elPreco || !precos[i]) return;
+    const valor = precos[i].precoUnitario*it.qty - (i===idxOferta ? Number(r.oferta_doce.economia) : 0);
+    elPreco.innerHTML = `${brl(valor)}${i===idxOferta ? ' <span style="color:#4ade80;">🍫 oferta</span>' : ''}`;
+  });
+  const c = r.cupom;
   el.innerHTML = `${avisos}
+    ${c ? (c.valido
+      ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)}: −${brl(c.desconto)} (com cupom o frete é cobrado e não há oferta da doce)</div>`
+      : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)} não vale: ${esc(c.motivo||'')}</div>`) : ''}
     ${doceOferta ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🍫 Oferta aplicada: Doce ${esc(doceOferta.sabores?.[0]?.nome||'')} por ${brl(doceOferta.precoUnitario)} (−${brl(r.oferta_doce.economia)})</div>` : ''}
     <div>Subtotal: <strong>${brl(r.subtotal)}</strong></div>
+    ${Number(r.desconto) > 0 ? `<div>Desconto: <strong>−${brl(r.desconto)}</strong></div>` : ''}
     <div>Frete: <strong>${Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
     ${Number(r.falta_para_frete_gratis) > 0 && !st.retirada ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Faltam ${brl(r.falta_para_frete_gratis)} para frete grátis</div>` : ''}
     <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(r.total)}</strong></div>
@@ -3117,10 +3186,13 @@ async function salvarPedidoManual(){
   // Valores oficiais (oferta da doce + frete), calculados na hora de lançar.
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom);
   } catch(e) {
     console.error('salvarPedidoManual', e);
     showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return;
+  }
+  if(st.cupom && !r.cupom?.valido){
+    showToastAdmin(`⚠️ Cupom ${st.cupom} não vale: ${r.cupom?.motivo || ''} Apague o cupom pra lançar sem desconto.`); return;
   }
 
   const itensTexto = st.itens.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
@@ -3135,6 +3207,7 @@ async function salvarPedidoManual(){
     observacao: st.observacao.trim() || null,
     status: 'aguardando',
     origem: 'manual',
+    cupom: r.cupom?.valido ? r.cupom.codigo : null,
     itens: itensTexto,
     itens_json: r.itens,
     subtotal: Number(r.subtotal),
