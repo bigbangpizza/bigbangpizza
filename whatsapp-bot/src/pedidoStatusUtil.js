@@ -135,6 +135,8 @@ export async function buscarHistoricoClienteConhecido(numero) {
 
   return {
     nome: pedidosCliente[0].nome || null,
+    // Critério do cupom de boas-vindas (BIGBANG15): telefone sem nenhum pedido entregue.
+    temPedidoEntregue: pedidosCliente.some((p) => p.status === 'entregue'),
     segmento,
     totalPedidos: pedidosCliente.length,
     diasDesdeUltimoPedido,

@@ -6,7 +6,7 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // Limite de idas-e-voltas de tool use dentro de UMA mensagem do cliente —
 // evita loop infinito/custo descontrolado se a Claude insistir em chamar
 // ferramentas repetidamente. Na prática, criar um pedido usa 1.
-const MAX_TOOL_ITERATIONS = 4;
+const MAX_TOOL_ITERATIONS = 5;
 
 async function callMessagesApi(systemPrompt, messages, tools, toolChoice) {
   const body = {
@@ -74,19 +74,58 @@ export async function askClaude(systemPrompt, messages) {
  * @param {Record<string, (input:any) => Promise<any>>} toolExecutors
  * @returns {Promise<{textoResposta: string, novasMensagens: Array}>}
  */
+const brl = (v) => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
+
+/**
+ * Texto usado quando o modelo volta sem nenhum texto mesmo depois de tentar
+ * de novo. Se a última ação foi registrar um pedido com sucesso, confirma o
+ * pedido com os dados reais da ferramenta; senão, pede pro cliente repetir.
+ */
+function respostaDeEmergencia(ultimaFerramenta) {
+  const r = ultimaFerramenta?.resultado;
+  if (ultimaFerramenta?.nome === 'criar_pedido' && r?.sucesso) {
+    return [
+      `Pedido #${r.pedido_id ?? ''} registrado. Total: ${brl(r.total)}.`.replace('# ', ''),
+      `Tempo estimado: ${r.tempo_estimado || '35 a 60 minutos'}.`,
+      r.link_rastreio ? `Acompanhe por aqui: ${r.link_rastreio}` : null,
+    ].filter(Boolean).join('\n\n');
+  }
+  if (ultimaFerramenta?.nome === 'editar_pedido' && r?.sucesso) {
+    return `Pedido #${r.pedido_id} atualizado. Novo total: ${brl(r.total)}.`;
+  }
+  if (ultimaFerramenta?.nome === 'chamar_atendente' && r?.sucesso) {
+    return 'Avisei a equipe. Alguém vai continuar o atendimento por aqui assim que possível.';
+  }
+  return 'Desculpa, não consegui responder agora. Pode me mandar de novo o que você precisa?';
+}
+
 export async function conversarComFerramentas(systemPrompt, historicoExistente, tools, toolExecutors) {
   const novasMensagens = [];
   let mensagens = [...historicoExistente];
 
+  let ultimaFerramenta = null; // { nome, resultado } — base da resposta de emergência, se o modelo vier vazio
+
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const data = await callMessagesApi(systemPrompt, mensagens, tools);
+    let data = await callMessagesApi(systemPrompt, mensagens, tools);
+
+    // Resposta final sem nenhum texto: tenta de novo uma vez antes de desistir.
+    if (data.stop_reason !== 'tool_use' && !extrairTexto(data)) {
+      console.warn('[claude] resposta vazia do modelo — tentando de novo');
+      data = await callMessagesApi(systemPrompt, mensagens, tools);
+    }
+
+    if (data.stop_reason !== 'tool_use') {
+      const texto = extrairTexto(data) || respostaDeEmergencia(ultimaFerramenta);
+      // Guarda no histórico exatamente o que foi enviado (nunca uma mensagem
+      // do assistente vazia, que a API recusa na próxima chamada).
+      const assistantMessage = { role: 'assistant', content: [{ type: 'text', text: texto }] };
+      novasMensagens.push(assistantMessage);
+      return { textoResposta: texto, novasMensagens };
+    }
+
     const assistantMessage = { role: 'assistant', content: data.content };
     novasMensagens.push(assistantMessage);
     mensagens = [...mensagens, assistantMessage];
-
-    if (data.stop_reason !== 'tool_use') {
-      return { textoResposta: extrairTexto(data) || 'Feito! 🍕', novasMensagens };
-    }
 
     const toolUseBlocks = data.content.filter((b) => b.type === 'tool_use');
     const toolResults = [];
@@ -101,6 +140,7 @@ export async function conversarComFerramentas(systemPrompt, historicoExistente, 
         console.error(`[claude] erro ao executar tool "${block.name}":`, err);
         resultado = { erro: `Falha interna ao executar ${block.name}: ${err.message}` };
       }
+      ultimaFerramenta = { nome: block.name, resultado };
       toolResults.push({
         type: 'tool_result',
         tool_use_id: block.id,

@@ -39,7 +39,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 
 <!-- Open Graph / compartilhamento (WhatsApp, Instagram, redes sociais) -->
 <meta property="og:title" content="Big Bang Pizza — Explosão de Sabor em Lauro de Freitas">
-<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. Peça pelo site e ganhe 10% OFF com o cupom EXPLODIU10!">
+<meta property="og:description" content="Pizza artesanal com entrega em Lauro de Freitas e região. No seu primeiro pedido pelo site, use o cupom BIGBANG15 e ganhe 15% OFF!">
 <meta property="og:image" content="https://static-images.ifood.com.br/pratos/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9/202606110927_665A_i.jpg">
 <meta property="og:url" content="https://bigbangpizza.com.br">
 <meta property="og:type" content="restaurant">
@@ -531,8 +531,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 <!-- BANNER CUPOM -->
 <div class="cupom-banner" id="cupom-banner">
-  <h3>🎉 MÊS DE DESCONTO — 10% OFF com o cupom EXPLODIU10!</h3>
-  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'EXPLODIU10'})">EXPLODIU10</div>
+  <h3>🎉 15% OFF no seu primeiro pedido com o cupom BIGBANG15!</h3>
+  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG15'})">BIGBANG15</div>
   <div class="cupom-restantes" id="cupom-restantes">Carregando cupons...</div>
 </div>
 
@@ -712,6 +712,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
+    <div class="campo-hint" id="frete-falta" style="display:none;text-align:right;"></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
     <button class="btn-finalizar" id="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
   </div>
@@ -751,6 +752,8 @@ const SB='https://alvvkpuedwrxbmkkayff.supabase.co';
 const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
 const BAIRRO_OUTRO = 'outro'; // valor da opção "Meu bairro não está na lista" no checkout
+// Frete (Configurações do Bot no admin) — mesmos padrões da função calcular_checkout do servidor.
+let freteGratisMinimo = 65, fretePadrao = 4.99;
 let modalState = null;
 let WPP_NUMBER = '5571993738823';
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
@@ -1100,27 +1103,32 @@ async function loadBebidas() {
 const FRETE_CORES = ['#4ade80','#facc15','#fb923c','#f87171','#c026d3','#60a5fa'];
 async function loadBairros() {
   const data = await api('bairros', 'ativo=eq.true');
+  await configsCarregadas; // frete padrão / mínimo do frete grátis vêm das configurações
   bairrosData = data;
 
   const sel = document.getElementById('f-bairro');
   const idSelecionado = sel.value ? sel.value.split('|')[0] : null;
 
-  const fretes = [...new Set(data.map(b => b.frete))].sort((a,b) => a-b);
+  // Bairro cadastrado com R$ 0 é a "zona base" e cobra o frete padrão; todas
+  // as zonas têm frete grátis a partir do mínimo em produtos (sem cupom).
+  const freteZona = b => Number(b.frete) > 0 ? Number(b.frete) : fretePadrao;
+  const fretes = [...new Set(data.map(freteZona))].sort((a,b) => a-b);
   const legenda = document.getElementById('entrega-legenda');
   const grid = document.getElementById('entrega-grid');
-  legenda.innerHTML = ''; grid.innerHTML = '';
+  legenda.innerHTML = `<div style="width:100%;color:#4ade80;font-weight:700;font-size:14px;">🎉 Frete grátis em pedidos a partir de ${brl(freteGratisMinimo)} em produtos (sem cupom)</div>`;
+  grid.innerHTML = '';
   sel.innerHTML = '<option value="">Selecione o bairro *</option>';
 
   fretes.forEach((frete, i) => {
     const cor = FRETE_CORES[i % FRETE_CORES.length];
-    const label = frete === 0 ? 'Frete Grátis' : `Frete ${brl(frete)}`;
-    const doTier = data.filter(b => b.frete === frete);
+    const label = `Frete ${brl(frete)}`;
+    const doTier = data.filter(b => freteZona(b) === frete);
 
     legenda.insertAdjacentHTML('beforeend', `<div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;background:${cor};border-radius:3px;"></div><span style="color:rgba(255,255,255,0.7);font-size:13px;">${label}</span></div>`);
     grid.insertAdjacentHTML('beforeend', `<div class="entrega-bloco"><h3><span style="color:${cor};">●</span><span style="color:white;">${label}</span></h3><ul>${doTier.map(b => `<li>${b.nome}</li>`).join('')}</ul></div>`);
 
     const g = document.createElement('optgroup');
-    g.label = (frete === 0 ? '✅' : '🟡') + ' ' + label;
+    g.label = `🚚 ${label} · grátis acima de ${brl(freteGratisMinimo)}`;
     doTier.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`)));
     sel.appendChild(g);
   });
@@ -1238,10 +1246,12 @@ async function aplicarConfigsVisuais() {
 
   if (cfg.borda_preco_salgada != null && cfg.borda_preco_salgada !== '') bordaPrecoSalgada = parseFloat(cfg.borda_preco_salgada);
   if (cfg.borda_preco_doce != null && cfg.borda_preco_doce !== '') bordaPrecoDoce = parseFloat(cfg.borda_preco_doce);
+  if (Number.isFinite(parseFloat(cfg.frete_gratis_minimo))) freteGratisMinimo = parseFloat(cfg.frete_gratis_minimo);
+  if (Number.isFinite(parseFloat(cfg.frete_padrao))) fretePadrao = parseFloat(cfg.frete_padrao);
 
   loadHeroPhoto(cfg.hero_foto || null);
 }
-aplicarConfigsVisuais();
+const configsCarregadas = aplicarConfigsVisuais().catch(e => console.error('configs', e));
 restoreCart();
 aplicarCupomDaURL();
 loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
@@ -1249,6 +1259,7 @@ checkBairrosAtualizados(true);
 setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 segundos
 updateCount();
 document.getElementById('f-whatsapp').addEventListener('blur', registrarCarrinhoAbandonado);
+document.getElementById('f-whatsapp').addEventListener('input', updateTotals); // cupom depende do telefone (1º pedido, reativação)
 
 // CART
 function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); gtag('event', 'view_cart'); }
@@ -1536,10 +1547,7 @@ async function registrarCarrinhoAbandonado() {
   if (telefone.length !== 10 && telefone.length !== 11) return;
   carrinhoAbandonadoRegistrado = true; // uma tentativa por carrinho, mesmo se a chamada falhar
   const nome = document.getElementById('f-nome').value.trim();
-  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
-  const fr = getFrete()||0;
-  const desconto = calcDesconto(sub);
-  const total = +(sub - desconto + fr).toFixed(2);
+  const { total } = totaisAtuais();
   try {
     await fetch(`${SB}/rest/v1/carrinhos_abandonados`, {
       method: 'POST',
@@ -1576,23 +1584,21 @@ function enviarPedidoBairroForaDaLista(nome, end, comp, pag) {
   window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 function updateTotals() {
-  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
-  const fr = getFrete()||0;
-  const desconto = calcDesconto(sub);
-  const tot = +(sub - desconto + fr).toFixed(2);
+  const t = totaisAtuais();
+  document.getElementById('subtotal-val').textContent = brl(t.sub);
 
-  document.getElementById('subtotal-val').textContent = brl(sub);
-
-  // Linha de desconto
   const descontoRow = document.getElementById('desconto-row');
-  const descontoVal = document.getElementById('desconto-val');
-  const descontoLabel = document.getElementById('desconto-label');
-  if (descontoRow) descontoRow.style.display = cupomAplicado ? 'flex' : 'none';
-  if (descontoVal) descontoVal.textContent = `- ${brl(desconto)}`;
-  if (descontoLabel) descontoLabel.textContent = cupomAplicado && cupomAplicado.tipo !== 'fixo' ? ` (${cupomAplicado.desconto}%)` : '';
+  if (descontoRow) descontoRow.style.display = t.desconto > 0 ? 'flex' : 'none';
+  document.getElementById('desconto-val').textContent = `- ${brl(t.desconto)}`;
+  document.getElementById('desconto-label').textContent = cupomAplicado && t.desconto > 0 ? ` (${cupomAplicado.codigo})` : '';
 
-  document.getElementById('frete-val').textContent = getFrete()===null?'—':fr===0?'🎉 Grátis':brl(fr);
-  document.getElementById('total-val').textContent = brl(tot);
+  document.getElementById('frete-val').textContent = t.frete === null ? (bairroForaDaLista() ? 'a confirmar' : '—') : t.frete === 0 ? '🎉 Grátis' : brl(t.frete);
+  const falta = document.getElementById('frete-falta');
+  if (t.comCupom) { falta.textContent = 'Com cupom, o frete é cobrado.'; falta.style.display = ''; }
+  else if (t.falta > 0 && cart.length) { falta.textContent = `Faltam ${brl(t.falta)} para frete grátis`; falta.style.display = ''; }
+  else falta.style.display = 'none';
+  document.getElementById('total-val').textContent = brl(t.total);
+  agendarRevalidacaoCupom();
 }
 let enviandoPedido = false;
 async function finalizarPedido() {
@@ -1609,19 +1615,23 @@ async function finalizarPedido() {
     alert('WhatsApp inválido! Digite DDD + número (10 ou 11 dígitos), ex: 71991234567.');
     return;
   }
-  const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'', fr=getFrete();
-  const sub=cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0), tot=sub+(fr||0);
+  if (cupomAplicado && checkoutServidor?.resultado?.cupom && !checkoutServidor.resultado.cupom.valido && /WhatsApp/.test(checkoutServidor.resultado.cupom.motivo || '')) {
+    alert('Informe seu WhatsApp para usar o cupom ' + cupomAplicado.codigo + ' (ou apague o cupom).'); return;
+  }
+  const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'';
+  const totais = totaisAtuais(), fr = totais.frete, sub = totais.sub;
+  const cupomFinal = cupomValidoAgora() ? cupomAplicado.codigo : null;
   const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
-  const desconto = calcDesconto(sub);
-  const totalFinal = +(sub - desconto + (fr||0)).toFixed(2);
-  gtag('event', 'begin_checkout', {currency: 'BRL', value: totalFinal, coupon: cupomAplicado ? cupomAplicado.codigo : ''});
+  const desconto = totais.desconto;
+  const totalFinal = totais.total;
+  gtag('event', 'begin_checkout', {currency: 'BRL', value: totalFinal, coupon: cupomFinal || ''});
   fbq('track', 'InitiateCheckout', {value: totalFinal, currency: 'BRL'});
 
   let linhaDesconto = '';
-  if (cupomAplicado) {
-    const pct = cupomAplicado.tipo === 'fixo' ? '' : ` (${cupomAplicado.desconto}%)`;
-    linhaDesconto = `\n\n🎟️ Cupom aplicado: ${cupomAplicado.codigo}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto${pct}: - R$ ${desconto.toFixed(2).replace('.',',')}`;
+  if (cupomFinal) {
+    const pct = '';
+    linhaDesconto = `\n\n🎟️ Cupom aplicado: ${cupomFinal}\n💸 Valor original: R$ ${sub.toFixed(2).replace('.',',')}\n✂️ Desconto${pct}: - R$ ${desconto.toFixed(2).replace('.',',')}`;
   }
 
   // Gerado aqui (não pelo banco) porque o insert abaixo usa Prefer:
@@ -1653,7 +1663,7 @@ async function finalizarPedido() {
     transaction_id: Date.now().toString(),
     currency: 'BRL',
     value: totalFinal,
-    coupon: cupomAplicado ? cupomAplicado.codigo : '',
+    coupon: cupomFinal || '',
     items: cart.map(i => ({ item_name: i.nomeExibicao, price: i.precoUnitario, quantity: i.qty }))
   });
   gtag('event', 'generate_lead', {currency: 'BRL', value: totalFinal});
@@ -1679,7 +1689,7 @@ async function finalizarPedido() {
       whatsapp: wpp || null,
       observacao: obs || null,
       status: 'aguardando',
-      cupom: cupomAplicado ? cupomAplicado.codigo : null,
+      cupom: cupomFinal,
       itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
       itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
       subtotal: sub,
@@ -1760,6 +1770,15 @@ function initMap() {
 
   const infoWindow = new google.maps.InfoWindow();
 
+  // O frete do balão vem do cadastro real de bairros (as coordenadas acima
+  // são só a posição no mapa) — mesma regra do checkout.
+  function rotuloFreteMapa(b) {
+    const cadastrado = bairrosData.find(x => x.nome.toLowerCase() === b.nome.toLowerCase());
+    if (!cadastrado) return 'consulte pelo WhatsApp';
+    const zona = Number(cadastrado.frete) > 0 ? Number(cadastrado.frete) : fretePadrao;
+    return `${brl(zona)} · grátis acima de ${brl(freteGratisMinimo)}`;
+  }
+
   function addMarker(b, color) {
     const marker = new google.maps.Marker({
       position: {lat: b.lat, lng: b.lng},
@@ -1775,7 +1794,7 @@ function initMap() {
       }
     });
     marker.addListener('click', () => {
-      infoWindow.setContent(`<div class="map-info"><strong>${b.nome}</strong><span>Frete: ${b.frete}</span></div>`);
+      infoWindow.setContent(`<div class="map-info"><strong>${b.nome}</strong><span>Frete: ${rotuloFreteMapa(b)}</span></div>`);
       infoWindow.open(map, marker);
     });
   }
@@ -1923,7 +1942,7 @@ function filtrarPizzas(termo) {
 }
 
 // CUPOM
-let cupomAplicado = null; // { codigo, tipo, desconto } vindo da tabela cupons, ou null
+let cupomAplicado = null; // { codigo } digitado/vindo por link — se vale, quem diz é o servidor (ver revalidarCupom)
 
 // Conta os usos reais de um cupom via RPC (contar_usos_cupom) — mais
 // confiável que o campo usos_atuais, que só é incrementado quando um
@@ -1978,12 +1997,12 @@ function animarOdometroRestantes(elId, valorFinal, digitosMin){
 // lugar que precisa mudar quando a campanha for renovada (ex: BIGBANG10 →
 // EXPLODIU10), já que loadCupomRestantes() abaixo reaproveita essa
 // constante em todas as chamadas.
-const CUPOM_BANNER_CODIGO = 'EXPLODIU10';
+const CUPOM_BANNER_CODIGO = 'BIGBANG15';
 
 async function loadCupomRestantes() {
   // Só esconde o banner se o cupom em destaque estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.${CUPOM_BANNER_CODIGO}&select=usos_max,usos_atuais,ativo,contagem_desde`, {
+    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.${CUPOM_BANNER_CODIGO}&select=usos_max,usos_atuais,ativo,contagem_desde,desconto_maximo,somente_primeiro_pedido`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     const data = await r.json();
@@ -2009,126 +2028,136 @@ async function loadCupomRestantes() {
         el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>Restam <span class="cupom-odometro" id="cupom-odometro"></span> de ${cupom.usos_max} cupons — corre antes que acabe!`;
         animarOdometroRestantes('cupom-odometro', restantes, digitosMin);
       } else {
-        el.innerHTML = `<span class="cupom-live-dot" aria-hidden="true"></span>⚡ Cupom de lançamento!`;
+        const teto = cupom.desconto_maximo != null ? `, até ${brl(cupom.desconto_maximo)} de desconto` : '';
+        el.textContent = `${cupom.somente_primeiro_pedido ? 'Válido no primeiro pedido' : 'Cupom válido'}${teto}. Não vale em combos.`;
       }
     }
   } catch(e) {
     const el = document.getElementById('cupom-restantes');
-    if (el) el.textContent = '⚡ Válido para os primeiros 100 pedidos!';
+    if (el) el.textContent = 'Válido no primeiro pedido. Não vale em combos.';
   }
 }
 loadCupomRestantes();
 
-function calcDesconto(sub) {
-  if (!cupomAplicado) return 0;
-  if (cupomAplicado.tipo === 'fixo') return Math.min(cupomAplicado.desconto, sub);
-  return +(sub * (cupomAplicado.desconto/100)).toFixed(2);
+// CHECKOUT — frete e cupom
+// Regras (mesmas do bot e do gatilho que valida o pedido no servidor):
+// - bairro cadastrado com R$ 0 é a "zona base" e cobra o frete padrão;
+// - frete grátis quando os produtos somam o mínimo E não há cupom;
+// - cupom é validado pelo servidor (RPC calcular_checkout): 1º pedido,
+//   reativação, pedido mínimo, teto, uso por cliente, não vale em combo.
+// Sem cupom, o cálculo é local (instantâneo). Com cupom, vale o resultado do
+// servidor pro estado atual do carrinho/bairro/telefone.
+let checkoutServidor = null;   // { chave, resultado } da última validação de cupom
+let revalidarCupomTimer = null;
+let cupomViaURL = false;       // cupom veio de ?cupom= — recusa silenciosa (exceto pedir o WhatsApp)
+
+function itensJsonDoCarrinho() {
+  return cart.map(i => ({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null }));
+}
+function bairroSelecionadoNome() {
+  const v = document.getElementById('f-bairro').value;
+  if (!v || v === BAIRRO_OUTRO) return null;
+  return bairrosData.find(b => String(b.id) === v.split('|')[0])?.nome || null;
+}
+function freteDaZona() {
+  const fr = getFrete();
+  if (fr === null) return null;
+  return fr > 0 ? fr : fretePadrao; // zona base
+}
+function chaveCheckout() {
+  return JSON.stringify([cupomAplicado?.codigo || null, bairroSelecionadoNome(), document.getElementById('f-whatsapp').value.replace(/\D/g,''), itensJsonDoCarrinho()]);
+}
+function cupomValidoAgora() {
+  return !!(cupomAplicado && checkoutServidor && checkoutServidor.chave === chaveCheckout() && checkoutServidor.resultado.cupom?.valido);
+}
+// Totais do estado atual — usado na tela, no carrinho abandonado e no envio do pedido.
+function totaisAtuais() {
+  const sub = +cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0).toFixed(2);
+  const zona = freteDaZona();
+  if (cupomValidoAgora()) {
+    const r = checkoutServidor.resultado;
+    return { sub, desconto: Number(r.desconto)||0, frete: r.frete === null ? zona : Number(r.frete), total: +(sub - (Number(r.desconto)||0) + (r.frete === null ? (zona||0) : Number(r.frete))).toFixed(2), falta: null, comCupom: true };
+  }
+  const frete = zona === null ? null : (sub >= freteGratisMinimo ? 0 : zona);
+  return { sub, desconto: 0, frete, total: +(sub + (frete||0)).toFixed(2), falta: sub < freteGratisMinimo ? +(freteGratisMinimo - sub).toFixed(2) : 0, comCupom: false };
+}
+function calcDesconto() { return totaisAtuais().desconto; }
+
+function agendarRevalidacaoCupom() {
+  if (!cupomAplicado) { checkoutServidor = null; return; }
+  if (checkoutServidor && checkoutServidor.chave === chaveCheckout()) return;
+  clearTimeout(revalidarCupomTimer);
+  revalidarCupomTimer = setTimeout(revalidarCupom, 400);
 }
 
-/**
- * Valida um código de cupom contra a tabela `cupons` (existe, ativo, dentro
- * da validade, ainda tem vaga) — não mexe em DOM nenhum. Fonte única de
- * verdade reaproveitada tanto por aplicarCupom() (campo manual do checkout)
- * quanto por aplicarCupomDaURL() (parâmetro ?cupom= na URL), pra não ter
- * duas implementações da mesma regra podendo divergir.
- * @returns {Promise<{valido:true, cupom:object} | {valido:false, motivo:string}>}
- */
-async function validarCupomCodigo(codigo) {
-  if (!codigo) return { valido: false, motivo: 'Digite um código de cupom' };
+async function revalidarCupom() {
+  if (!cupomAplicado) return;
+  const chave = chaveCheckout();
+  const ok = document.getElementById('cupom-ok'), erro = document.getElementById('cupom-erro');
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=ilike.${encodeURIComponent(codigo)}&select=*`, {
-      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    const r = await fetch(`${SB}/rest/v1/rpc/calcular_checkout`, {
+      method: 'POST',
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
+      body: JSON.stringify({ p_itens: itensJsonDoCarrinho(), p_bairro: bairroSelecionadoNome(), p_cupom: cupomAplicado.codigo, p_whatsapp: document.getElementById('f-whatsapp').value || null })
     });
-    const data = await r.json();
-    const cupom = Array.isArray(data) ? data[0] : null;
-
-    if (!cupom) return { valido: false, motivo: 'Cupom não existe' };
-    if (!cupom.ativo) return { valido: false, motivo: 'Cupom inativo' };
-    const hoje = new Date().toISOString().split('T')[0];
-    if (cupom.validade && cupom.validade < hoje) return { valido: false, motivo: 'Cupom expirado' };
-    if (cupom.usos_max != null) {
-      // contagem_desde (campanha relançada) usa contagem real via RPC;
-      // sem isso, cai no comportamento antigo (usos_atuais).
-      const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : (cupom.usos_atuais || 0);
-      if (usosReais >= cupom.usos_max) return { valido: false, motivo: 'Cupom esgotado! Todos os cupons foram utilizados.' };
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const resultado = await r.json();
+    if (chave !== chaveCheckout()) return; // o carrinho mudou durante a consulta — outra validação já vem
+    checkoutServidor = { chave, resultado };
+    const c = resultado.cupom;
+    ok.style.display = 'none'; erro.style.display = 'none';
+    if (c?.valido) {
+      ok.textContent = `✅ Cupom ${c.codigo} aplicado: ${brl(c.desconto)} de desconto. Com cupom, o frete é cobrado.`;
+      ok.style.display = 'block';
+    } else if (cupomViaURL && !/WhatsApp/.test(c?.motivo || '')) {
+      cupomAplicado = null; cupomViaURL = false; checkoutServidor = null;
+      document.getElementById('f-cupom').value = '';
+    } else {
+      erro.textContent = '❌ ' + (c?.motivo || 'Cupom inválido.');
+      erro.style.display = 'block';
     }
-    return { valido: true, cupom };
-  } catch(e) {
-    return { valido: false, motivo: 'Erro ao verificar cupom. Tente novamente.' };
+  } catch (e) {
+    console.error('Erro ao validar cupom:', e);
+    erro.textContent = '❌ Não consegui verificar o cupom agora. Tente de novo.';
+    erro.style.display = 'block';
   }
+  updateTotals();
 }
 
 async function aplicarCupom() {
-  const codigo = document.getElementById('f-cupom').value.trim();
-  const ok = document.getElementById('cupom-ok');
-  const erro = document.getElementById('cupom-erro');
-  ok.style.display = 'none';
-  erro.style.display = 'none';
-  cupomAplicado = null;
-
-  const resultado = await validarCupomCodigo(codigo);
-  if (!resultado.valido) {
-    erro.textContent = '❌ ' + resultado.motivo;
-    erro.style.display = 'block';
-    updateTotals();
-    return;
+  const codigo = document.getElementById('f-cupom').value.trim().toUpperCase();
+  const ok = document.getElementById('cupom-ok'), erro = document.getElementById('cupom-erro');
+  ok.style.display = 'none'; erro.style.display = 'none';
+  cupomViaURL = false; checkoutServidor = null;
+  if (!codigo) { cupomAplicado = null; erro.textContent = '❌ Digite um código de cupom'; erro.style.display = 'block'; updateTotals(); return; }
+  cupomAplicado = { codigo };
+  ok.textContent = 'Verificando cupom...'; ok.style.display = 'block';
+  await revalidarCupom();
+  if (cupomValidoAgora()) {
+    gtag('event', 'apply_coupon', {coupon: codigo});
+    fbq('track', 'ViewContent', {content_name: 'cupom_aplicado'});
   }
-
-  const cupom = resultado.cupom;
-  cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
-  ok.textContent = cupomAplicado.tipo === 'fixo'
-    ? `✅ Cupom aplicado! ${brl(cupomAplicado.desconto)} de desconto`
-    : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
-  ok.style.display = 'block';
-  updateTotals();
-  gtag('event', 'apply_coupon', {coupon: cupom.codigo});
-  fbq('track', 'ViewContent', {content_name: 'cupom_aplicado'});
 }
 
 /**
- * Aplica automaticamente um cupom vindo por link (?cupom=CODIGO na URL) —
- * mesma validação de aplicarCupom(), mas silenciosa: se o código for
- * inválido/expirado/esgotado, não mostra erro nenhum (o cliente nem precisa
- * saber que veio um parâmetro na URL). Se aplicar com sucesso, também
- * preenche o campo manual do checkout com o mesmo código, então se o
- * cliente digitar um cupom diferente depois, o mais recente naturalmente
- * substitui (mesmo comportamento de sempre de aplicarCupom(), que começa
- * zerando cupomAplicado a cada chamada).
+ * Cupom vindo por link (?cupom=CODIGO): preenche o campo e valida junto com o
+ * carrinho. Se não valer, some sem mostrar erro (o cliente nem viu o
+ * parâmetro) — exceto quando só falta o WhatsApp, que aí é pedido.
  */
 async function aplicarCupomDaURL() {
   const params = new URLSearchParams(location.search);
   const codigo = params.get('cupom');
   if (!codigo) return;
-
-  // Limpa o parâmetro da URL já de cara, independente do resultado da
-  // validação — não queremos nem que a URL fique poluída, nem que um F5
-  // tente reaplicar (ou tente de novo um código inválido) repetidamente.
   params.delete('cupom');
   const novaQuery = params.toString();
   history.replaceState(null, '', location.pathname + (novaQuery ? '?' + novaQuery : '') + location.hash);
 
-  const resultado = await validarCupomCodigo(codigo.trim());
-  if (!resultado.valido) return; // silencioso por design — ver requisito 4
-
-  const cupom = resultado.cupom;
-  cupomAplicado = { codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
-
+  cupomAplicado = { codigo: codigo.trim().toUpperCase() };
+  cupomViaURL = true;
   const campoCupom = document.getElementById('f-cupom');
-  if (campoCupom) campoCupom.value = cupom.codigo;
-  const ok = document.getElementById('cupom-ok');
-  if (ok) {
-    ok.textContent = cupomAplicado.tipo === 'fixo'
-      ? `✅ Cupom aplicado! ${brl(cupomAplicado.desconto)} de desconto`
-      : `✅ Cupom aplicado! ${cupomAplicado.desconto}% de desconto`;
-    ok.style.display = 'block';
-  }
-  updateTotals();
-
-  toast(cupomAplicado.tipo === 'fixo'
-    ? `Cupom ${cupomAplicado.codigo} aplicado! ${brl(cupomAplicado.desconto)} OFF 🎉`
-    : `Cupom ${cupomAplicado.codigo} aplicado! ${cupomAplicado.desconto}% OFF 🎉`);
-  gtag('event', 'apply_coupon', {coupon: cupom.codigo, source: 'url_param'});
-  fbq('track', 'ViewContent', {content_name: 'cupom_aplicado_url'});
+  if (campoCupom) campoCupom.value = cupomAplicado.codigo;
+  gtag('event', 'apply_coupon', {coupon: cupomAplicado.codigo, source: 'url_param'});
+  agendarRevalidacaoCupom();
 }
 
 // NAV DE CATEGORIAS — destaque da seção visível

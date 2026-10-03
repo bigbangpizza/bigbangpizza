@@ -704,6 +704,21 @@ input:checked+.sl::before{transform:translateX(20px);}
         </div>
         <button class="btn-new" onclick="salvarBotBorda()">💾 Salvar Borda</button>
       </div>
+
+      <!-- SEÇÃO 5: FRETE E CUPONS -->
+      <div class="tw" style="padding:20px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🚚 Frete e cupons</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Valem para o site, o bot e a validação do servidor. Frete grátis só sem cupom; cupom não vale em combos.</p>
+        <div class="fr">
+          <div class="fg"><label>Frete grátis a partir de (R$ em produtos)</label><input type="number" id="bot-frete-gratis-minimo" min="0" step="0.01" placeholder="65.00"></div>
+          <div class="fg"><label>Frete padrão — bairros da zona base (R$)</label><input type="number" id="bot-frete-padrao" min="0" step="0.01" placeholder="4.99"></div>
+        </div>
+        <div class="fr">
+          <div class="fg"><label id="bot-teto-label">Teto do desconto do cupom de 1º pedido (R$)</label><input type="number" id="bot-teto-primeiro-pedido" min="0" step="0.01" placeholder="10.00"></div>
+          <div class="fg"><label id="bot-minimo-label">Pedido mínimo do cupom de reativação (R$)</label><input type="number" id="bot-minimo-reativacao" min="0" step="0.01" placeholder="70.00"></div>
+        </div>
+        <button class="btn-new" onclick="salvarBotFreteCupons()">💾 Salvar Frete e Cupons</button>
+      </div>
     </div>
 
     <div id="pg-automacao" class="hidden">
@@ -1963,7 +1978,7 @@ function filtrarBairrosBusca(v) {
 }
 
 function grupoLabelFrete(frete) {
-  if (frete === 0) return '🟢 Frete Grátis';
+  if (frete === 0) return '🟢 Zona base (frete padrão — Configurações do Bot)';
   if (frete === 4.99) return '🟡 Frete R$ 4,99';
   if (frete === 5.99) return '🟠 Frete R$ 5,99';
   if (frete === 6.99) return '🔴 Frete R$ 6,99';
@@ -1972,7 +1987,7 @@ function grupoLabelFrete(frete) {
 
 function bairroCardHTML(b) {
   return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
-    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Grátis':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;">também: ${esc(b.apelidos.join(', '))}</div>`:''}</div>
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;">também: ${esc(b.apelidos.join(', '))}</div>`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
       <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
@@ -2041,7 +2056,7 @@ async function openModBairro(id = null) {
     <div class="fg">
       <label>Frete</label>
       <select id="bai-frete-sel" onchange="atualizarFretePersonalizado()">
-        <option value="0" ${Number(item.frete)===0?'selected':''}>Grátis (R$ 0,00)</option>
+        <option value="0" ${Number(item.frete)===0?'selected':''}>Zona base (frete padrão)</option>
         <option value="4.99" ${Number(item.frete)===4.99?'selected':''}>R$ 4,99</option>
         <option value="5.99" ${Number(item.frete)===5.99?'selected':''}>R$ 5,99</option>
         <option value="6.99" ${Number(item.frete)===6.99?'selected':''}>R$ 6,99</option>
@@ -3516,6 +3531,39 @@ async function loadConfigBot(){
 
   document.getElementById('bot-borda-preco-salgada').value = cfg.borda_preco_salgada || 12;
   document.getElementById('bot-borda-preco-doce').value = cfg.borda_preco_doce || 12;
+
+  document.getElementById('bot-frete-gratis-minimo').value = cfg.frete_gratis_minimo || 65;
+  document.getElementById('bot-frete-padrao').value = cfg.frete_padrao || 4.99;
+  await carregarCuponsDeRegra(cfg);
+}
+
+// O teto (cupom de 1º pedido) e o pedido mínimo (cupom de reativação) moram
+// na própria linha do cupom, na tabela `cupons` — aqui é só um atalho pra
+// editar esses dois valores sem procurar o cupom na aba Cupons.
+let cupomPrimeiroPedido = null, cupomReativacao = null;
+async function carregarCuponsDeRegra(cfg){
+  const [primeiro] = await api('cupons', 'somente_primeiro_pedido=eq.true&select=id,codigo,desconto_maximo&limit=1');
+  const codigoReat = cfg.reativacao_cupom_codigo || 'VOLTEI10';
+  const [reat] = await api('cupons', `codigo=eq.${encodeURIComponent(codigoReat)}&select=id,codigo,pedido_minimo`);
+  cupomPrimeiroPedido = primeiro || null; cupomReativacao = reat || null;
+  document.getElementById('bot-teto-label').textContent = `Teto do desconto do ${primeiro ? primeiro.codigo : 'cupom de 1º pedido'} (R$)`;
+  document.getElementById('bot-minimo-label').textContent = `Pedido mínimo do ${reat ? reat.codigo : codigoReat} (R$ em produtos)`;
+  document.getElementById('bot-teto-primeiro-pedido').value = primeiro?.desconto_maximo ?? '';
+  document.getElementById('bot-minimo-reativacao').value = reat?.pedido_minimo ?? '';
+  document.getElementById('bot-teto-primeiro-pedido').disabled = !primeiro;
+  document.getElementById('bot-minimo-reativacao').disabled = !reat;
+}
+
+async function salvarBotFreteCupons(){
+  const num = id => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
+  const minimo = num('bot-frete-gratis-minimo'), padrao = num('bot-frete-padrao');
+  const teto = num('bot-teto-primeiro-pedido'), minReat = num('bot-minimo-reativacao');
+  if (!(minimo >= 0) || !(padrao >= 0)) { alert('Informe valores válidos (0 ou mais) para o frete!'); return; }
+  if ((teto !== null && !(teto >= 0)) || (minReat !== null && !(minReat >= 0))) { alert('Teto e pedido mínimo precisam ser 0 ou mais (ou vazio para sem limite).'); return; }
+  const oks = [await salvarConfigs({ frete_gratis_minimo: minimo, frete_padrao: padrao })];
+  if (cupomPrimeiroPedido) oks.push(await upd('cupons', cupomPrimeiroPedido.id, { desconto_maximo: teto }));
+  if (cupomReativacao) oks.push(await upd('cupons', cupomReativacao.id, { pedido_minimo: minReat }));
+  showToastAdmin(oks.every(Boolean) ? '✅ Frete e cupons atualizados!' : '⚠️ Erro ao salvar.');
 }
 
 function renderBotDias(){
@@ -4325,13 +4373,28 @@ function classificarSegmentoCliente(totalPedidos, diasDesdeUltimo){
   return 'ativo';
 }
 
+let reativacaoCupomInfo = { codigo: 'VOLTEI10', percentual: 10, minimo: null };
+async function carregarReativacaoCupomInfo(){
+  try {
+    const cfg = await carregarConfigs();
+    const codigo = cfg.reativacao_cupom_codigo || 'VOLTEI10';
+    const [cupom] = await api('cupons', `codigo=eq.${encodeURIComponent(codigo)}&select=pedido_minimo`);
+    reativacaoCupomInfo = { codigo, percentual: cfg.reativacao_cupom_percentual || 10, minimo: cupom?.pedido_minimo != null ? Number(cupom.pedido_minimo) : null };
+  } catch (e) { console.error('carregarReativacaoCupomInfo', e); }
+}
+
 function enviarReativacao(btnEl){
   const nomeCompleto = btnEl?.dataset?.nome;
   const whatsappRaw = btnEl?.dataset?.whatsapp;
   const numero = normalizarWhatsapp(whatsappRaw);
   if(!numero){ showToastAdmin('⚠️ Cliente sem WhatsApp cadastrado.'); return; }
   const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
-  const msg = `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕💛 Que tal matar a saudade da Big Bang Pizza? Use o cupom VOLTEI10 e ganhe 10% OFF no seu próximo pedido! Peça em https://bigbangpizza.com.br`;
+  // Mesmo cupom/percentual/mínimo da reativação automática (Configurações do
+  // Bot + regra do cupom), carregados em loadClientes() — a janela do
+  // WhatsApp precisa abrir na hora do clique, sem await antes.
+  const c = reativacaoCupomInfo;
+  const linhaMinimo = c.minimo ? ` Válido para pedidos a partir de ${brl(c.minimo)} em produtos (frete à parte, não vale em combos).` : '';
+  const msg = `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕💛 Que tal matar a saudade da Big Bang Pizza? Use o cupom ${c.codigo} e ganhe ${c.percentual}% OFF no seu próximo pedido!${linhaMinimo} Peça em https://bigbangpizza.com.br`;
   window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
 
   // Registra o envio manual — a rotina automática (whatsapp-bot) e este
@@ -4342,6 +4405,7 @@ function enviarReativacao(btnEl){
 }
 
 async function loadClientes() {
+  carregarReativacaoCupomInfo();
   const [data, reativacoes] = await Promise.all([
     api('pedidos','','created_at.desc'),
     api('reativacoes_enviadas','','enviado_em.desc'),

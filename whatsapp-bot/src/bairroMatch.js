@@ -147,6 +147,15 @@ export function mensagemBairroNaoReconhecido(bairros, texto, cep, cepInfo) {
   );
 }
 
+/** Valores de frete editáveis em Configurações do Bot (mesmos fallbacks da função calcular_checkout). */
+export function regrasFrete(configuracoes = {}) {
+  const num = (v, padrao) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : padrao);
+  return {
+    fretePadrao: num(configuracoes.frete_padrao, 4.99),
+    freteGratisMinimo: num(configuracoes.frete_gratis_minimo, 65),
+  };
+}
+
 /**
  * Tool `verificar_bairro` — a Luiza chama logo que o cliente informa o
  * endereço, antes de seguir pro pagamento, pra não descobrir só na hora de
@@ -170,10 +179,18 @@ export const VERIFICAR_BAIRRO_TOOL = {
 
 export function criarExecutorVerificarBairro() {
   return async function executarVerificarBairro(input = {}) {
-    const { bairros } = await getMenuData();
+    const { bairros, configuracoes } = await getMenuData();
     const { bairro, cepInfo } = await resolverBairro(bairros, input.bairro, input.cep);
     if (bairro) {
-      return { reconhecido: true, bairro: bairro.nome, frete: Number(bairro.frete) || 0 };
+      const { fretePadrao, freteGratisMinimo } = regrasFrete(configuracoes);
+      // Bairro cadastrado com R$ 0 é a "zona base": cobra o frete padrão.
+      const freteZona = Number(bairro.frete) > 0 ? Number(bairro.frete) : fretePadrao;
+      return {
+        reconhecido: true,
+        bairro: bairro.nome,
+        frete_zona: freteZona,
+        regra: `Frete grátis se os produtos somarem R$ ${freteGratisMinimo.toFixed(2).replace('.', ',')} ou mais e o pedido não usar cupom; senão cobra o frete da zona.`,
+      };
     }
     return { reconhecido: false, instrucao: mensagemBairroNaoReconhecido(bairros, input.bairro, input.cep, cepInfo) };
   };

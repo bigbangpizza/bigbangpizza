@@ -2,6 +2,7 @@ import { getMenuData } from './supabaseData.js';
 import { getAgoraNoBrasil, parseComoUTC, diasEntre } from './dataUtils.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAtivoDoCliente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
+import { regrasFrete } from './bairroMatch.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 // Hora de fechamento por dia da semana (24 = meia-noite).
@@ -80,10 +81,12 @@ export function formatarBebidas(lista) {
   return lista.map((b) => `- ${b.nome} (${brl(b.preco)})`).join('\n');
 }
 
-export function formatarBairros(lista) {
+export function formatarBairros(lista, configuracoes = {}) {
   if (!lista.length) return '(nenhum bairro cadastrado no momento)';
+  // Bairro cadastrado com R$ 0 é a "zona base": cobra o frete padrão (abaixo do mínimo do frete grátis).
+  const { fretePadrao } = regrasFrete(configuracoes);
   return lista
-    .map((b) => `- ${b.nome}${b.apelidos?.length ? ` (também chamado de: ${b.apelidos.join(', ')})` : ''}: ${Number(b.frete) === 0 ? 'frete grátis' : `frete ${brl(b.frete)}`}`)
+    .map((b) => `- ${b.nome}${b.apelidos?.length ? ` (também chamado de: ${b.apelidos.join(', ')})` : ''}: frete ${brl(Number(b.frete) > 0 ? b.frete : fretePadrao)}`)
     .join('\n');
 }
 
@@ -166,6 +169,12 @@ function formatarBlocoClienteConhecido(cliente) {
 const CACHE_CLIENTE_TTL_MS = 24 * 60 * 60 * 1000;
 const cacheClienteConhecido = new Map(); // numero -> { bloco, expiraEm }
 
+// numero -> { elegivel, expiraEm } — se o telefone pode receber a oferta do
+// cupom de boas-vindas (nenhum pedido entregue). Calculado junto com o
+// histórico do cliente, na primeira mensagem da conversa. Se a consulta
+// falhar, fica fora (melhor não oferecer do que oferecer a cliente antigo).
+const cacheElegivelBoasVindas = new Map();
+
 async function montarBlocoClienteConhecido(numero, ehConversaNova) {
   if (!numero || !temServiceRoleConfigurada()) return '';
 
@@ -180,13 +189,24 @@ async function montarBlocoClienteConhecido(numero, ehConversaNova) {
     cliente = await buscarHistoricoClienteConhecido(numero);
   } catch (err) {
     console.error('[systemPrompt] falha ao buscar histórico do cliente (seguindo sem personalização):', err);
+    cacheElegivelBoasVindas.delete(numero);
     return '';
   }
+  cacheElegivelBoasVindas.set(numero, { elegivel: !cliente || !cliente.temPedidoEntregue, expiraEm: Date.now() + CACHE_CLIENTE_TTL_MS });
   if (!cliente) return '';
 
   const bloco = formatarBlocoClienteConhecido(cliente);
   cacheClienteConhecido.set(numero, { bloco, expiraEm: Date.now() + CACHE_CLIENTE_TTL_MS });
   return bloco;
+}
+
+function montarBlocoCupomBoasVindas(numero, cupom) {
+  if (!cupom || !numero) return '';
+  const cache = cacheElegivelBoasVindas.get(numero);
+  if (!cache || Date.now() >= cache.expiraEm || !cache.elegivel) return '';
+  const desconto = cupom.tipo === 'fixo' ? brl(cupom.desconto) : `${Number(cupom.desconto)}%`;
+  const teto = cupom.desconto_maximo != null ? `, até ${brl(cupom.desconto_maximo)} de desconto` : '';
+  return `\n## Cupom de boas-vindas (este cliente ainda não tem pedido entregue)\n- Na primeira mensagem da conversa, junto da apresentação, ofereça de forma natural e em uma linha o cupom ${cupom.codigo}: ${desconto} de desconto no primeiro pedido${teto}, não vale em combos. Ex: "Como é seu primeiro pedido, você pode usar o cupom ${cupom.codigo} (${desconto} off${teto})."\n- Ofereça uma vez só na conversa. Se o cliente quiser usar, envie \`cupom: "${cupom.codigo}"\` no \`criar_pedido\`.\n- Lembre que com cupom o frete é cobrado (não acumula com frete grátis) — mencione isso no resumo se ele usar o cupom.\n`;
 }
 
 /**
@@ -196,12 +216,14 @@ async function montarBlocoClienteConhecido(numero, ehConversaNova) {
  * de MENU_CACHE_TTL_SECONDS, ver supabaseData.js).
  */
 export async function buildSystemPrompt(numero, ehConversaNova = false) {
-  const { salgadas, doces, combos, bebidas, bairros, configuracoes } = await getMenuData();
+  const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas } = await getMenuData();
   const aberto = estaAbertoAgora(configuracoes.modo_loja || 'automatico');
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';
   const blocoPedidoAtivo = await montarBlocoPedidoAtivo(numero);
   const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
+  const blocoCupomBoasVindas = montarBlocoCupomBoasVindas(numero, cupomBoasVindas);
+  const { freteGratisMinimo } = regrasFrete(configuracoes);
 
   // Mesmas chaves/fallback que orderTool.js usa pra calcular o preço real da
   // borda (Configurações do Bot > Borda recheada) — precisa bater com o que
@@ -270,7 +292,14 @@ A loja fica no Centro de Lauro de Freitas. Clientes escrevem o bairro de muitos 
 ## Horário de funcionamento
 Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
 Status agora: ${aberto ? 'ABERTO ✅' : 'FECHADO 🔴'}. ${aberto ? '' : 'Se o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.'}
-${blocoPedidoAtivo}${blocoClienteConhecido}
+${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}
+## Frete e cupons
+- Frete grátis quando os produtos somam ${brl(freteGratisMinimo)} ou mais E o pedido não usa cupom. Abaixo disso, ou com cupom, cobra o frete da zona do bairro (lista de bairros abaixo).
+- Cupom não acumula com frete grátis: com cupom, o frete é cobrado mesmo acima de ${brl(freteGratisMinimo)}.
+- Cupom não vale em combos (o desconto só incide nos outros itens; pedido só com combo não aceita cupom).
+- Cada cupom pode ter regras próprias (só primeiro pedido, pedido mínimo, teto de desconto, um uso por cliente) — o sistema confere tudo ao registrar e devolve o motivo se não valer.
+- NÃO escreva você mesma quanto falta para o frete grátis — quando for o caso, o sistema acrescenta essa linha sozinho no resumo.
+
 ## Como fechar um pedido pelo WhatsApp
 Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou alguma coisa em qualquer mensagem (sabor, tamanho, endereço, bairro, pagamento), não pergunte de novo — use o que ele disse e vá pra próxima pendência.
 
@@ -282,11 +311,11 @@ Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou algu
    - **Presencial**: dinheiro ou cartão na entrega. Sem nenhuma ação extra, é só confirmar.
    - **Pix**: informe a chave Pix "${pixChave}"${pixTitular ? ` (titular: ${pixTitular})` : ''} e peça pra enviar o comprovante depois. Você pode dizer que o pagamento fica registrado como "aguardando confirmação". Quando o comprovante chegar (geralmente mais tarde na conversa, como imagem), **não diga que o pagamento foi confirmado** — ver regra em "O que você NÃO PODE fazer" acima.
    - **Cartão via link (Ton)**: avise que um link de pagamento será enviado em instantes por um atendente (isso acontece nos bastidores, você não precisa fazer mais nada além de avisar).
-5. **Cupom (opcional)**: se em algum momento da conversa o cliente mencionar um código de cupom (ex: "tenho o cupom EXPLODIU10"), guarde o código pra enviar no campo \`cupom\` da ferramenta — não pergunte proativamente se ele tem cupom, mas também não deixe passar se ele mencionar.
-6. **Confirmação final**: quando tiver itens, endereço e pagamento, mande um resumo curto, sem emoji, neste formato:
+5. **Cupom (opcional)**: se o cliente mencionar um código de cupom (ex: "tenho o cupom BIGBANG15"), guarde o código pra enviar no campo \`cupom\` da ferramenta — não pergunte proativamente se ele tem cupom (exceto a oferta de boas-vindas, se houver o bloco "Cupom de boas-vindas" acima), mas não deixe passar se ele mencionar. Quem decide se o cupom vale e quanto desconta é o sistema (ver "Frete e cupons"); nunca prometa o desconto antes de registrar.
+6. **Confirmação final**: só quando já tiver itens, endereço E forma de pagamento (nunca mande resumo com pagamento "a definir" — se faltar o pagamento, pergunte só o pagamento), chame \`calcular_total\` (mesmos itens, bairro e cupom que vai usar no \`criar_pedido\`) e mande um resumo curto, sem emoji, usando exatamente o frete, o desconto e o total retornados, neste formato:
    "Resumo do pedido:
    - [itens, com tamanho, sabores e borda/bebida se houver]
-   - Total: [soma dos itens + frete] ([frete grátis ou frete R$ X])
+   - Total: [total de calcular_total] ([frete grátis ou frete R$ X]; se houver cupom válido, "com desconto de R$ Y do cupom CÓDIGO"; se o cupom não valer, diga o motivo retornado)
    - Entrega: [endereço, bairro] (ou "Retirada na loja")
    - Pagamento: [forma]
    Posso confirmar?"
@@ -331,7 +360,7 @@ ${formatarCombos(combos)}
 ${formatarBebidas(bebidas)}
 
 ## Bairros atendidos e taxa de entrega
-${formatarBairros(bairros)}
+${formatarBairros(bairros, configuracoes)}
 
 Responda sempre em português do Brasil, seguindo as regras de "Como você escreve" lá em cima (mensagens curtas e separadas, sem parágrafo único longo). Se a pergunta não tiver relação com a pizzaria, responda com simpatia mas traga a conversa de volta pra como você pode ajudar com o pedido.`;
 }

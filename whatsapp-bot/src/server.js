@@ -6,7 +6,14 @@ import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { baixarMediaBase64 } from './evolutionApi.js';
 import { enviarRespostaHumanizada } from './respostaHumanizada.js';
-import { CRIAR_PEDIDO_TOOL, criarExecutorCriarPedido } from './orderTool.js';
+import {
+  CRIAR_PEDIDO_TOOL,
+  criarExecutorCriarPedido,
+  CALCULAR_TOTAL_TOOL,
+  criarExecutorCalcularTotal,
+  ultimoResumoPorNumero,
+  aplicarLinhaFreteGratis,
+} from './orderTool.js';
 import { extrairPedidoManual } from './manualOrderExtractTool.js';
 import { CANCELAR_PEDIDO_TOOL, criarExecutorCancelarPedido } from './cancelOrderTool.js';
 import { EDITAR_PEDIDO_TOOL, criarExecutorEditarPedido } from './editOrderTool.js';
@@ -337,18 +344,24 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
     editar_pedido: criarExecutorEditarPedido({ numero }),
     chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),
     verificar_bairro: criarExecutorVerificarBairro(),
+    calcular_total: criarExecutorCalcularTotal({ numero }),
   };
 
+  ultimoResumoPorNumero.delete(numero);
   const resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
   const { novasMensagens } = resultado;
   let { textoResposta } = resultado;
+
+  // "Faltam R$ X para frete grátis" vem do cálculo oficial (calcular_total),
+  // nunca do modelo.
+  textoResposta = aplicarLinhaFreteGratis(numero, textoResposta);
 
   // A Luiza sempre se apresenta na primeira mensagem da conversa. O prompt
   // já pede isso, mas quando a primeira ação do modelo é chamar uma

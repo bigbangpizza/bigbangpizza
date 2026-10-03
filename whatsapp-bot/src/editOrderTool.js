@@ -1,10 +1,10 @@
-import { getMenuData } from './supabaseData.js';
+import { getMenuData, calcularCheckout } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
 import { processarItens, PAGAMENTO_TEXTO } from './orderTool.js';
 import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
 
-const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto';
+const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto,cupom';
 
 /**
  * Definição da tool `editar_pedido` — mesma ideia do `cancelar_pedido`
@@ -195,11 +195,34 @@ export function criarExecutorEditarPedido({ numero }) {
       return { erro: erros.join(' ') };
     }
 
-    // Desconto/cupom (se houver) não são recalculados aqui — fora do escopo
-    // desta ferramenta; um cupom percentual aplicado antes da edição
-    // continua valendo pelo valor absoluto original.
-    const desconto = Number(pedido.desconto) || 0;
+    // Frete, cupom e total recalculados pelo cálculo oficial (mesmas regras
+    // do pedido novo): mudar itens ou bairro pode mudar o frete grátis, o
+    // desconto, ou fazer o cupom deixar de valer (ex: ficou abaixo do mínimo).
+    let checkout;
+    try {
+      checkout = await calcularCheckout({
+        itensJson: patch.itens_json || pedido.itens_json || [],
+        bairro: bairroFinal,
+        cupom: pedido.cupom,
+        whatsapp: numero,
+        retirada: bairroFinal === 'Retirada no local',
+        ignorarPedidoId: pedido.id, // o próprio pedido não conta como "uso" anterior do cupom
+      });
+    } catch (err) {
+      console.error(`[edicao] pedido=${pedido.id} numero=${numero} falha ao calcular checkout:`, err);
+      return { erro: 'Não consegui recalcular o total agora por um problema técnico. Tente de novo em instantes.' };
+    }
+    let avisoCupom = null;
+    if (pedido.cupom && !checkout.cupom?.valido) {
+      avisoCupom = `O cupom ${pedido.cupom} deixou de valer com essa alteração: ${checkout.cupom?.motivo || 'regras do cupom'}`;
+      patch.cupom = null;
+    }
+    freteFinal = Number(checkout.frete) || 0;
+    const desconto = Number(checkout.desconto) || 0;
+    subtotalFinal = Number(checkout.subtotal);
     const totalFinal = +(subtotalFinal - desconto + freteFinal).toFixed(2);
+    patch.frete = freteFinal;
+    patch.desconto = desconto;
     patch.total = totalFinal;
 
     let linhasAfetadas;
@@ -227,6 +250,9 @@ export function criarExecutorEditarPedido({ numero }) {
       total: totalFinal,
       bairro: bairroFinal,
       forma_pagamento: pagamentoTextoFinal,
+      desconto,
+      aviso_cupom: avisoCupom,
+      falta_para_frete_gratis: checkout.falta_para_frete_gratis || null,
     };
   };
 }

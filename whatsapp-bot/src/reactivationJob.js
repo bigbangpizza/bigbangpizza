@@ -19,8 +19,24 @@ const JANELA_MAX_DIAS = 21;
 // continue em risco por várias semanas seguidas.
 const DEDUP_DIAS = 30;
 
-const mensagemReativacao = (primeiroNome, cupomCodigo, cupomPercentual) =>
-  `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕 Que tal matar a saudade com ${cupomPercentual}% OFF no seu próximo pedido? Usa o cupom ${cupomCodigo} e vem sentir a Explosão de Sabor de novo!`;
+const brl = (v) => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+
+const mensagemReativacao = (primeiroNome, cupomCodigo, cupomPercentual, pedidoMinimo) =>
+  `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕 Que tal matar a saudade com ${cupomPercentual}% OFF no seu próximo pedido? Usa o cupom ${cupomCodigo} e vem sentir a Explosão de Sabor de novo!` +
+  (pedidoMinimo ? ` Válido para pedidos a partir de ${brl(pedidoMinimo)} em produtos (frete à parte, não vale em combos).` : '');
+
+// Pedido mínimo cadastrado no próprio cupom (tabela cupons) — mesmo valor
+// que o checkout do site e o bot exigem.
+async function pedidoMinimoDoCupom(codigo) {
+  try {
+    const rows = await selectComoAdmin('cupons', `select=pedido_minimo&codigo=ilike.${encodeURIComponent(codigo)}&limit=1`);
+    const v = rows?.[0]?.pedido_minimo;
+    return v != null ? Number(v) : null;
+  } catch (err) {
+    console.error('[reactivationJob] falha ao ler pedido mínimo do cupom (seguindo sem citar o mínimo):', err);
+    return null;
+  }
+}
 
 async function buscarClientesRecemEmRisco() {
   const pedidos = await selectComoAdmin('pedidos', 'select=whatsapp,nome,created_at&whatsapp=not.is.null');
@@ -97,6 +113,7 @@ export async function rodarReativacaoDiaria() {
   let enviados = 0;
   let pulados = 0;
   let falhas = 0;
+  const pedidoMinimo = await pedidoMinimoDoCupom(cfg.reativacaoCupomCodigo);
 
   for (const cliente of candidatos) {
     try {
@@ -113,7 +130,7 @@ export async function rodarReativacaoDiaria() {
       }
 
       const primeiroNome = (cliente.nome || '').trim().split(/\s+/)[0] || '';
-      await enviarTexto(numero, mensagemReativacao(primeiroNome, cfg.reativacaoCupomCodigo, cfg.reativacaoCupomPercentual));
+      await enviarTexto(numero, mensagemReativacao(primeiroNome, cfg.reativacaoCupomCodigo, cfg.reativacaoCupomPercentual, pedidoMinimo));
       await inserirComoAdmin('reativacoes_enviadas', {
         whatsapp: cliente.whatsapp,
         nome: cliente.nome,

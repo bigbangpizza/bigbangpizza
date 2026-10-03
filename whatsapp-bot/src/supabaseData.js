@@ -38,15 +38,18 @@ async function fetchConfiguracoes() {
 let cache = null; // { data, expiresAt }
 
 async function loadMenuData() {
-  const [salgadas, doces, combos, bebidas, bairros, configuracoes] = await Promise.all([
+  const [salgadas, doces, combos, bebidas, bairros, configuracoes, cuponsPrimeiroPedido] = await Promise.all([
     fetchTable('pizzas_salgadas', 'ativo=eq.true'),
     fetchTable('pizzas_doces', 'ativo=eq.true'),
     fetchTable('combos', 'ativo=eq.true'),
     fetchTable('bebidas', 'ativo=eq.true'),
     fetchTable('bairros', 'ativo=eq.true'),
     fetchConfiguracoes(),
+    fetchTable('cupons', 'ativo=eq.true&somente_primeiro_pedido=eq.true&limit=1'),
   ]);
-  return { salgadas, doces, combos, bebidas, bairros, configuracoes };
+  // Cupom de boas-vindas (ex: BIGBANG15) — o bot só oferece se ele estiver ativo.
+  const cupomBoasVindas = cuponsPrimeiroPedido?.[0] || null;
+  return { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas };
 }
 
 /**
@@ -66,53 +69,23 @@ export async function getMenuData({ forceRefresh = false } = {}) {
 }
 
 /**
- * Conta usos reais de um cupom via RPC `contar_usos_cupom` — mais confiável
- * que o campo `usos_atuais` (só incrementa quando o pedido é marcado
- * "entregue" no admin). `desde` (opcional) limita a contagem a partir de
- * uma data — usado por cupons com campanha relançada (ver `contagem_desde`
- * na tabela `cupons`). Mesma RPC usada pelo checkout do site.
+ * Cálculo oficial do checkout (RPC `calcular_checkout` no Supabase) — mesmas
+ * regras do site e do gatilho que valida os pedidos no servidor: frete da
+ * zona (bairro com R$ 0 = zona base, cobra o frete padrão), frete grátis
+ * acima do mínimo sem cupom, e todas as regras de cupom (1º pedido,
+ * reativação, mínimo, teto, uso por cliente, combo).
+ * @returns {Promise<{subtotal:number, frete:number|null, desconto:number, total:number,
+ *   falta_para_frete_gratis:number|null, frete_gratis:boolean, frete_gratis_minimo:number,
+ *   cupom: null | {codigo:string, valido:boolean, motivo:string|null, desconto:number}}>}
  */
-async function contarUsosCupom(codigo, desde) {
-  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/contar_usos_cupom`, {
+export async function calcularCheckout({ itensJson, bairro, cupom, whatsapp, retirada, ignorarPedidoId = null }) {
+  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/calcular_checkout`, {
     method: 'POST',
     headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ p_codigo: codigo, p_desde: desde || null }),
+    body: JSON.stringify({ p_itens: itensJson, p_bairro: bairro, p_cupom: cupom || null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada), p_ignorar_pedido: ignorarPedidoId }),
   });
-  if (!r.ok) throw new Error(`Falha ao contar usos do cupom (${r.status})`);
+  if (!r.ok) throw new Error(`Falha ao calcular checkout (${r.status}): ${await r.text().catch(() => '')}`);
   return r.json();
-}
-
-/**
- * Valida um código de cupom contra a tabela `cupons` — mesmas regras do
- * `aplicarCupom()` do checkout do site (index.html): existe (busca
- * case-insensitive), está ativo, não passou da validade e ainda não
- * esgotou os usos. Mantida aqui como fonte única pro bot, já que o site
- * roda em outro runtime (browser) e não dá pra importar o JS dele direto.
- * @returns {Promise<{valido:true, codigo:string, tipo:string, desconto:number} | {valido:false, motivo:string}>}
- */
-export async function validarCupom(codigo) {
-  const busca = (codigo || '').trim();
-  if (!busca) return { valido: false, motivo: 'Nenhum código de cupom foi informado.' };
-
-  const rows = await fetchTable('cupons', `codigo=ilike.${encodeURIComponent(busca)}`);
-  const cupom = rows?.[0];
-  if (!cupom) return { valido: false, motivo: `O cupom "${busca}" não existe.` };
-  if (!cupom.ativo) return { valido: false, motivo: `O cupom "${cupom.codigo}" não está mais ativo.` };
-
-  const hoje = new Date().toISOString().split('T')[0];
-  if (cupom.validade && cupom.validade < hoje) {
-    return { valido: false, motivo: `O cupom "${cupom.codigo}" já expirou.` };
-  }
-  if (cupom.usos_max != null) {
-    // contagem_desde (campanha relançada) usa contagem real via RPC; sem
-    // isso, cai no comportamento antigo (usos_atuais).
-    const usosReais = cupom.contagem_desde ? await contarUsosCupom(cupom.codigo, cupom.contagem_desde) : cupom.usos_atuais || 0;
-    if (usosReais >= cupom.usos_max) {
-      return { valido: false, motivo: `O cupom "${cupom.codigo}" já atingiu o limite de usos.` };
-    }
-  }
-
-  return { valido: true, codigo: cupom.codigo, tipo: cupom.tipo, desconto: parseFloat(cupom.desconto) };
 }
 
 /**

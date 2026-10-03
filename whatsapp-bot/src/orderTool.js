@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { getMenuData, inserirPedido, validarCupom } from './supabaseData.js';
+import { getMenuData, inserirPedido, calcularCheckout } from './supabaseData.js';
 import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
 import { enviarTexto } from './evolutionApi.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
@@ -55,7 +55,7 @@ export const CRIAR_PEDIDO_TOOL = {
       cupom: {
         type: 'string',
         description:
-          'Código do cupom de desconto, apenas se o cliente mencionar um explicitamente (ex: "EXPLODIU10"). O sistema ' +
+          'Código do cupom de desconto, apenas se o cliente mencionar um explicitamente (ex: "BIGBANG15"). O sistema ' +
           'valida se existe, está ativo e ainda tem uso disponível. Se for inválido, o pedido é registrado normalmente ' +
           'sem desconto e a resposta vem com um aviso pra você repassar ao cliente — nunca deixe de fechar o pedido ' +
           'por causa de um cupom inválido. Omita este campo se o cliente não mencionar nenhum cupom.',
@@ -328,8 +328,16 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
     }
 
     const subtotal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
-    const frete = Number(bairroEncontrado.frete) || 0;
     const itensTexto = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
+    const itensJson = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
+      tipo,
+      tamanho,
+      sabores,
+      borda,
+      precoUnitario,
+      qty,
+      obs,
+    }));
 
     // Rede de segurança contra pedido duplicado (ver PEDIDO_DUPLICADO_* em
     // config.js e o aviso de contexto que buildSystemPrompt já injeta antes
@@ -366,26 +374,22 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       }
     }
 
-    // Cupom é opcional e nunca trava o fechamento do pedido: se o código
-    // vier inválido/expirado/esgotado, o pedido segue sem desconto e o
-    // motivo vai em "aviso_cupom" pra Claude repassar ao cliente com
-    // simpatia (ver instrução da tool acima e o system prompt).
-    let cupomAplicado = null;
-    let avisoCupom = null;
-    if (input.cupom) {
-      const resultado = await validarCupom(input.cupom);
-      if (resultado.valido) {
-        cupomAplicado = resultado;
-      } else {
-        avisoCupom = resultado.motivo;
-      }
+    // Frete, cupom e total vêm do cálculo oficial no Supabase (mesmas regras
+    // do site e do gatilho do servidor). Cupom é opcional e nunca trava o
+    // fechamento do pedido: se não valer, o pedido segue sem desconto e o
+    // motivo vai em "aviso_cupom" pra Claude repassar ao cliente.
+    let checkout;
+    try {
+      checkout = await calcularCheckout({ itensJson, bairro: bairroEncontrado.nome, cupom: input.cupom, whatsapp: numero, retirada: input.retirada });
+    } catch (err) {
+      console.error('[orderTool] falha ao calcular checkout:', err);
+      return { erro: 'Não consegui calcular o total agora por um problema técnico. Peça pro cliente tentar de novo em instantes.' };
     }
-    const desconto = cupomAplicado
-      ? cupomAplicado.tipo === 'fixo'
-        ? Math.min(cupomAplicado.desconto, subtotal)
-        : +(subtotal * (cupomAplicado.desconto / 100)).toFixed(2)
-      : 0;
-    const total = +(subtotal - desconto + frete).toFixed(2);
+    const cupomAplicado = checkout.cupom?.valido ? { codigo: checkout.cupom.codigo } : null;
+    const avisoCupom = checkout.cupom && !checkout.cupom.valido ? checkout.cupom.motivo : null;
+    const desconto = Number(checkout.desconto) || 0;
+    const frete = Number(checkout.frete) || 0;
+    const total = Number(checkout.total);
 
     const pedido = {
       nome: nomeContato || 'Cliente WhatsApp',
@@ -398,15 +402,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       status: 'aguardando',
       cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: itensTexto,
-      itens_json: itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
-        tipo,
-        tamanho,
-        sabores,
-        borda,
-        precoUnitario,
-        qty,
-        obs,
-      })),
+      itens_json: itensJson,
       subtotal,
       desconto,
       frete,
@@ -442,10 +438,87 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       aviso_cupom: avisoCupom,
       frete,
       total,
+      falta_para_frete_gratis: checkout.falta_para_frete_gratis || null,
       bairro: bairroEncontrado.nome,
       endereco: pedido.endereco,
       forma_pagamento: pagamentoTexto,
       tempo_estimado: '35 a 60 minutos',
     };
   };
+}
+
+/**
+ * Tool `calcular_total` — a Luiza chama antes de mandar o resumo de
+ * confirmação, pra usar os valores oficiais (frete grátis, frete da zona,
+ * cupom) em vez de somar de cabeça. Só consulta; não grava nada.
+ *
+ * A linha "Faltam R$ X para frete grátis" NÃO é escrita pelo modelo: o
+ * resultado fica guardado em `ultimoResumoPorNumero` e o servidor
+ * (server.js) acrescenta a linha no resumo que vai pro cliente.
+ */
+export const CALCULAR_TOTAL_TOOL = {
+  name: 'calcular_total',
+  description:
+    'Calcula o total oficial do pedido (subtotal, frete, desconto de cupom e total) antes do resumo de confirmação. ' +
+    'Chame SEMPRE antes de mandar o resumo "Posso confirmar?", com os mesmos itens/bairro/cupom que vai usar no criar_pedido, ' +
+    'e use exatamente os valores retornados no resumo.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      itens: CRIAR_PEDIDO_TOOL.input_schema.properties.itens,
+      bairro: { type: 'string', description: 'Bairro de entrega (dispensado se retirada for true).' },
+      cupom: { type: 'string', description: 'Código do cupom, se o cliente mencionou um.' },
+      retirada: { type: 'boolean', description: 'true se o cliente vai retirar no local.' },
+    },
+    required: ['itens'],
+  },
+};
+
+// numero -> { linhaFreteGratis } do último calcular_total desta mensagem do cliente.
+export const ultimoResumoPorNumero = new Map();
+
+export function criarExecutorCalcularTotal({ numero }) {
+  return async function executarCalcularTotal(input) {
+    const menuData = await getMenuData();
+    const { itensProcessados, erros } = processarItens(input.itens, menuData);
+    let bairroNome = 'Retirada no local';
+    if (!input.retirada) {
+      const { bairro } = await resolverBairro(menuData.bairros, input.bairro);
+      if (!bairro) erros.push(`Bairro "${input.bairro || ''}" não reconhecido — use verificar_bairro antes.`);
+      else bairroNome = bairro.nome;
+    }
+    if (erros.length) return { erro: erros.join(' ') };
+
+    const itensJson = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }));
+    const c = await calcularCheckout({ itensJson, bairro: bairroNome, cupom: input.cupom, whatsapp: numero, retirada: input.retirada });
+    const falta = Number(c.falta_para_frete_gratis) || 0;
+    ultimoResumoPorNumero.set(numero, { linhaFreteGratis: falta > 0 ? `Faltam ${brl(falta)} para frete grátis.` : null });
+    return {
+      itens: itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`),
+      subtotal: c.subtotal,
+      frete: c.frete,
+      frete_gratis: c.frete === 0 && !input.retirada,
+      desconto: c.desconto,
+      cupom: c.cupom ? { codigo: c.cupom.codigo, valido: c.cupom.valido, motivo: c.cupom.motivo } : null,
+      total: c.total,
+      observacao: 'Não escreva no resumo a linha de quanto falta para o frete grátis — o sistema acrescenta sozinho.',
+    };
+  };
+}
+
+/**
+ * Acrescenta (no texto que vai pro cliente) a linha "Faltam R$ X para frete
+ * grátis" calculada por calcular_total, logo antes do "Posso confirmar?".
+ * Remove qualquer linha parecida que o modelo tenha escrito por conta própria.
+ */
+export function aplicarLinhaFreteGratis(numero, texto) {
+  const resumo = ultimoResumoPorNumero.get(numero);
+  ultimoResumoPorNumero.delete(numero);
+  if (!resumo || !/posso confirmar/i.test(texto)) return texto;
+  const semLinhaDoModelo = texto
+    .split('\n')
+    .filter((l) => !/faltam\s+r\$\s*[\d.,]+\s+(em produtos\s+)?para (o )?frete gr[aá]tis/i.test(l))
+    .join('\n');
+  if (!resumo.linhaFreteGratis) return semLinhaDoModelo;
+  return semLinhaDoModelo.replace(/([^\n]*posso confirmar\?)/i, `${resumo.linhaFreteGratis}\n\n$1`);
 }
