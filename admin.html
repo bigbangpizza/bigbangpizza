@@ -3015,50 +3015,9 @@ function pmRemoverItem(i){
   pmRerenderItens();
 }
 
-function atualizarResumoPedidoManual(){
-  const st = window.__pedidoManualState;
-  const menu = window.__pedidoManualMenu;
-  const el = document.getElementById('pm-resumo');
-  if(!st || !menu || !el) return;
-
-  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
-  const algumIncompleto = precos.some(p => !p);
-  const subtotal = precos.reduce((s,p,i) => s + (p ? p.precoUnitario*st.itens[i].qty : 0), 0);
-  const bairro = st.retirada ? { frete: 0 } : menu.bairros.find(b => b.nome===st.bairroNome);
-  const frete = bairro ? Number(bairro.frete)||0 : 0;
-  const total = subtotal + frete;
-
-  el.innerHTML = `
-    ${algumIncompleto ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Tem item incompleto — não dá pra lançar até corrigir.</div>` : ''}
-    ${!st.retirada && !bairro ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Selecione o bairro.</div>` : ''}
-    <div>Subtotal: <strong>${brl(subtotal)}</strong></div>
-    <div>Frete: <strong>${brl(frete)}</strong></div>
-    <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(total)}</strong></div>
-  `;
-}
-
-async function salvarPedidoManual(){
-  const st = window.__pedidoManualState;
-  const menu = window.__pedidoManualMenu;
-
-  if(!st.nome.trim()){ showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
-  if(!st.pagamento){ showToastAdmin('⚠️ Selecione a forma de pagamento.'); return; }
-  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
-  if(!precos.length || precos.some(p => !p)){ showToastAdmin('⚠️ Tem item incompleto — selecione tipo/sabor/tamanho de todos os itens.'); return; }
-
-  let bairroNome, frete;
-  if(st.retirada){
-    bairroNome = 'Retirada no local';
-    frete = 0;
-  } else {
-    if(!st.endereco.trim()){ showToastAdmin('⚠️ Informe o endereço.'); return; }
-    const bairro = menu.bairros.find(b => b.nome===st.bairroNome);
-    if(!bairro){ showToastAdmin('⚠️ Selecione o bairro.'); return; }
-    bairroNome = bairro.nome;
-    frete = Number(bairro.frete)||0;
-  }
-
-  const itensJson = st.itens.map((it,i) => {
+// Itens do pedido manual no mesmo formato que o site/bot gravam.
+function montarItensJsonPedidoManual(st, menu, precos){
+  return st.itens.map((it,i) => {
     const catalogo = catalogoPedidoManualPorTipo(menu, it.tipo);
     const p1 = catalogo.find(p => p.id===it.produto1Id);
     const p2 = it.produto2Id ? catalogo.find(p => p.id===it.produto2Id) : null;
@@ -3078,10 +3037,93 @@ async function salvarPedidoManual(){
       obs: it.obs || null,
     };
   });
+}
 
-  const itensTexto = itensJson.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
-  const subtotal = +itensJson.reduce((s,it) => s+it.precoUnitario*it.qty, 0).toFixed(2);
-  const total = +(subtotal + frete).toFixed(2);
+// Cálculo oficial (mesma função que o site, o bot e o gatilho usam):
+// oferta da pizza doce, frete da zona e frete grátis. O gatilho do banco não
+// recalcula pedidos lançados pela equipe, então o pedido manual usa o mesmo
+// cálculo aqui — tela e banco ficam com os mesmos valores, sem o atendente
+// precisar fazer nada.
+async function calcularCheckoutPedidoManual(itensJson, bairroNome, whatsapp, retirada){
+  const r = await authFetch(`${SB}/rest/v1/rpc/calcular_checkout_v2`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_itens: itensJson, p_bairro: bairroNome, p_cupom: null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada) }),
+  });
+  if(!r.ok) throw new Error('calcular_checkout_v2 respondeu ' + r.status);
+  return r.json();
+}
+
+let _pmResumoSeq = 0;
+async function atualizarResumoPedidoManual(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+  const el = document.getElementById('pm-resumo');
+  if(!st || !menu || !el) return;
+
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  const algumIncompleto = !precos.length || precos.some(p => !p);
+  const bairro = st.retirada ? { nome: 'Retirada no local' } : menu.bairros.find(b => b.nome===st.bairroNome);
+  const avisos = `${algumIncompleto ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Tem item incompleto — não dá pra lançar até corrigir.</div>` : ''}
+    ${!st.retirada && !bairro ? `<div style="color:#ff4444;font-size:12px;margin-bottom:6px;">⚠️ Selecione o bairro.</div>` : ''}`;
+  if(algumIncompleto || !bairro){
+    const subtotal = precos.reduce((s,p,i) => s + (p ? p.precoUnitario*st.itens[i].qty : 0), 0);
+    el.innerHTML = `${avisos}<div>Subtotal (parcial): <strong>${brl(subtotal)}</strong></div>`;
+    window.__pedidoManualCalculo = null;
+    return;
+  }
+
+  const seq = ++_pmResumoSeq;
+  el.innerHTML = `${avisos}<div style="color:rgba(255,255,255,.5);">Calculando total…</div>`;
+  let r;
+  try {
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada);
+  } catch(e) {
+    console.error('calcularCheckoutPedidoManual', e);
+    if(seq === _pmResumoSeq) el.innerHTML = `${avisos}<div style="color:#ff4444;">⚠️ Não consegui calcular o total agora. Tente de novo.</div>`;
+    return;
+  }
+  if(seq !== _pmResumoSeq) return; // o atendente mudou algo enquanto calculava
+  window.__pedidoManualCalculo = r;
+  const doceOferta = (r.itens||[]).find(i => i.oferta_doce);
+  el.innerHTML = `${avisos}
+    ${doceOferta ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🍫 Oferta aplicada: Doce ${esc(doceOferta.sabores?.[0]?.nome||'')} por ${brl(doceOferta.precoUnitario)} (−${brl(r.oferta_doce.economia)})</div>` : ''}
+    <div>Subtotal: <strong>${brl(r.subtotal)}</strong></div>
+    <div>Frete: <strong>${Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
+    ${Number(r.falta_para_frete_gratis) > 0 && !st.retirada ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Faltam ${brl(r.falta_para_frete_gratis)} para frete grátis</div>` : ''}
+    <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(r.total)}</strong></div>
+  `;
+}
+
+async function salvarPedidoManual(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+
+  if(!st.nome.trim()){ showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
+  if(!st.pagamento){ showToastAdmin('⚠️ Selecione a forma de pagamento.'); return; }
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  if(!precos.length || precos.some(p => !p)){ showToastAdmin('⚠️ Tem item incompleto — selecione tipo/sabor/tamanho de todos os itens.'); return; }
+
+  let bairroNome;
+  if(st.retirada){
+    bairroNome = 'Retirada no local';
+  } else {
+    if(!st.endereco.trim()){ showToastAdmin('⚠️ Informe o endereço.'); return; }
+    const bairro = menu.bairros.find(b => b.nome===st.bairroNome);
+    if(!bairro){ showToastAdmin('⚠️ Selecione o bairro.'); return; }
+    bairroNome = bairro.nome;
+  }
+
+  // Valores oficiais (oferta da doce + frete), calculados na hora de lançar.
+  let r;
+  try {
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada);
+  } catch(e) {
+    console.error('salvarPedidoManual', e);
+    showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return;
+  }
+
+  const itensTexto = st.itens.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
 
   const ok = await ins('pedidos', {
     nome: st.nome.trim(),
@@ -3094,11 +3136,11 @@ async function salvarPedidoManual(){
     status: 'aguardando',
     origem: 'manual',
     itens: itensTexto,
-    itens_json: itensJson,
-    subtotal,
-    desconto: 0,
-    frete,
-    total,
+    itens_json: r.itens,
+    subtotal: Number(r.subtotal),
+    desconto: Number(r.desconto) || 0,
+    frete: Number(r.frete) || 0,
+    total: Number(r.total),
   });
 
   if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); }
