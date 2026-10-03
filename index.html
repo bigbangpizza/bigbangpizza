@@ -682,8 +682,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <input type="text" id="f-nome" placeholder="Nome completo *">
     <input type="text" id="f-endereco" placeholder="Rua e número *">
     <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
-    <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp (opcional — receba promoções e cupons!)" inputmode="numeric" maxlength="16" oninput="formatarTelefoneInput(this)">
-    <div class="campo-hint">Digite DDD + número, ex: 71991234567</div>
+    <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp com DDD *" inputmode="numeric" maxlength="20" oninput="formatarTelefoneInput(this)">
+    <div class="campo-hint">Usamos para confirmar e acompanhar seu pedido.</div>
     <select id="f-bairro" onchange="onBairroChange()"><option value="">Selecione o bairro *</option></select>
     <div id="bairro-outro" style="display:none;">
       <input type="text" id="f-bairro-outro" placeholder="Qual é o seu bairro?">
@@ -783,7 +783,10 @@ function abrirWhatsApp(){ window.open('https://wa.me/'+WPP_NUMBER, '_blank'); }
 // sistema já infere o 55 automaticamente em outros pontos (ex: whatsapp-bot
 // normalizarWhatsapp), então aqui só cabe DDD + número.
 function formatarTelefoneInput(el) {
-  const digits = el.value.replace(/\D/g, '').slice(0, 11);
+  let digits = el.value.replace(/\D/g, '');
+  // Colado com o código do país (+55 75 9...): descarta o 55.
+  if (digits.length > 11 && digits.startsWith('55')) digits = digits.slice(2);
+  digits = digits.slice(0, 11);
   let out = digits;
   if (digits.length > 10) out = digits.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, '($1) $2-$3');
   else if (digits.length > 6) out = digits.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
@@ -791,11 +794,17 @@ function formatarTelefoneInput(el) {
   else if (digits.length > 0) out = digits.replace(/^(\d{0,2}).*/, '($1');
   el.value = out;
 }
-// Campo é opcional em todo lugar — só valida se algo foi digitado. 10
-// dígitos = fixo (DDD+8), 11 = celular (DDD+9+8).
+// DDD precisa existir (lista da Anatel). 11 dígitos = celular (DDD + 9 +
+// 8 dígitos); 10 = DDD + 8 dígitos (fixo, ou celular escrito sem o 9 —
+// ainda comum, ex: 75 9871-9628; o sistema compara pelos últimos 8 dígitos).
+const DDDS_VALIDOS = new Set([11,12,13,14,15,16,17,18,19,21,22,24,27,28,31,32,33,34,35,37,38,41,42,43,44,45,46,47,48,49,51,53,54,55,61,62,63,64,65,66,67,68,69,71,73,74,75,77,79,81,82,83,84,85,86,87,88,89,91,92,93,94,95,96,97,98,99]);
 function telefoneEhValido(valor) {
-  const d = (valor || '').replace(/\D/g, '');
-  return d.length === 10 || d.length === 11;
+  let d = (valor || '').replace(/\D/g, '');
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  if (!DDDS_VALIDOS.has(Number(d.slice(0, 2)))) return false;
+  if (d.length === 11) return d[2] === '9';
+  if (d.length === 10) return /[2-9]/.test(d[2]);
+  return false;
 }
 
 async function api(table, q='') {
@@ -1628,13 +1637,20 @@ async function finalizarPedido() {
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
-  if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); return; }
-  if (bRaw === BAIRRO_OUTRO) { enviarPedidoBairroForaDaLista(nome, end, comp, pag); return; }
+  if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); enviandoPedido = false; return; }
+  // WhatsApp obrigatório: é por ele que a equipe e a Luiza acham o pedido.
   const wppRaw = document.getElementById('f-whatsapp').value;
-  if (wppRaw.trim() && !telefoneEhValido(wppRaw)) {
-    alert('WhatsApp inválido! Digite DDD + número (10 ou 11 dígitos), ex: 71991234567.');
+  if (!telefoneEhValido(wppRaw)) {
+    alert(wppRaw.trim()
+      ? 'WhatsApp inválido. Digite o DDD + número, ex: (71) 99123-4567.'
+      : 'Informe seu WhatsApp com DDD. Usamos para confirmar e acompanhar seu pedido.');
+    const campo = document.getElementById('f-whatsapp');
+    campo.focus();
+    campo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    enviandoPedido = false;
     return;
   }
+  if (bRaw === BAIRRO_OUTRO) { enviarPedidoBairroForaDaLista(nome, end, comp, pag); return; }
   if (cupomAplicado && checkoutServidor?.resultado?.cupom && !checkoutServidor.resultado.cupom.valido && /WhatsApp/.test(checkoutServidor.resultado.cupom.motivo || '')) {
     alert('Informe seu WhatsApp para usar o cupom ' + cupomAplicado.codigo + ' (ou apague o cupom).'); return;
   }
