@@ -31,7 +31,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 <!-- End Meta Pixel Code -->
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://maps.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://www.facebook.com https://connect.facebook.net; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://alvvkpuedwrxbmkkayff.supabase.co https://fonts.googleapis.com https://fonts.gstatic.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://www.facebook.com https://connect.facebook.net; object-src 'none'; base-uri 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#CC1100">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
@@ -108,7 +108,6 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://alvvkpuedwrxbmkkayff.supabase.co">
-<link rel="preconnect" href="https://maps.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--red:#CC1100;--red-dark:#880000;--orange:#FF6B00;--gold:#E8A800;--black:#0a0a0a;--cream:#F5F0E8;--cream-dark:#EDE6D6;--gray:#666;--green:#1a7a3c;--shadow-card:0 6px 24px rgba(0,0,0,0.10);--shadow-card-hover:0 10px 32px rgba(0,0,0,0.16);--radius-card:14px;--hero-overlay:linear-gradient(180deg,rgba(10,10,10,0.35) 0%,rgba(10,10,10,0.55) 55%,rgba(10,10,10,0.96) 100%);}
@@ -329,9 +328,6 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 
 
 /* MAPA INFO WINDOW */
-.map-info {{ padding:8px 12px; font-family:'Inter',sans-serif; }}
-.map-info strong {{ font-size:14px; display:block; margin-bottom:2px; }}
-.map-info span {{ font-size:12px; color:#666; }}
 
 /* AVALIACOES */
 .aval-bg{background:var(--black);padding:44px 0;}
@@ -620,9 +616,6 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <h2 class="section-title" style="color:white;">ÁREA DE <span style="color:var(--orange);">ENTREGA</span></h2>
     <div class="divider"></div>
     <p style="color:rgba(255,255,255,0.4);font-size:13px;margin-bottom:20px;">Confira se seu bairro está na nossa área de atendimento</p>
-
-    <!-- MAPA -->
-    <div id="mapa" style="width:100%;height:380px;border-radius:12px;overflow:hidden;margin-bottom:24px;border:2px solid rgba(255,255,255,0.08);"></div>
 
     <!-- LEGENDA -->
     <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px;" id="entrega-legenda"></div>
@@ -1721,88 +1714,6 @@ function novosPedido() {
 }
 
 // MAPA
-function initMap() {
-  // Preserve scroll position
-  const scrollY = window.scrollY;
-  setTimeout(() => window.scrollTo(0, scrollY), 50);
-
-  const center = {lat: -12.8936, lng: -38.3174}; // Centro de Lauro de Freitas
-
-  const map = new google.maps.Map(document.getElementById('mapa'), {
-    zoom: 13,
-    center: center,
-    styles: [
-      {elementType:'geometry',stylers:[{color:'#1a1a1a'}]},
-      {elementType:'labels.text.fill',stylers:[{color:'#aaa'}]},
-      {elementType:'labels.text.stroke',stylers:[{color:'#111'}]},
-      {featureType:'road',elementType:'geometry',stylers:[{color:'#2a2a2a'}]},
-      {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#111'}]},
-      {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#333'}]},
-      {featureType:'water',elementType:'geometry',stylers:[{color:'#0a0a2e'}]},
-      {featureType:'poi',stylers:[{visibility:'off'}]},
-      {featureType:'transit',stylers:[{visibility:'off'}]}
-    ],
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: true
-  });
-
-  // Coordenadas baseadas no centro real de Lauro de Freitas (-12.8936, -38.3174)
-  const bairrosGratis = [
-    {nome:'Pitangueiras', lat:-12.8750, lng:-38.3050, frete:'Grátis'},
-    {nome:'Vilas do Atlântico', lat:-12.8650, lng:-38.2950, frete:'Grátis'},
-    {nome:'Morada do Sol', lat:-12.8850, lng:-38.3200, frete:'Grátis'},
-    {nome:'Buraquinho', lat:-12.8950, lng:-38.3100, frete:'Grátis'},
-    {nome:'Vila Praiana', lat:-12.8700, lng:-38.2900, frete:'Grátis'},
-    {nome:'Ipitanga', lat:-12.9100, lng:-38.3300, frete:'Grátis'},
-    {nome:'Residencial Buena Vista', lat:-12.8900, lng:-38.3250, frete:'Grátis'},
-    {nome:'Portão do Sol', lat:-12.8800, lng:-38.3150, frete:'Grátis'},
-    {nome:'Loteamento Miragem', lat:-12.8720, lng:-38.3080, frete:'Grátis'},
-    {nome:'Parque Jockey Clube', lat:-12.9000, lng:-38.3100, frete:'Grátis'},
-  ];
-
-  const bairrosPago = [
-    {nome:'Stella Maris', lat:-12.8400, lng:-38.2700, frete:'R$ 4,99'},
-    {nome:'Praia do Flamengo', lat:-12.8550, lng:-38.2800, frete:'R$ 4,99'},
-    {nome:'Praia de Itapinga', lat:-12.8650, lng:-38.2900, frete:'R$ 4,99'},
-    {nome:'Alphaville de Abrantes', lat:-12.8300, lng:-38.3400, frete:'R$ 6,99'},
-  ];
-
-  const infoWindow = new google.maps.InfoWindow();
-
-  // O frete do balão vem do cadastro real de bairros (as coordenadas acima
-  // são só a posição no mapa) — mesma regra do checkout.
-  function rotuloFreteMapa(b) {
-    const cadastrado = bairrosData.find(x => x.nome.toLowerCase() === b.nome.toLowerCase());
-    if (!cadastrado) return 'consulte pelo WhatsApp';
-    const zona = Number(cadastrado.frete) > 0 ? Number(cadastrado.frete) : fretePadrao;
-    return `${brl(zona)} · grátis acima de ${brl(freteGratisMinimo)}`;
-  }
-
-  function addMarker(b, color) {
-    const marker = new google.maps.Marker({
-      position: {lat: b.lat, lng: b.lng},
-      map: map,
-      title: b.nome,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 10,
-        fillColor: color,
-        fillOpacity: 0.9,
-        strokeColor: '#fff',
-        strokeWeight: 2
-      }
-    });
-    marker.addListener('click', () => {
-      infoWindow.setContent(`<div class="map-info"><strong>${b.nome}</strong><span>Frete: ${rotuloFreteMapa(b)}</span></div>`);
-      infoWindow.open(map, marker);
-    });
-  }
-
-  bairrosGratis.forEach(b => addMarker(b, '#4ade80'));
-  bairrosPago.forEach(b => addMarker(b, '#facc15'));
-}
-
 // AVALIACOES
 let avalSelecionada = 0;
 
@@ -2183,23 +2094,6 @@ function toast(msg) {
 }
 </script>
 <script>
-// Carrega a API do Google Maps só quando a seção "Área de Entrega" estiver perto
-// da tela, em vez de em todo carregamento — a maioria das visitas nunca rola até
-// lá, e a API inteira do Maps é um script pesado para baixar/parsear à toa.
-(() => {
-  const secaoMapa = document.getElementById('entrega');
-  if (!secaoMapa) return;
-  const obs = new IntersectionObserver((entries) => {
-    if (!entries.some(e => e.isIntersecting)) return;
-    obs.disconnect();
-    const s = document.createElement('script');
-    s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyCfFbckWc7fVyOHtOSvMHbMbn5mjZns29M&callback=initMap&loading=async';
-    s.async = true;
-    document.body.appendChild(s);
-  }, { rootMargin: '400px' });
-  obs.observe(secaoMapa);
-})();
-
 // Registra view_promotion quando o banner do cupom em destaque aparece na tela
 (() => {
   const banner = document.getElementById('cupom-banner');
