@@ -1045,8 +1045,13 @@ function logout() {
   location.reload();
 }
 
-// Verificar auth ao carregar
-checkAuth();
+// Verificar auth ao carregar — só depois que o script inteiro terminou de
+// carregar. Com sessão válida, checkAuth() chama entrarApp() na hora, e
+// entrarApp() usa variáveis declaradas mais abaixo neste arquivo (ex:
+// _monitorPedidosTimer): rodar antes disso dava "Cannot access
+// '_monitorPedidosTimer' before initialization" e o aviso de pedido novo
+// nunca agendava a checagem a cada 30s depois de recarregar a página.
+setTimeout(checkAuth, 0);
 
 // A cada 30 minutos: encerra a sessão após 7 dias, ou renova o token
 // automaticamente quando estiver a menos de 1h de expirar.
