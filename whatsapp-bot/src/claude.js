@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { mascararSegredos } from './segredos.js';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -30,7 +31,7 @@ async function callMessagesApi(systemPrompt, messages, tools, toolChoice) {
 
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Claude API respondeu ${r.status}: ${errBody}`);
+    throw new Error(`Claude API respondeu ${r.status}: ${mascararSegredos(errBody)}`);
   }
   return r.json();
 }

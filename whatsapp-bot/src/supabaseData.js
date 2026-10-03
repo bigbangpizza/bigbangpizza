@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { mascararSegredos } from './segredos.js';
 import { config } from './config.js';
 
 // Mesmo padrão de acesso usado no site (index.html/admin.html): REST direta
@@ -84,7 +85,7 @@ export async function calcularCheckout({ itensJson, bairro, cupom, whatsapp, ret
     headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({ p_itens: itensJson, p_bairro: bairro, p_cupom: cupom || null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada), p_ignorar_pedido: ignorarPedidoId }),
   });
-  if (!r.ok) throw new Error(`Falha ao calcular checkout (${r.status}): ${await r.text().catch(() => '')}`);
+  if (!r.ok) throw new Error(`Falha ao calcular checkout (${r.status}): ${mascararSegredos(await r.text().catch(() => ''))}`);
   return r.json();
 }
 
@@ -125,7 +126,7 @@ export async function inserirPedido(pedido) {
   });
   if (!rInsert.ok) {
     const errBody = await rInsert.text().catch(() => '');
-    throw new Error(`Falha ao registrar pedido no Supabase (${rInsert.status}): ${errBody}`);
+    throw new Error(`Falha ao registrar pedido no Supabase (${rInsert.status}): ${mascararSegredos(errBody)}`);
   }
 
   const rBusca = await fetch(`${config.supabase.url}/rest/v1/rpc/rastrear_pedido`, {

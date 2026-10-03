@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { pareceChave } from './segredos.js';
 
 function required(name) {
   const value = process.env[name];
@@ -6,6 +7,21 @@ function required(name) {
     throw new Error(`Variável de ambiente obrigatória ausente: ${name} (veja .env.example)`);
   }
   return value;
+}
+
+const MODELO_WHISPER_PADRAO = 'whisper-large-v3-turbo';
+
+// GROQ_WHISPER_MODEL é o NOME do modelo de transcrição. Se vier com cara de
+// chave de API (já aconteceu de a chave ser colada aqui por engano), ignora
+// e usa o padrão — mandar a chave como "model" faz o Groq recusar (404) e
+// devolver a chave no texto do erro.
+function modeloWhisper(valor) {
+  if (!valor) return MODELO_WHISPER_PADRAO;
+  if (pareceChave(valor)) {
+    console.warn(`[config] GROQ_WHISPER_MODEL parece uma chave de API, não um nome de modelo — ignorando e usando "${MODELO_WHISPER_PADRAO}". Coloque a chave em GROQ_API_KEY.`);
+    return MODELO_WHISPER_PADRAO;
+  }
+  return valor.trim();
 }
 
 export const config = {
@@ -25,7 +41,7 @@ export const config = {
 
   groq: {
     apiKey: process.env.GROQ_API_KEY || '',
-    model: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo',
+    model: modeloWhisper(process.env.GROQ_WHISPER_MODEL),
   },
 
   supabase: {

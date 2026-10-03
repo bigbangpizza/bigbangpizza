@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { mascararSegredos } from './segredos.js';
 
 const GROQ_TRANSCRIPTIONS_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
@@ -33,7 +34,7 @@ export async function transcreverAudio(audioBuffer, mimetype = 'audio/ogg') {
 
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Groq Whisper API respondeu ${r.status}: ${errBody}`);
+    throw new Error(`Groq Whisper API respondeu ${r.status}: ${mascararSegredos(errBody)}`);
   }
 
   const data = await r.json();

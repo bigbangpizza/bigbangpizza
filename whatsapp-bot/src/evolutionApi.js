@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { mascararSegredos } from './segredos.js';
 import { registrarEnvioBot, registrarIdEnviado } from './atendimentoHumanoUtil.js';
 
 function evolutionUrl(path) {
@@ -33,7 +34,7 @@ export async function enviarTexto(number, text) {
   });
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Evolution API (sendText) respondeu ${r.status}: ${errBody}`);
+    throw new Error(`Evolution API (sendText) respondeu ${r.status}: ${mascararSegredos(errBody)}`);
   }
   const data = await r.json();
   // O ID real retornado aqui (key.id) é o MESMO que volta depois no webhook

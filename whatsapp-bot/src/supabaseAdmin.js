@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { mascararSegredos } from './segredos.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // ATENÇÃO: este módulo usa a service_role key do Supabase — uma chave
@@ -53,7 +54,7 @@ export async function selectComoAdmin(table, query = '') {
       const r = await fetch(url, { headers: headers() });
       if (r.ok) return r.json();
       const errBody = await r.text().catch(() => '');
-      ultimoErro = new Error(`Falha ao ler ${table} (service_role) (${r.status}): ${errBody}`);
+      ultimoErro = new Error(`Falha ao ler ${table} (service_role) (${r.status}): ${mascararSegredos(errBody)}`);
     } catch (err) {
       ultimoErro = err;
     }
@@ -74,7 +75,7 @@ export async function inserirComoAdmin(table, row) {
   });
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Falha ao inserir em ${table} (service_role) (${r.status}): ${errBody}`);
+    throw new Error(`Falha ao inserir em ${table} (service_role) (${r.status}): ${mascararSegredos(errBody)}`);
   }
 }
 
@@ -87,7 +88,7 @@ export async function atualizarComoAdmin(table, id, dados) {
   });
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Falha ao atualizar ${table}#${id} (service_role) (${r.status}): ${errBody}`);
+    throw new Error(`Falha ao atualizar ${table}#${id} (service_role) (${r.status}): ${mascararSegredos(errBody)}`);
   }
 }
 
@@ -113,7 +114,7 @@ export async function atualizarComoAdminSeStatus(table, id, statusEsperado, dado
   );
   if (!r.ok) {
     const errBody = await r.text().catch(() => '');
-    throw new Error(`Falha ao atualizar condicionalmente ${table}#${id} (service_role) (${r.status}): ${errBody}`);
+    throw new Error(`Falha ao atualizar condicionalmente ${table}#${id} (service_role) (${r.status}): ${mascararSegredos(errBody)}`);
   }
   return r.json();
 }
