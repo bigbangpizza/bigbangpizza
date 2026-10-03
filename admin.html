@@ -3164,6 +3164,7 @@ async function atualizarResumoPedidoManual(){
     ${c ? (c.valido
       ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)}: −${brl(c.desconto)} (com cupom o frete é cobrado e não há oferta da doce)</div>`
       : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)} não vale: ${esc(c.motivo||'')}</div>`) : ''}
+    ${r.comparacao ? `<div style="background:rgba(250,204,21,.12);color:#facc15;border-radius:7px;padding:8px 10px;font-size:13px;margin-bottom:6px;">⚖️ Cupom e oferta da doce não acumulam: com o cupom fica <strong>${brl(r.comparacao.total_com_cupom)}</strong>; com a doce em oferta (sem cupom) fica <strong>${brl(r.comparacao.total_com_oferta)}</strong>. ${r.comparacao.mais_barato==='oferta' ? `A oferta sai ${brl(r.comparacao.diferenca)} mais barata — avise o cliente (pra usar a oferta, apague o cupom).` : r.comparacao.mais_barato==='cupom' ? 'O cupom é a opção mais barata.' : 'As duas dão o mesmo total.'}</div>` : ''}
     ${doceOferta ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🍫 Oferta aplicada: Doce ${esc(doceOferta.sabores?.[0]?.nome||'')} por ${brl(doceOferta.precoUnitario)} (−${brl(r.oferta_doce.economia)})</div>` : ''}
     <div>Subtotal: <strong>${brl(r.subtotal)}</strong></div>
     ${Number(r.desconto) > 0 ? `<div>Desconto: <strong>−${brl(r.desconto)}</strong></div>` : ''}

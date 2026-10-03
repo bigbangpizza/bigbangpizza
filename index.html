@@ -1638,6 +1638,15 @@ async function finalizarPedido() {
   if (cupomAplicado && checkoutServidor?.resultado?.cupom && !checkoutServidor.resultado.cupom.valido && /WhatsApp/.test(checkoutServidor.resultado.cupom.motivo || '')) {
     alert('Informe seu WhatsApp para usar o cupom ' + cupomAplicado.codigo + ' (ou apague o cupom).'); return;
   }
+  // Nunca enviar com a opção mais cara sem o cliente saber: cupom x oferta da doce.
+  const cmp = cupomValidoAgora() ? checkoutServidor.resultado.comparacao : null;
+  if (cmp && cmp.mais_barato === 'oferta' &&
+      !confirm(`Com o cupom ${cupomAplicado.codigo} o total fica ${brl(cmp.total_com_cupom)}.\nCom a pizza doce em oferta (sem cupom) fica ${brl(cmp.total_com_oferta)} — ${brl(cmp.diferenca)} mais barato.\n\nOK = continuar com o cupom\nCancelar = usar a oferta da doce`)) {
+    usarOfertaEmVezDoCupom();
+    toast('Trocamos para a oferta da doce. Confira o total e envie de novo.');
+    enviandoPedido = false; // libera o próximo clique em "Enviar" (a trava é só contra clique duplo)
+    return;
+  }
   const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'';
   const totais = totaisAtuais(), fr = totais.frete, sub = totais.sub;
   const cupomFinal = cupomValidoAgora() ? cupomAplicado.codigo : null;
@@ -2081,6 +2090,14 @@ async function revalidarCupom() {
     ok.style.display = 'none'; erro.style.display = 'none';
     if (c?.valido) {
       ok.textContent = `✅ Cupom ${c.codigo} aplicado: ${brl(c.desconto)} de desconto. Com cupom, o frete é cobrado${/cupom/.test(resultado.oferta_doce?.motivo || '') ? ' e a pizza doce fica no preço normal' : ''}.`;
+      // Cupom e oferta da doce não acumulam: mostra o total de cada opção e recomenda a mais barata.
+      const cmp = resultado.comparacao;
+      if (cmp) {
+        const recomendacao = cmp.mais_barato === 'oferta'
+          ? `<strong>A oferta da doce sai ${brl(cmp.diferenca)} mais barata.</strong><br><button type="button" class="btn-cupom" style="margin-top:6px;" onclick="usarOfertaEmVezDoCupom()">Usar a oferta da doce (tirar o cupom)</button>`
+          : cmp.mais_barato === 'cupom' ? `<strong>O cupom é a opção mais barata.</strong>` : `As duas opções dão o mesmo total.`;
+        ok.innerHTML = `${ok.textContent}<br>Com o cupom fica <strong>${brl(cmp.total_com_cupom)}</strong>; com a pizza doce em oferta (sem cupom) fica <strong>${brl(cmp.total_com_oferta)}</strong>. ${recomendacao}`;
+      }
       ok.style.display = 'block';
     } else if (cupomViaURL && !/WhatsApp/.test(c?.motivo || '')) {
       cupomAplicado = null; cupomViaURL = false; checkoutServidor = null;
@@ -2095,6 +2112,16 @@ async function revalidarCupom() {
     erro.style.display = 'block';
   }
   renderCart(); // cupom válido tira a oferta da pizza doce — o preço das linhas muda
+}
+
+// Cliente escolheu a oferta da pizza doce no lugar do cupom (não acumulam).
+function usarOfertaEmVezDoCupom() {
+  cupomAplicado = null; cupomViaURL = false; checkoutServidor = null;
+  document.getElementById('f-cupom').value = '';
+  document.getElementById('cupom-ok').style.display = 'none';
+  document.getElementById('cupom-erro').style.display = 'none';
+  renderCart();
+  toast('Oferta da pizza doce aplicada 🍫');
 }
 
 async function aplicarCupom() {

@@ -61,6 +61,12 @@ export const CRIAR_PEDIDO_TOOL = {
           'sem desconto e a resposta vem com um aviso pra você repassar ao cliente — nunca deixe de fechar o pedido ' +
           'por causa de um cupom inválido. Omita este campo se o cliente não mencionar nenhum cupom.',
       },
+      cliente_escolheu_cupom_mais_caro: {
+        type: 'boolean',
+        description:
+          'Só quando calcular_total devolveu "comparacao" com a oferta da pizza doce mais barata: true se você mostrou ' +
+          'os dois totais ao cliente e ele, mesmo assim, escolheu usar o cupom. Omita nos outros casos.',
+      },
       itens: {
         type: 'array',
         minItems: 1,
@@ -386,6 +392,19 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       console.error('[orderTool] falha ao calcular checkout:', err);
       return { erro: 'Não consegui calcular o total agora por um problema técnico. Peça pro cliente tentar de novo em instantes.' };
     }
+    // Cupom e oferta da pizza doce não acumulam. Se a oferta sai mais barata, o
+    // pedido só é registrado com o cupom se o cliente viu os dois totais e
+    // escolheu o cupom mesmo assim — nunca a opção mais cara sem ele saber.
+    const cmp = checkout.comparacao;
+    if (cmp && cmp.mais_barato === 'oferta' && !input.cliente_escolheu_cupom_mais_caro) {
+      return {
+        erro:
+          `Não registrei ainda: com o cupom o total fica ${brl(cmp.total_com_cupom)}, e com a pizza doce em oferta (sem cupom) ` +
+          `fica ${brl(cmp.total_com_oferta)} — ${brl(cmp.diferenca)} mais barato. Mostre os dois totais ao cliente e recomende a oferta. ` +
+          'Se ele escolher a oferta, chame criar_pedido de novo SEM o campo cupom. Se ele preferir o cupom mesmo assim, ' +
+          'chame com cliente_escolheu_cupom_mais_caro: true.',
+      };
+    }
     const cupomAplicado = checkout.cupom?.valido ? { codigo: checkout.cupom.codigo } : null;
     const avisoCupom = checkout.cupom && !checkout.cupom.valido ? checkout.cupom.motivo : null;
     const desconto = Number(checkout.desconto) || 0;
@@ -547,6 +566,15 @@ export function criarExecutorCalcularTotal({ numero }) {
       desconto: c.desconto,
       cupom: c.cupom ? { codigo: c.cupom.codigo, valido: c.cupom.valido, motivo: c.cupom.motivo } : null,
       total: c.total,
+      // Cupom x oferta da doce (não acumulam): total de cada opção e qual sai mais barata.
+      comparacao_cupom_x_oferta_doce: c.comparacao
+        ? {
+            total_com_cupom: c.comparacao.total_com_cupom,
+            total_com_oferta_doce_sem_cupom: c.comparacao.total_com_oferta,
+            mais_barato: c.comparacao.mais_barato,
+            diferenca: c.comparacao.diferenca,
+          }
+        : null,
       observacao: 'Não escreva no resumo a linha de quanto falta para o frete grátis — o sistema acrescenta sozinho.',
     };
   };
