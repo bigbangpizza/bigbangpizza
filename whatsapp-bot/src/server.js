@@ -30,7 +30,15 @@ import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
 import { processarAlertaUptime } from './uptimeAlert.js';
 import { ehEcoDoBot, ativarPausaHumana, estaPausadoPorHumano } from './atendimentoHumanoUtil.js';
-import { extrairTokenRastreioDoSite, tratarNotificacaoPedidoDoSite } from './siteOrderNotice.js';
+import {
+  extrairTokenRastreioDoSite,
+  pareceTextoDePedidoDoSite,
+  montarRespostaPedidoDoSite,
+  AVISO_TEXTO_PEDIDO_SITE_NAO_LOCALIZADO,
+  avisoPedidoDoSiteJaConfirmado,
+} from './siteOrderNotice.js';
+import { vincularPedidosDoHistorico } from './pedidoStatusUtil.js';
+import { BUSCAR_PEDIDOS_RECENTES_TOOL, criarExecutorBuscarPedidosRecentes } from './consultarPedidosTool.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -137,7 +145,7 @@ async function processarFila(numero) {
   const blocos = fila.buffer.splice(0, fila.buffer.length);
   const nomeContato = fila.nomeContato;
   try {
-    await processarLote(numero, nomeContato, blocos);
+    await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos));
   } catch (err) {
     console.error(`[webhook] numero=${numero} erro ao processar lote de mensagens:`, err);
   } finally {
@@ -254,10 +262,16 @@ async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, 
       // bug real que isso corrige, confirmado em produção no pedido #230).
       // Checado ANTES de extrairConteudoMensagem: é sempre texto puro, não
       // precisa do processamento de áudio/imagem.
+      // Também reconhece o texto do pedido colado sem o link/sem emojis
+      // (pedido #273). A mensagem e a resposta entram no histórico — a
+      // Luiza precisa saber do pedido quando o cliente falar dele depois.
       const textoPlano = mensagem.conversation || mensagem.extendedTextMessage?.text || '';
       const tokenSite = extrairTokenRastreioDoSite(textoPlano);
-      if (tokenSite) {
-        await tratarNotificacaoPedidoDoSite(numero, tokenSite);
+      if (tokenSite || pareceTextoDePedidoDoSite(textoPlano)) {
+        const resultado = await comTravaHistorico(numero, () => responderPedidoDoSite(numero, textoPlano, tokenSite));
+        if (resultado.respondido) return;
+        const aviso = resultado.pedidoJaConfirmado ? avisoPedidoDoSiteJaConfirmado(resultado.pedidoJaConfirmado) : AVISO_TEXTO_PEDIDO_SITE_NAO_LOCALIZADO;
+        enfileirarMensagem(numero, nomeContato, [textBlock(textoPlano), textBlock(aviso)]);
         return;
       }
 
@@ -280,6 +294,42 @@ async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, 
 
   filaExtracaoPorNumero.set(numero, atual);
   await atual;
+}
+
+// Leitura e gravação do histórico de um número nunca se cruzam: a resposta
+// ao pedido do site e o turno da Luiza (processarLote) carregam, alteram e
+// gravam o histórico inteiro — se rodassem juntos, um apagaria o outro.
+const travaHistoricoPorNumero = new Map(); // numero -> Promise
+function comTravaHistorico(numero, fn) {
+  const anterior = travaHistoricoPorNumero.get(numero) || Promise.resolve();
+  const atual = anterior.catch(() => {}).then(fn);
+  travaHistoricoPorNumero.set(numero, atual);
+  atual.finally(() => {
+    if (travaHistoricoPorNumero.get(numero) === atual) travaHistoricoPorNumero.delete(numero);
+  }).catch(() => {});
+  return atual;
+}
+
+/**
+ * Responde a mensagem de pedido do site e grava as duas mensagens no
+ * histórico da conversa. Sem resposta automática (pedido não localizado, ou
+ * já confirmado antes nesta conversa), a mensagem segue pra Luiza.
+ * @returns {Promise<{respondido:boolean, pedidoJaConfirmado?:number}>}
+ */
+async function responderPedidoDoSite(numero, texto, token) {
+  const historico = await carregarHistorico(numero);
+  vincularPedidosDoHistorico(numero, historico); // "já confirmado" vale mesmo depois de um restart
+  const resposta = await montarRespostaPedidoDoSite(numero, texto, token);
+  if (!resposta) return { respondido: false };
+  if (resposta.jaConfirmado) return { respondido: false, pedidoJaConfirmado: resposta.pedido.id };
+  // Primeira mensagem da conversa: a Luiza se apresenta (regra de identidade).
+  const textoResposta = historico.length === 0 ? `${APRESENTACAO_LUIZA} ${resposta.texto}` : resposta.texto;
+  historico.push({ role: 'user', content: [textBlock(texto)] });
+  historico.push({ role: 'assistant', content: [textBlock(textoResposta)] });
+  aplicarLimiteHistorico(historico);
+  await persistirHistorico(numero, historico);
+  await enviarRespostaHumanizada(numero, textoResposta);
+  return { respondido: true };
 }
 
 /**
@@ -316,6 +366,8 @@ const MENSAGEM_LOJA_FECHADA =
  */
 async function processarLote(numero, nomeContato, userContent) {
   const historico = await carregarHistorico(numero);
+  // Pedidos do site confirmados nesta conversa contam como do cliente (mesmo sem o telefone dele no pedido).
+  vincularPedidosDoHistorico(numero, historico);
   // Precisa ser lido ANTES do push abaixo — sinaliza pro system prompt que é
   // a primeira mensagem de uma conversa nova (sem histórico recente), gatilho
   // pra consulta de reconhecimento de cliente recorrente (ver
@@ -347,7 +399,7 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL];
   const toolExecutors = {
     criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
@@ -355,6 +407,7 @@ async function processarLote(numero, nomeContato, userContent) {
     chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),
     verificar_bairro: criarExecutorVerificarBairro(),
     calcular_total: criarExecutorCalcularTotal({ numero }),
+    buscar_pedidos_recentes: criarExecutorBuscarPedidosRecentes({ numero }),
   };
 
   ultimoResumoPorNumero.delete(numero);

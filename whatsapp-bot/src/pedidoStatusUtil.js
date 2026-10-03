@@ -15,6 +15,44 @@ export const JANELA_BUSCA_PEDIDO_HORAS = 12;
 
 const CAMPOS_BASE = 'id,status,created_at,whatsapp';
 
+// Pedidos do site ligados a esta conversa pela mensagem automática do
+// checkout (siteOrderNotice.js). O telefone no site é opcional (e pode ser
+// digitado diferente do WhatsApp que manda a mensagem), então só comparar
+// `pedidos.whatsapp` não acha esses pedidos — bug real do pedido #273: o
+// cliente disse "já pedi" e a Luiza respondeu que não havia registro.
+// A fonte da verdade é o próprio histórico da conversa (Redis, 24h): a
+// confirmação "Recebi seu pedido #ID" é escrita pelo código, nunca pelo
+// modelo — ver vincularPedidosDoHistorico.
+const pedidosVinculadosPorNumero = new Map(); // numero normalizado -> Set(id)
+const REGEX_CONFIRMACAO_PEDIDO_SITE = /Recebi seu pedido #(\d+)/g;
+
+export function vincularPedidoAoNumero(numero, id) {
+  const n = normalizarWhatsapp(numero);
+  if (!n || !id) return;
+  if (!pedidosVinculadosPorNumero.has(n)) pedidosVinculadosPorNumero.set(n, new Set());
+  pedidosVinculadosPorNumero.get(n).add(Number(id));
+}
+
+export function pedidoJaVinculado(numero, id) {
+  return !!pedidosVinculadosPorNumero.get(normalizarWhatsapp(numero))?.has(Number(id));
+}
+
+/** Refaz o vínculo a partir das confirmações do bot gravadas no histórico (sobrevive a restart). */
+export function vincularPedidosDoHistorico(numero, historico) {
+  for (const m of historico || []) {
+    if (m.role !== 'assistant') continue;
+    const blocos = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }];
+    for (const b of blocos) {
+      if (b.type !== 'text') continue;
+      for (const [, id] of String(b.text).matchAll(REGEX_CONFIRMACAO_PEDIDO_SITE)) vincularPedidoAoNumero(numero, id);
+    }
+  }
+}
+
+function pedidoEhDoCliente(p, numeroNormalizado) {
+  return normalizarWhatsapp(p.whatsapp) === numeroNormalizado || !!pedidosVinculadosPorNumero.get(numeroNormalizado)?.has(Number(p.id));
+}
+
 /**
  * Busca o pedido mais recente do cliente dentro da janela de busca.
  * Compara telefones normalizados (não `eq.` direto) porque `pedidos.whatsapp`
@@ -34,9 +72,9 @@ export async function buscarPedidoRecenteDoCliente(numero, camposExtras = '') {
   const limite = new Date(Date.now() - JANELA_BUSCA_PEDIDO_HORAS * 3600000).toISOString();
   const pedidos = await selectComoAdmin(
     'pedidos',
-    `select=${select}&whatsapp=not.is.null&created_at=gte.${limite}&order=created_at.desc`
+    `select=${select}&created_at=gte.${limite}&order=created_at.desc`
   );
-  return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
+  return pedidos.find((p) => pedidoEhDoCliente(p, numeroNormalizado)) || null;
 }
 
 // Mesmos aliases legados tratados no kanban do admin (admin.html:
@@ -60,9 +98,9 @@ export async function buscarPedidoAbertoRecente(numero, janelaMinutos, camposExt
   const limite = new Date(Date.now() - janelaMinutos * 60000).toISOString();
   const pedidos = await selectComoAdmin(
     'pedidos',
-    `select=${select}&whatsapp=not.is.null&status=in.(${STATUS_EM_ABERTO.join(',')})&created_at=gte.${limite}&order=created_at.desc`
+    `select=${select}&status=in.(${STATUS_EM_ABERTO.join(',')})&created_at=gte.${limite}&order=created_at.desc`
   );
-  return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
+  return pedidos.find((p) => pedidoEhDoCliente(p, numeroNormalizado)) || null;
 }
 
 // Diferente de STATUS_EM_ABERTO acima (usado só pro bloqueio técnico de
@@ -95,9 +133,24 @@ export async function buscarPedidoAtivoDoCliente(numero, camposExtras = '') {
   const select = camposExtras ? `${CAMPOS_BASE},${camposExtras}` : CAMPOS_BASE;
   const pedidos = await selectComoAdmin(
     'pedidos',
-    `select=${select}&whatsapp=not.is.null&status=in.(${STATUS_PEDIDO_ATIVO.join(',')})&order=created_at.desc`
+    `select=${select}&status=in.(${STATUS_PEDIDO_ATIVO.join(',')})&order=created_at.desc`
   );
-  return pedidos.find((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado) || null;
+  return pedidos.find((p) => pedidoEhDoCliente(p, numeroNormalizado)) || null;
+}
+
+/**
+ * Todos os pedidos do cliente nas últimas `horas` (telefone ou vínculo pela
+ * mensagem do site), mais recente primeiro — usado pela ferramenta
+ * buscar_pedidos_recentes, que a Luiza chama sempre que o cliente fala de um
+ * pedido já feito.
+ */
+export async function buscarPedidosRecentesDoCliente(numero, horas = JANELA_BUSCA_PEDIDO_HORAS, camposExtras = '') {
+  const numeroNormalizado = normalizarWhatsapp(numero);
+  if (!numeroNormalizado) return [];
+  const select = camposExtras ? `${CAMPOS_BASE},${camposExtras}` : CAMPOS_BASE;
+  const limite = new Date(Date.now() - horas * 3600000).toISOString();
+  const pedidos = await selectComoAdmin('pedidos', `select=${select}&created_at=gte.${limite}&order=created_at.desc`);
+  return pedidos.filter((p) => pedidoEhDoCliente(p, numeroNormalizado));
 }
 
 /**
