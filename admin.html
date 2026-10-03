@@ -719,6 +719,17 @@ input:checked+.sl::before{transform:translateX(20px);}
         </div>
         <button class="btn-new" onclick="salvarBotFreteCupons()">💾 Salvar Frete e Cupons</button>
       </div>
+
+      <!-- SEÇÃO 6: OFERTA PIZZA DOCE -->
+      <div class="tw" style="padding:20px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🍫 Oferta da pizza doce</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Uma pizza doce por pedido a preço fixo, para quem leva pizza salgada Grande ou Família (fora de combo). Não vale junto com cupom. Vale no site, no bot e na validação do servidor.</p>
+        <div class="fr">
+          <div class="fg"><label>Oferta</label><select id="bot-oferta-doce-ativa"><option value="true">Ligada</option><option value="false">Desligada</option></select></div>
+          <div class="fg"><label>Preço da pizza doce na oferta (R$)</label><input type="number" id="bot-oferta-doce-preco" min="0" step="0.01" placeholder="39.90"></div>
+        </div>
+        <button class="btn-new" onclick="salvarBotOfertaDoce()">💾 Salvar Oferta</button>
+      </div>
     </div>
 
     <div id="pg-automacao" class="hidden">
@@ -3534,6 +3545,8 @@ async function loadConfigBot(){
 
   document.getElementById('bot-frete-gratis-minimo').value = cfg.frete_gratis_minimo || 65;
   document.getElementById('bot-frete-padrao').value = cfg.frete_padrao || 4.99;
+  document.getElementById('bot-oferta-doce-ativa').value = ['true','1','sim'].includes(String(cfg.oferta_doce_ativa||'').toLowerCase()) ? 'true' : 'false';
+  document.getElementById('bot-oferta-doce-preco').value = cfg.oferta_doce_preco || 39.90;
   await carregarCuponsDeRegra(cfg);
 }
 
@@ -3552,6 +3565,14 @@ async function carregarCuponsDeRegra(cfg){
   document.getElementById('bot-minimo-reativacao').value = reat?.pedido_minimo ?? '';
   document.getElementById('bot-teto-primeiro-pedido').disabled = !primeiro;
   document.getElementById('bot-minimo-reativacao').disabled = !reat;
+}
+
+async function salvarBotOfertaDoce(){
+  const ativa = document.getElementById('bot-oferta-doce-ativa').value === 'true';
+  const preco = parseFloat(document.getElementById('bot-oferta-doce-preco').value);
+  if (!(preco >= 0)) { alert('Informe um preço válido (0 ou mais) para a oferta!'); return; }
+  const ok = await salvarConfigs({ oferta_doce_ativa: ativa ? 'true' : 'false', oferta_doce_preco: preco });
+  showToastAdmin(ok ? `✅ Oferta da pizza doce ${ativa ? 'ligada' : 'desligada'}!` : '⚠️ Erro ao salvar.');
 }
 
 async function salvarBotFreteCupons(){
@@ -4057,7 +4078,52 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
     </tr>`).join('')}
     </tbody></table>`:'<div class="loading">Nenhum pedido nesse dia.</div>'}</div>`
     :`<div style="font-size:12px;color:rgba(255,255,255,.35);">Selecione "Hoje", "Ontem" ou uma data específica (calendário acima) pra ver a lista detalhada de pedidos.</div>`}
+    <div id="rel-oferta-doce" style="margin-top:16px;"></div>
   `;
+  carregarRelatorioOfertaDoce();
+}
+
+// Oferta "pizza doce por preço fixo": doces vendidas com a oferta por semana
+// (segunda a domingo, horário da Bahia), nas últimas 8 semanas — independe do
+// período escolhido acima. Conta só pedidos entregues; a oferta vem marcada
+// no item (oferta_doce) pelo servidor.
+async function carregarRelatorioOfertaDoce(){
+  const el = document.getElementById('rel-oferta-doce');
+  if (!el) return;
+  const hojeISO = hojeBahiaISO();
+  const hoje = new Date(hojeISO + 'T12:00:00Z');
+  const diasDesdeSegunda = (hoje.getUTCDay() + 6) % 7;
+  const segundaAtual = new Date(hoje); segundaAtual.setUTCDate(hoje.getUTCDate() - diasDesdeSegunda);
+  const semanas = [];
+  for (let k = 7; k >= 0; k--) { const d = new Date(segundaAtual); d.setUTCDate(segundaAtual.getUTCDate() - 7*k); semanas.push(d.toISOString().slice(0,10)); }
+  const inicio = limitesDiaBahiaUTC(semanas[0]).inicio;
+  const [pedidos, doces] = await Promise.all([
+    api('pedidos', `status=eq.entregue&created_at=gte.${inicio.toISOString()}&select=created_at,itens_json`, 'created_at.asc'),
+    api('pizzas_doces', 'select=nome'),
+  ]);
+  const nomesDoces = new Set(doces.map(d => d.nome.toLowerCase()));
+  const porSemana = Object.fromEntries(semanas.map(s => [s, { comOferta: 0, doces: 0, pedidosComOferta: 0 }]));
+  for (const p of pedidos) {
+    const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bahia' }).format(parseUTC(p.created_at) || new Date());
+    const semana = [...semanas].reverse().find(s => dia >= s);
+    if (!semana) continue;
+    let teveOferta = false;
+    for (const i of (p.itens_json || [])) {
+      const ehDoce = !i.tamanho && nomesDoces.has(String(i.sabores?.[0]?.nome || '').toLowerCase());
+      if (!ehDoce) continue;
+      const qty = i.qty || 1;
+      porSemana[semana].doces += qty;
+      if (i.oferta_doce) { porSemana[semana].comOferta += qty; teveOferta = true; }
+    }
+    if (teveOferta) porSemana[semana].pedidosComOferta++;
+  }
+  const fmt = s => s.split('-').reverse().slice(0,2).join('/');
+  el.innerHTML = `<div class="tw"><div class="tw-head"><h3>🍫 Oferta da pizza doce — por semana</h3></div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4);margin:0 0 10px;">Últimas 8 semanas (segunda a domingo), só pedidos entregues — não muda com o período escolhido acima.</div>
+    <table><thead><tr><th>Semana</th><th>Doces com oferta</th><th>Pedidos com oferta</th><th>Doces no total</th></tr></thead><tbody>
+    ${[...semanas].reverse().map(s => { const fim = new Date(s + 'T12:00:00Z'); fim.setUTCDate(fim.getUTCDate() + 6); const r = porSemana[s];
+      return `<tr><td data-label="Semana">${fmt(s)} a ${fmt(fim.toISOString().slice(0,10))}</td><td data-label="Doces com oferta"><strong>${r.comOferta}</strong></td><td data-label="Pedidos com oferta">${r.pedidosComOferta}</td><td data-label="Doces no total">${r.doces}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
 }
 
 // ═══════════════════════════════════════════════════════

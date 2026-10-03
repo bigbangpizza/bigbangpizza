@@ -80,7 +80,7 @@ export async function getMenuData({ forceRefresh = false } = {}) {
  *   cupom: null | {codigo:string, valido:boolean, motivo:string|null, desconto:number}}>}
  */
 export async function calcularCheckout({ itensJson, bairro, cupom, whatsapp, retirada, ignorarPedidoId = null }) {
-  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/calcular_checkout`, {
+  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/calcular_checkout_v2`, {
     method: 'POST',
     headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({ p_itens: itensJson, p_bairro: bairro, p_cupom: cupom || null, p_whatsapp: whatsapp || null, p_retirada: Boolean(retirada), p_ignorar_pedido: ignorarPedidoId }),

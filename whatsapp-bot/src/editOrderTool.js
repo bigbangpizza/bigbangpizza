@@ -224,6 +224,8 @@ export function criarExecutorEditarPedido({ numero }) {
     patch.frete = freteFinal;
     patch.desconto = desconto;
     patch.total = totalFinal;
+    // Itens como o servidor normalizou (preço da doce do cardápio, oferta da pizza doce marcada).
+    patch.itens_json = checkout.itens;
 
     let linhasAfetadas;
     try {

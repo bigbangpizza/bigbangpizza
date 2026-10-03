@@ -402,8 +402,8 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       status: 'aguardando',
       cupom: cupomAplicado ? cupomAplicado.codigo : null,
       itens: itensTexto,
-      itens_json: itensJson,
-      subtotal,
+      itens_json: checkout.itens, // normalizados pelo servidor (oferta da pizza doce marcada)
+      subtotal: Number(checkout.subtotal),
       desconto,
       frete,
       total,
@@ -433,7 +433,8 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       pedido_id: pedidoId,
       link_rastreio: rastreioToken ? `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}` : null,
       itens: itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`),
-      subtotal,
+      subtotal: Number(checkout.subtotal),
+      oferta_pizza_doce: checkout.oferta_doce?.aplicada ? { preco: checkout.oferta_doce.preco, economia: checkout.oferta_doce.economia } : null,
       cupom_aplicado: cupomAplicado ? { codigo: cupomAplicado.codigo, desconto } : null,
       aviso_cupom: avisoCupom,
       frete,
@@ -494,8 +495,11 @@ export function criarExecutorCalcularTotal({ numero }) {
     const falta = Number(c.falta_para_frete_gratis) || 0;
     ultimoResumoPorNumero.set(numero, { linhaFreteGratis: falta > 0 ? `Faltam ${brl(falta)} para frete grátis.` : null });
     return {
-      itens: itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`),
+      itens: linhasDosItens(c.itens),
       subtotal: c.subtotal,
+      oferta_pizza_doce: c.oferta_doce?.aplicada
+        ? { aplicada: true, preco: c.oferta_doce.preco, economia: c.oferta_doce.economia }
+        : { aplicada: false, motivo: c.oferta_doce?.motivo || null },
       frete: c.frete,
       frete_gratis: c.frete === 0 && !input.retirada,
       desconto: c.desconto,
@@ -504,6 +508,14 @@ export function criarExecutorCalcularTotal({ numero }) {
       observacao: 'Não escreva no resumo a linha de quanto falta para o frete grátis — o sistema acrescenta sozinho.',
     };
   };
+}
+
+function linhasDosItens(itensNormalizados) {
+  return (itensNormalizados || []).map((i) => {
+    const nome = i.sabores?.length === 2 ? `½ ${i.sabores[0].nome} + ½ ${i.sabores[1].nome}` : i.sabores?.[0]?.nome;
+    const tam = i.tamanho ? `${i.tamanho} ` : '';
+    return `${i.qty}x ${tam}${nome} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
+  });
 }
 
 /**

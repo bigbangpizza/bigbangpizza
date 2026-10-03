@@ -747,6 +747,10 @@ let cart = [], bairrosData = [];
 const BAIRRO_OUTRO = 'outro'; // valor da opção "Meu bairro não está na lista" no checkout
 // Frete (Configurações do Bot no admin) — mesmos padrões da função calcular_checkout do servidor.
 let freteGratisMinimo = 65, fretePadrao = 4.99;
+// Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesma regra da função calcular_checkout_v2.
+let ofertaDoceAtiva = false, ofertaDocePreco = 39.90;
+let ofertaDoceRecusada = false; // cliente clicou "Agora não" no aviso da oferta (vale pra sessão)
+try { ofertaDoceRecusada = sessionStorage.getItem('ofertaDoceRecusada') === '1'; } catch(e) {}
 let modalState = null;
 let WPP_NUMBER = '5571993738823';
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
@@ -1241,6 +1245,8 @@ async function aplicarConfigsVisuais() {
   if (cfg.borda_preco_doce != null && cfg.borda_preco_doce !== '') bordaPrecoDoce = parseFloat(cfg.borda_preco_doce);
   if (Number.isFinite(parseFloat(cfg.frete_gratis_minimo))) freteGratisMinimo = parseFloat(cfg.frete_gratis_minimo);
   if (Number.isFinite(parseFloat(cfg.frete_padrao))) fretePadrao = parseFloat(cfg.frete_padrao);
+  ofertaDoceAtiva = ['true','1','sim'].includes(String(cfg.oferta_doce_ativa||'').toLowerCase());
+  if (Number.isFinite(parseFloat(cfg.oferta_doce_preco))) ofertaDocePreco = parseFloat(cfg.oferta_doce_preco);
 
   loadHeroPhoto(cfg.hero_foto || null);
 }
@@ -1278,7 +1284,12 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
       .filter(p => p[campoPreco] != null)
       .map(p => ({ id: p.id, nome: p.nome, preco: p[campoPreco] }));
   } else {
-    sabores = docesCache.map(p => ({ id: p.id, nome: p.nome, preco: p.preco }));
+    // Com a oferta valendo pra esta doce (é a primeira do carrinho, ou é a que
+    // já está com a oferta), a lista mostra o preço da oferta. O carrinho guarda
+    // sempre o preço normal; o desconto é aplicado nos totais.
+    const docesNoCarrinho = cart.filter(ehPizzaDoce);
+    const ofertaVale = ofertaDoceElegivel() && (docesNoCarrinho.length === 0 || (editItem && ofertaDoceAtual()?.id === editItem.id));
+    sabores = docesCache.map(p => ({ id: p.id, nome: p.nome, preco: p.preco, ...(ofertaVale && p.preco > ofertaDocePreco ? { precoExibido: ofertaDocePreco } : {}) }));
   }
 
   const permiteMeio = tipoItem === 'pizza_salgada' && sabores.length >= 2;
@@ -1340,7 +1351,7 @@ function setModoSabor(modo) {
 function renderPainelUnico() {
   document.getElementById('sabor-grid-unico').innerHTML = modalState.sabores.map(s => `
     <button type="button" class="sabor-opt ${modalState.sabor1 && modalState.sabor1.id === s.id ? 'active' : ''}" onclick="selecionarSaborUnico(${s.id})">
-      ${s.nome} <span>${brl(s.preco)}</span>
+      ${s.nome} <span>${brl(s.precoExibido ?? s.preco)}</span>
     </button>`).join('');
 }
 
@@ -1384,7 +1395,7 @@ function atualizarResumo() {
   if (modalState.modo === 'unico') {
     if (!modalState.sabor1) { btn.disabled = true; resumo.textContent = ''; return; }
     btn.disabled = false;
-    resumo.textContent = brl(modalState.sabor1.preco + precoBorda);
+    resumo.textContent = brl((modalState.sabor1.precoExibido ?? modalState.sabor1.preco) + precoBorda);
   } else {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
     if (!s1 || !s2) { btn.disabled = true; resumo.textContent = ''; return; }
@@ -1471,7 +1482,9 @@ function renderUpsell() {
 
   const nomesNoCarrinho = new Set(cart.map(i => i.nomeExibicao));
   const temBebida = cart.some(i => bebidasCache.some(b => b.nome === i.nomeExibicao));
-  const temDoce = cart.some(i => i.nomeExibicao.startsWith('Doce '));
+  const temDoce = cart.some(i => ehPizzaDoce(i) || i.nomeExibicao.startsWith('Doce '));
+  // Oferta da pizza doce: aparece até o cliente escolher uma doce ou clicar "Agora não".
+  const mostrarOfertaDoce = !temDoce && !ofertaDoceRecusada && ofertaDoceElegivel() && docesCache.some(d => d.preco > ofertaDocePreco);
 
   let sugestoes = [];
   if (!temBebida) {
@@ -1479,17 +1492,31 @@ function renderUpsell() {
       .filter(b => UPSELL_BEBIDAS.includes(b.nome) && !nomesNoCarrinho.has(b.nome))
       .map(b => ({ addNome: b.nome, nome: b.nome, preco: b.preco, foto: b.foto_url })));
   }
-  if (!temDoce) {
+  if (!temDoce && !mostrarOfertaDoce) {
+    // Doce abre a escolha de sabor (e borda), igual ao cardápio — mesmo formato de item do servidor.
     sugestoes.push(...docesCache
       .filter(d => !nomesNoCarrinho.has('Doce ' + d.nome))
       .slice(0, 2)
-      .map(d => ({ addNome: 'Doce ' + d.nome, nome: d.nome, preco: d.preco, foto: d.foto_url })));
+      .map(d => ({ doceId: d.id, nome: d.nome, preco: d.preco, foto: d.foto_url })));
   }
 
-  if (!sugestoes.length) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
+  const cardOferta = mostrarOfertaDoce ? `
+    <div class="upsell-card" style="grid-column:1/-1;border:2px solid var(--green);">
+      <div class="upsell-emoji">🍫</div>
+      <div class="upsell-info">
+        <div class="upsell-name">Leve uma pizza doce por ${brl(ofertaDocePreco)}</div>
+        <div style="font-size:12px;color:var(--gray);">Qualquer sabor. Não vale junto com cupom.</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn-upsell-add" onclick="abrirOfertaDoce()">Escolher sabor</button>
+        <button class="btn-upsell-add" style="background:transparent;color:var(--gray);border:1px solid #ccc;" onclick="recusarOfertaDoce()">Agora não</button>
+      </div>
+    </div>` : '';
+
+  if (!sugestoes.length && !cardOferta) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
 
   sec.style.display = '';
-  sec.innerHTML = `
+  sec.innerHTML = `${cardOferta}${sugestoes.length ? `
     <div class="upsell-title">✨ Aproveite e leve também</div>
     <div class="upsell-grid">
       ${sugestoes.map(s => `
@@ -1499,9 +1526,9 @@ function renderUpsell() {
             <div class="upsell-name">${s.nome}</div>
             <div class="upsell-price">${brl(s.preco)}</div>
           </div>
-          <button class="btn-upsell-add" onclick="addItem('${s.addNome.replace(/'/g,"\\'")}',${s.preco})">+ Adicionar</button>
+          <button class="btn-upsell-add" onclick="${s.doceId ? `abrirModalSabor(null,${s.doceId})` : `addItem('${s.addNome.replace(/'/g,"\\'")}',${s.preco})`}">+ Adicionar</button>
         </div>`).join('')}
-    </div>`;
+    </div>` : ''}`;
 }
 function renderCart() {
   const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form'), upsell = document.getElementById('upsell-section');
@@ -1520,7 +1547,7 @@ function renderCart() {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
         <button class="cart-item-del" onclick="removeCartItem('${item.id}')" aria-label="Remover">🗑️</button>
-        <div class="cart-item-price">${brl(item.precoUnitario*item.qty)}</div>
+        <div class="cart-item-price">${brl(precoLinhaCarrinho(item))}${ofertaDoceAtual()?.id === item.id ? '<div style="font-family:Inter,sans-serif;font-size:11px;color:var(--green);font-weight:700;">🍫 oferta</div>' : ''}</div>
       </div>
     </div>`).join('');
   renderUpsell();
@@ -1549,7 +1576,7 @@ async function registrarCarrinhoAbandonado() {
         telefone,
         nome: nome || null,
         itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
-        itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
+        itens_json: itensJsonDoCarrinho(true),
         total
       })
     });
@@ -1569,8 +1596,8 @@ function getFrete() { const v=document.getElementById('f-bairro').value; return 
 // confirmados) — manda o pedido pelo WhatsApp pra equipe confirmar a entrega.
 function enviarPedidoBairroForaDaLista(nome, end, comp, pag) {
   const bairroDigitado = document.getElementById('f-bairro-outro').value.trim();
-  const sub = cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0);
-  const itens = cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
+  const sub = cart.reduce((s,i)=>s+precoLinhaCarrinho(i),0);
+  const itens = cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(precoLinhaCarrinho(i))}${ofertaDoceAtual()?.id === i.id ? ' (oferta pizza doce)' : ''}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
   const msg = `Olá! Quero fazer um pedido, mas meu bairro não está na lista do site. Vocês entregam aqui?\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bairroDigitado || '(não informado)'}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: ${brl(sub)} (frete a confirmar)\n💳 Pagamento: ${pag}`;
   gtag('event', 'bairro_fora_da_lista', {bairro: bairroDigitado});
@@ -1614,7 +1641,7 @@ async function finalizarPedido() {
   const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'';
   const totais = totaisAtuais(), fr = totais.frete, sub = totais.sub;
   const cupomFinal = cupomValidoAgora() ? cupomAplicado.codigo : null;
-  const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(i.precoUnitario*i.qty)}`).join('\n');
+  const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(precoLinhaCarrinho(i))}${ofertaDoceAtual()?.id === i.id ? ' (oferta pizza doce)' : ''}`).join('\n');
   const obsVal = document.getElementById('f-obs').value.trim();
   const desconto = totais.desconto;
   const totalFinal = totais.total;
@@ -1684,7 +1711,7 @@ async function finalizarPedido() {
       status: 'aguardando',
       cupom: cupomFinal,
       itens: cart.map(i=>`${i.qty}x ${i.nomeExibicao}`).join(' | '),
-      itens_json: cart.map(i=>({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null })),
+      itens_json: itensJsonDoCarrinho(true),
       subtotal: sub,
       desconto: desconto,
       frete: fr||0,
@@ -1698,7 +1725,7 @@ async function finalizarPedido() {
   setTimeout(() => {
   const listaEl = document.getElementById('obg-pedido-lista');
   listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
-    cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.nomeExibicao} — ${brl(i.precoUnitario*i.qty)}</div>`).join('');
+    cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.nomeExibicao} — ${brl(precoLinhaCarrinho(i))}</div>`).join('');
   document.getElementById('obg-total-val').textContent = brl(totalFinal);
   document.getElementById('tela-obrigado').classList.add('open');
   closeCart();
@@ -1962,8 +1989,42 @@ let checkoutServidor = null;   // { chave, resultado } da última validação de
 let revalidarCupomTimer = null;
 let cupomViaURL = false;       // cupom veio de ?cupom= — recusa silenciosa (exceto pedir o WhatsApp)
 
-function itensJsonDoCarrinho() {
-  return cart.map(i => ({ tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null }));
+// Itens no formato gravado no pedido. Com `comOferta`, a pizza doce da oferta
+// vira 1 unidade a preço de oferta (marcada com oferta_doce) — o servidor
+// confere e recalcula do mesmo jeito (calcular_checkout_v2).
+function itensJsonDoCarrinho(comOferta = false) {
+  const oferta = comOferta ? ofertaDoceAtual() : null;
+  return cart.flatMap(i => {
+    const base = { tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null };
+    if (!oferta || oferta.id !== i.id) return [base];
+    const comDesconto = { ...base, qty: 1, precoUnitario: +(i.precoUnitario - oferta.economia).toFixed(2), oferta_doce: true };
+    return i.qty > 1 ? [comDesconto, { ...base, qty: i.qty - 1 }] : [comDesconto];
+  });
+}
+
+// OFERTA PIZZA DOCE — 1 doce por pedido a preço fixo, com pizza salgada
+// Grande/Família avulsa no carrinho (combo não conta) e sem cupom válido.
+function ehPizzaDoce(i) { return i.tabela === 'pizzas_doces'; }
+function temSalgadaAvulsa() { return cart.some(i => i.tipo === 'pizza' && ['Grande','Família'].includes(i.tamanho)); }
+function ofertaDoceElegivel() { return ofertaDoceAtiva && temSalgadaAvulsa() && !cupomValidoAgora(); }
+function ofertaDoceAtual() {
+  if (!ofertaDoceElegivel()) return null;
+  const doce = cart.find(ehPizzaDoce);
+  if (!doce) return null;
+  const economia = +((doce.sabores?.[0]?.preco ?? 0) - ofertaDocePreco).toFixed(2);
+  return economia > 0 ? { id: doce.id, economia } : null;
+}
+function precoLinhaCarrinho(i) {
+  const oferta = ofertaDoceAtual();
+  return +(i.precoUnitario * i.qty - (oferta && oferta.id === i.id ? oferta.economia : 0)).toFixed(2);
+}
+function recusarOfertaDoce() {
+  ofertaDoceRecusada = true;
+  try { sessionStorage.setItem('ofertaDoceRecusada', '1'); } catch(e) {}
+  renderUpsell();
+}
+function abrirOfertaDoce() {
+  if (docesCache.length) abrirModalSabor(null, docesCache[0].id);
 }
 function bairroSelecionadoNome() {
   const v = document.getElementById('f-bairro').value;
@@ -1983,10 +2044,11 @@ function cupomValidoAgora() {
 }
 // Totais do estado atual — usado na tela, no carrinho abandonado e no envio do pedido.
 function totaisAtuais() {
-  const sub = +cart.reduce((s,i)=>s+i.precoUnitario*i.qty,0).toFixed(2);
+  let sub = +cart.reduce((s,i)=>s+precoLinhaCarrinho(i),0).toFixed(2);
   const zona = freteDaZona();
   if (cupomValidoAgora()) {
     const r = checkoutServidor.resultado;
+    sub = Number(r.subtotal); // com cupom válido não há oferta — vale o subtotal do servidor
     return { sub, desconto: Number(r.desconto)||0, frete: r.frete === null ? zona : Number(r.frete), total: +(sub - (Number(r.desconto)||0) + (r.frete === null ? (zona||0) : Number(r.frete))).toFixed(2), falta: null, comCupom: true };
   }
   const frete = zona === null ? null : (sub >= freteGratisMinimo ? 0 : zona);
@@ -2006,7 +2068,7 @@ async function revalidarCupom() {
   const chave = chaveCheckout();
   const ok = document.getElementById('cupom-ok'), erro = document.getElementById('cupom-erro');
   try {
-    const r = await fetch(`${SB}/rest/v1/rpc/calcular_checkout`, {
+    const r = await fetch(`${SB}/rest/v1/rpc/calcular_checkout_v2`, {
       method: 'POST',
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
       body: JSON.stringify({ p_itens: itensJsonDoCarrinho(), p_bairro: bairroSelecionadoNome(), p_cupom: cupomAplicado.codigo, p_whatsapp: document.getElementById('f-whatsapp').value || null })
@@ -2018,7 +2080,7 @@ async function revalidarCupom() {
     const c = resultado.cupom;
     ok.style.display = 'none'; erro.style.display = 'none';
     if (c?.valido) {
-      ok.textContent = `✅ Cupom ${c.codigo} aplicado: ${brl(c.desconto)} de desconto. Com cupom, o frete é cobrado.`;
+      ok.textContent = `✅ Cupom ${c.codigo} aplicado: ${brl(c.desconto)} de desconto. Com cupom, o frete é cobrado${/cupom/.test(resultado.oferta_doce?.motivo || '') ? ' e a pizza doce fica no preço normal' : ''}.`;
       ok.style.display = 'block';
     } else if (cupomViaURL && !/WhatsApp/.test(c?.motivo || '')) {
       cupomAplicado = null; cupomViaURL = false; checkoutServidor = null;
@@ -2032,7 +2094,7 @@ async function revalidarCupom() {
     erro.textContent = '❌ Não consegui verificar o cupom agora. Tente de novo.';
     erro.style.display = 'block';
   }
-  updateTotals();
+  renderCart(); // cupom válido tira a oferta da pizza doce — o preço das linhas muda
 }
 
 async function aplicarCupom() {
