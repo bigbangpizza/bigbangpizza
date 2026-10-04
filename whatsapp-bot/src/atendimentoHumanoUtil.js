@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { salvarPausa, obterPausa } from './historicoRedis.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Distingue eco do próprio bot de mensagem humana real (fromMe)
@@ -116,19 +117,25 @@ export function ehEcoDoBot(numero, id) {
 // Quando uma mensagem fromMe chega e NÃO é eco (ver acima), foi um humano
 // respondendo direto pelo WhatsApp — pausa as respostas automáticas do bot
 // pra esse número por HUMAN_TAKEOVER_PAUSA_MINUTOS, evitando que o bot
-// atropele o atendimento manual. Estado só em memória (não sobrevive a um
-// restart/redeploy do processo) — mesmo modelo de degradação graciosa já
-// usado pro histórico de conversa em memória (ver server.js/historicoLocal).
+// atropele o atendimento manual. Guardada em memória E no Redis (como o
+// histórico): antes era só memória e todo deploy/restart soltava o bot no
+// meio de um atendimento da equipe. Sem Redis, segue só em memória.
 const pausaAtePorNumero = new Map(); // numero -> timestamp (Date.now()) até quando fica pausado
 
 export function ativarPausaHumana(numero) {
   const ate = Date.now() + config.humanTakeoverPausaMinutos * 60_000;
   pausaAtePorNumero.set(numero, ate);
+  salvarPausa(numero, ate); // não espera: a memória já vale pra este processo
   return ate;
 }
 
-export function estaPausadoPorHumano(numero) {
-  const ate = pausaAtePorNumero.get(numero);
+export async function estaPausadoPorHumano(numero) {
+  let ate = pausaAtePorNumero.get(numero);
+  if (!ate) {
+    // Não está na memória (ex: o bot acabou de reiniciar): confere no Redis.
+    ate = await obterPausa(numero);
+    if (ate) pausaAtePorNumero.set(numero, ate);
+  }
   if (!ate) return false;
   if (Date.now() >= ate) {
     pausaAtePorNumero.delete(numero);

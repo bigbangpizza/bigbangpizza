@@ -406,7 +406,7 @@ async function processarLote(numero, nomeContato, userContent) {
   // contexto quando retomar), mas não gera resposta automática agora.
   // Checado aqui (não só na chegada do webhook) porque a pausa pode ter
   // começado durante a janela de debounce da fila.
-  if (estaPausadoPorHumano(numero)) {
+  if (await estaPausadoPorHumano(numero)) {
     console.log(`[atendimentoHumano] numero=${numero} pausado — mensagem guardada, bot não respondeu`);
     return;
   }

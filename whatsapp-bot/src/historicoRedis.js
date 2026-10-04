@@ -15,6 +15,7 @@ import { config } from './config.js';
 // API (que guarda sessão/cache dela ali também), então as chaves precisam
 // ser inconfundíveis com o que a Evolution usa.
 const PREFIXO_CHAVE = 'bbpizza:conversa:';
+const PREFIXO_PAUSA = 'bbpizza:pausa:';
 
 // TTL renovado a cada leitura/escrita — 24h de inatividade é folga de sobra
 // pra sobreviver a um restart no meio de uma conversa, sem guardar histórico
@@ -92,15 +93,46 @@ export function criarHistoricoStore(ClienteRedis, url) {
     }
   }
 
+  /**
+   * Pausa do atendimento manual (ver atendimentoHumanoUtil.js): guarda até
+   * quando o bot fica calado pra esse número, com TTL = o tempo que falta —
+   * a chave some sozinha quando a pausa acaba. Mesmo fallback gracioso.
+   */
+  async function salvarPausa(numero, ateMs) {
+    if (!cliente) return;
+    const segundos = Math.ceil((ateMs - Date.now()) / 1000);
+    if (segundos <= 0) return;
+    try {
+      await cliente.set(`${PREFIXO_PAUSA}${numero}`, String(ateMs), 'EX', segundos);
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao salvar pausa de ${numero}:`, err.message);
+    }
+  }
+
+  /** @returns {Promise<number|null>} até quando está pausado (ms), ou null. */
+  async function obterPausa(numero) {
+    if (!cliente) return null;
+    try {
+      const bruto = await cliente.get(`${PREFIXO_PAUSA}${numero}`);
+      const ate = Number(bruto);
+      return bruto && Number.isFinite(ate) ? ate : null;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao ler pausa de ${numero}:`, err.message);
+      return null;
+    }
+  }
+
   function redisConfigurado() {
     return Boolean(cliente);
   }
 
-  return { obterHistorico, salvarHistorico, redisConfigurado };
+  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, redisConfigurado };
 }
 
 const store = criarHistoricoStore(Redis, config.redis.url);
 
 export const obterHistorico = store.obterHistorico;
 export const salvarHistorico = store.salvarHistorico;
+export const salvarPausa = store.salvarPausa;
+export const obterPausa = store.obterPausa;
 export const redisConfigurado = store.redisConfigurado;
