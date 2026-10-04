@@ -10,7 +10,7 @@ import { montarResumoPedido, textoWhatsApp } from './resumoPedido.js';
 // pedido que mandei"), em vez de responder de memória — bug real do pedido
 // #273, em que ela disse que não havia registro de um pedido que existia.
 
-const CAMPOS = 'nome,itens,itens_json,bairro,subtotal,desconto,cupom,frete,total,pagamento';
+const CAMPOS = 'nome,itens,itens_json,bairro,subtotal,desconto,cupom,frete,total,pagamento,historico_edicoes';
 
 const STATUS_TEXTO = {
   aguardando: 'aguardando a cozinha aceitar (ainda dá pra editar ou cancelar)',
@@ -90,6 +90,8 @@ export function criarExecutorBuscarPedidosRecentes({ numero }) {
           status: STATUS_TEXTO[p.status] || p.status,
           pode_editar: p.status === 'aguardando',
           resumo_com_valores: textoWhatsApp(montarResumoPedido(p, nomesDoces)),
+          // Editado pela equipe no admin: este resumo já é o atual (vale mais que mensagens antigas da conversa).
+          alterado_pela_equipe: Array.isArray(p.historico_edicoes) && p.historico_edicoes.length > 0,
           bairro: p.bairro,
           pagamento: p.pagamento,
           cupom: p.cupom || null,

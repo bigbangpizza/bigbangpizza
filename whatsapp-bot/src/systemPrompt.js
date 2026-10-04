@@ -119,7 +119,7 @@ async function montarBlocoPedidoAtivo(numero) {
   if (!numero || !temServiceRoleConfigurada()) return '';
   let pedido;
   try {
-    pedido = await buscarPedidoAtivoDoCliente(numero, 'itens,bairro,total,status');
+    pedido = await buscarPedidoAtivoDoCliente(numero, 'itens,bairro,total,status,historico_edicoes');
   } catch (err) {
     console.error('[systemPrompt] falha ao checar pedido ativo do cliente (seguindo sem o aviso):', err);
     return '';
@@ -127,7 +127,12 @@ async function montarBlocoPedidoAtivo(numero) {
   if (!pedido) return '';
 
   const statusTexto = STATUS_LABEL_PEDIDO_ATIVO[pedido.status] || 'em andamento';
-  return `\n## Pedido ativo deste cliente (vale pra QUALQUER mensagem da conversa, não só a primeira)\nEste cliente JÁ TEM um pedido em andamento — Pedido #${pedido.id}: ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)} — está ${statusTexto}.\n- NUNCA convide nem pergunte se ele quer "montar um pedido", "escolher os itens" ou qualquer variação disso enquanto esse pedido estiver ativo — ele já tem um rodando. Isso vale mesmo que a pergunta dele não seja sobre o pedido (ex: dúvida geral, elogio) — não aproveite a deixa pra oferecer fechar pedido novo.\n- Se ele perguntar sobre prazo, status ou andamento, responda com base NESSE pedido (tempo estimado de entrega é 35-60 min contados da CRIAÇÃO do pedido, não deste momento da conversa).\n- Se a mensagem parecer ser sobre ESSE pedido (dúvida, confirmação, agradecimento, ou repete os mesmos itens/dados), responda normalmente sem chamar \`criar_pedido\` de novo.\n- Se ele quiser acrescentar algo (ex: a pizza doce da oferta), ofereça incluir NESSE pedido com \`editar_pedido\` (ver "Incluir a pizza doce da oferta num pedido já feito"). SÓ chame \`criar_pedido\` se ele disser claramente que é um pedido à parte (ex: "esse é um pedido separado").\n`;
+  // Pedido editado pela equipe no admin: os itens e o total acima já são os atuais.
+  const edicoes = Array.isArray(pedido.historico_edicoes) ? pedido.historico_edicoes : [];
+  const avisoAlterado = edicoes.length
+    ? `\n- ATENÇÃO: este pedido foi ALTERADO pela equipe depois de feito. Os itens e o total acima são os atuais — se mensagens anteriores desta conversa mostram outros itens ou outro valor, valem os daqui. Se o cliente perguntar, confirme o pedido atualizado (pra mostrar o valor de cada item, chame buscar_pedidos_recentes).`
+    : '';
+  return `\n## Pedido ativo deste cliente (vale pra QUALQUER mensagem da conversa, não só a primeira)\nEste cliente JÁ TEM um pedido em andamento — Pedido #${pedido.id}: ${pedido.itens} — ${pedido.bairro} — total ${brl(pedido.total)} — está ${statusTexto}.\n- NUNCA convide nem pergunte se ele quer "montar um pedido", "escolher os itens" ou qualquer variação disso enquanto esse pedido estiver ativo — ele já tem um rodando. Isso vale mesmo que a pergunta dele não seja sobre o pedido (ex: dúvida geral, elogio) — não aproveite a deixa pra oferecer fechar pedido novo.\n- Se ele perguntar sobre prazo, status ou andamento, responda com base NESSE pedido (tempo estimado de entrega é 35-60 min contados da CRIAÇÃO do pedido, não deste momento da conversa).\n- Se a mensagem parecer ser sobre ESSE pedido (dúvida, confirmação, agradecimento, ou repete os mesmos itens/dados), responda normalmente sem chamar \`criar_pedido\` de novo.\n- Se ele quiser acrescentar algo (ex: a pizza doce da oferta), ofereça incluir NESSE pedido com \`editar_pedido\` (ver "Incluir a pizza doce da oferta num pedido já feito"). SÓ chame \`criar_pedido\` se ele disser claramente que é um pedido à parte (ex: "esse é um pedido separado").${avisoAlterado}\n`;
 }
 
 function diasAtras(dataISO) {

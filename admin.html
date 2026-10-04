@@ -2695,6 +2695,15 @@ ${CUPOM_LINHA}`;
 // não tem mais como mostrar aviso de "pop-up bloqueado" nem chamar
 // .focus() nela. Troca que vale a pena: o botão "🖨️ Reimprimir" continua
 // disponível como alternativa manual se por acaso não abrir.
+// Comanda de pedido editado: "PEDIDO ALTERADO" no topo, com a hora e quem alterou por último.
+function cabecalhoPedidoAlterado(p){
+  const h = Array.isArray(p.historico_edicoes) ? p.historico_edicoes : [];
+  if (!h.length) return '';
+  const ult = h[h.length - 1];
+  const quando = (parseUTC(ult.em) || new Date(ult.em)).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bahia' });
+  return `<strong>*** PEDIDO ALTERADO ***</strong>\nAlterado ${quando} por ${esc(ult.por || '—')}\n--------------------------------\n`;
+}
+
 async function imprimirPedido(id){
   const dados=await api('pedidos',`id=eq.${id}`);
   if(!dados||!dados[0]) return;
@@ -2714,7 +2723,7 @@ strong{ font-weight:900; font-size:1.3em; line-height:1.45; }
 }
 </style>
 </head><body>
-<pre>${montarCupomTermico(p)}</pre>
+<pre>${cabecalhoPedidoAlterado(p)}${montarCupomTermico(p)}</pre>
 <button class="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
 <script>
 window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });
@@ -2991,6 +3000,9 @@ function renderPedidoManualConfirmacao(){
     </div>
     <div class="fg"><label>Cupom (opcional)</label><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"></div>
     <div class="fg"><label>Observação geral</label><textarea id="pm-obs" oninput="pmAtualizarCampo('observacao',this.value)">${esc(st.observacao)}</textarea></div>
+    ${ed ? `<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:13px;cursor:pointer;">
+      <input type="checkbox" id="pm-enviar-cliente" ${st._enviarCliente?'checked':''} onchange="pmAtualizarCampo('_enviarCliente',this.checked)"> Enviar ao cliente no WhatsApp o resumo atualizado (valor de cada item e novo total)
+    </label>` : ''}
 
     <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase;margin:16px 0 8px;">🍕 Itens</div>
     <div id="pm-itens">${st.itens.map((item,i) => renderItemPedidoManual(item,i,menu)).join('')}</div>
@@ -3428,8 +3440,43 @@ async function salvarEdicaoPedido(){
   btn.disabled = false;
   if (linhas === null) { showToastAdmin('⚠️ Erro ao salvar a alteração.'); return; }
   if (!linhas.length) { showToastAdmin('⚠️ O status do pedido mudou enquanto você salvava — nada foi alterado. Abra de novo.'); loadPedidos(); return; }
-  closeMod(); loadPedidos();
-  showToastAdmin(`✅ Pedido #${ed.id} alterado${bucketAgora !== 'aguardando' ? ' — reimprima a comanda pra cozinha' : ''}.`);
+  loadPedidos();
+  mostrarPedidoAlterado(linhas[0], st._enviarCliente);
+}
+
+// Tela depois de salvar a edição: reimprimir a comanda (com "PEDIDO ALTERADO")
+// e, se a opção foi marcada, abrir o WhatsApp do cliente com o resumo novo.
+// Os botões abrem as janelas no próprio clique (o navegador bloqueia janela
+// aberta depois de esperar o banco).
+function mostrarPedidoAlterado(pedido, enviarCliente){
+  window.__pedidoAlterado = pedido;
+  const resumo = ResumoPedido.montarResumoPedido(pedido, nomesDocesPedidos);
+  const numero = normalizarWhatsapp(pedido.whatsapp);
+  document.getElementById('mod-title').textContent = `✅ Pedido #${pedido.id} alterado`;
+  document.getElementById('mod-body').innerHTML = `
+    <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:14px;font-size:14px;">${ResumoPedido.html(resumo, esc)}</div>
+    <button type="button" class="bc" style="width:100%;margin-bottom:10px;" onclick="imprimirPedido(${pedido.id})">🖨️ Reimprimir comanda atualizada (PEDIDO ALTERADO)</button>
+    ${enviarCliente ? (numero
+      ? `<button type="button" class="bc" style="width:100%;margin-bottom:10px;background:#25D366;color:#fff;" onclick="enviarResumoAlteradoCliente()">💬 Abrir WhatsApp com o resumo para o cliente</button>`
+      : `<div style="font-size:12px;color:#facc15;margin-bottom:10px;">⚠️ Pedido sem WhatsApp do cliente — não dá pra enviar o resumo.</div>`) : ''}`;
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = false;
+  btn.textContent = 'FECHAR';
+  btn.onclick = closeMod;
+}
+
+function textoResumoAlteradoCliente(pedido){
+  const primeiroNome = (pedido.nome || '').trim().split(/\s+/)[0] || '';
+  return `Oi${primeiroNome ? ' ' + primeiroNome : ''}! Seu pedido #${pedido.id} na Big Bang Pizza foi atualizado:\n`
+    + ResumoPedido.textoWhatsApp(ResumoPedido.montarResumoPedido(pedido, nomesDocesPedidos));
+}
+
+function enviarResumoAlteradoCliente(){
+  const pedido = window.__pedidoAlterado;
+  const numero = pedido && normalizarWhatsapp(pedido.whatsapp);
+  if (!numero) return;
+  const win = window.open(`https://wa.me/${numero}?text=${encodeURIComponent(textoResumoAlteradoCliente(pedido))}`, '_blank');
+  if (!win) showToastAdmin('⚠️ O navegador bloqueou a janela do WhatsApp — libere pop-ups para o admin e clique de novo.', 6000);
 }
 
 // Histórico de edições no card do kanban
