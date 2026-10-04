@@ -183,6 +183,7 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .combo-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.18);cursor:pointer;transition:background .2s,transform .2s;padding:0;border:none;}
 .combo-dot.active{background:var(--orange);transform:scale(1.3);}
 @media(max-width:768px){.combo-nav-btn{display:none;}}
+@media (prefers-reduced-motion: reduce){.combos-grid{scroll-behavior:auto;}}
 .combo-card{background:#141414;color:white;border-radius:var(--radius-card);overflow:hidden;box-shadow:var(--shadow-card);position:relative;flex:0 0 clamp(250px,78vw,310px);scroll-snap-align:start;border:2px solid transparent;opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease,box-shadow .2s,border-color .2s;}
 .combo-card.in-view{opacity:1;transform:translateY(0);}
 .combo-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-card-hover);border-color:rgba(255,107,0,0.45);}
@@ -538,7 +539,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="divider"></div>
     <div class="combos-carousel-wrap">
       <button class="combo-nav-btn combo-nav-prev" onclick="comboScroll(-1)" aria-label="Combo anterior">‹</button>
-      <div class="combos-grid" id="combos-grid" onmouseenter="pararComboAutoplay()" ontouchstart="pararComboAutoplay()"><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div></div>
+      <div class="combos-grid" id="combos-grid" tabindex="0" aria-roledescription="carrossel" aria-label="Combos em destaque"><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div><div class="skeleton-card dark"></div></div>
       <button class="combo-nav-btn combo-nav-next" onclick="comboScroll(1)" aria-label="Próximo combo">›</button>
     </div>
     <div class="combos-dots" id="combos-dots"></div>
@@ -971,13 +972,13 @@ function comboLarguraCard() {
   return card ? card.getBoundingClientRect().width + 18 : 0;
 }
 function comboScroll(dir) {
-  pararComboAutoplay();
+  registrarInteracaoCombo();
   const track = document.getElementById('combos-grid');
   const largura = comboLarguraCard();
   if (track && largura) track.scrollBy({ left: dir * largura, behavior: 'smooth' });
 }
 function comboIrPara(i) {
-  pararComboAutoplay();
+  registrarInteracaoCombo();
   const track = document.getElementById('combos-grid');
   const card = track && track.querySelectorAll('.combo-card')[i];
   if (card) track.scrollTo({ left: card.offsetLeft - track.offsetLeft, behavior: 'smooth' });
@@ -986,7 +987,7 @@ function renderComboDots(total) {
   const dotsEl = document.getElementById('combos-dots');
   if (!dotsEl) return;
   dotsEl.innerHTML = total > 1 ? Array.from({length: total}, (_, i) =>
-    `<button class="combo-dot${i===0?' active':''}" onclick="comboIrPara(${i})" aria-label="Ir para combo ${i+1}"></button>`
+    `<button class="combo-dot${i===0?' active':''}" onclick="comboIrPara(${i})" aria-label="Ir para combo ${i+1} de ${total}"${i===0?' aria-current="true"':''}></button>`
   ).join('') : '';
 }
 let _comboDotsRaf = null;
@@ -998,30 +999,78 @@ function atualizarComboDotsAtivo() {
     const cards = track ? [...track.querySelectorAll('.combo-card')] : [];
     const dots = document.querySelectorAll('.combo-dot');
     if (!cards.length || !dots.length) return;
-    const centro = track.scrollLeft + track.clientWidth / 2;
-    let maisProximo = 0, menorDist = Infinity;
-    cards.forEach((c, i) => {
-      const dist = Math.abs((c.offsetLeft + c.clientWidth / 2) - centro);
-      if (dist < menorDist) { menorDist = dist; maisProximo = i; }
-    });
-    dots.forEach((d, i) => d.classList.toggle('active', i === maisProximo));
+    // Bolinha do combo mais à esquerda na tela (no computador cabem vários);
+    // chegando ao fim do carrossel, acende a última.
+    const largura = comboLarguraCard() || 1;
+    const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10 && track.scrollLeft > 10;
+    const maisProximo = noFim ? cards.length - 1 : Math.min(cards.length - 1, Math.round(track.scrollLeft / largura));
+    dots.forEach((d, i) => { d.classList.toggle('active', i === maisProximo); d.toggleAttribute('aria-current', i === maisProximo); });
   });
 }
 document.getElementById('combos-grid').addEventListener('scroll', atualizarComboDotsAtivo);
-function iniciarComboAutoplay() {
+// Giro automático: só começa quando a seção aparece na tela (sempre do
+// primeiro combo), deixa cada combo parado COMBO_TEMPO_PARADO_MS, pausa
+// enquanto o cliente toca, arrasta, rola ou está com o mouse em cima, e volta
+// COMBO_RETOMA_MS depois da última interação. Quem pediu ao celular/computador
+// para reduzir animações não vê giro automático.
+const COMBO_TEMPO_PARADO_MS = 6500;
+const COMBO_RETOMA_MS = 8000;
+const comboReduzMovimento = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let comboRetomaTimer = null, comboVisivel = false, comboJaComecou = false, comboMouseEmCima = false, comboObservador = null;
+function comboTotal() { return document.querySelectorAll('#combos-grid .combo-card').length; }
+function comboAgendarProximo() {
   pararComboAutoplay();
+  if (comboReduzMovimento || !comboVisivel || comboMouseEmCima || document.hidden || comboTotal() < 2) return;
+  comboAutoplayTimer = setTimeout(comboAvancar, COMBO_TEMPO_PARADO_MS);
+}
+function comboAvancar() {
   const track = document.getElementById('combos-grid');
-  if (!track || track.querySelectorAll('.combo-card').length < 2) return;
-  comboAutoplayTimer = setInterval(() => {
-    const largura = comboLarguraCard();
-    if (!largura) return;
-    const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10;
-    track.scrollTo({ left: noFim ? 0 : track.scrollLeft + largura, behavior: 'smooth' });
-  }, 4000);
+  const largura = comboLarguraCard();
+  if (!track || !largura) return;
+  const noFim = track.scrollLeft + track.clientWidth >= track.scrollWidth - 10;
+  track.scrollTo({ left: noFim ? 0 : track.scrollLeft + largura, behavior: 'smooth' });
+  comboAgendarProximo();
 }
 function pararComboAutoplay() {
-  if (comboAutoplayTimer) { clearInterval(comboAutoplayTimer); comboAutoplayTimer = null; }
+  if (comboAutoplayTimer) { clearTimeout(comboAutoplayTimer); comboAutoplayTimer = null; }
 }
+function registrarInteracaoCombo() {
+  pararComboAutoplay();
+  clearTimeout(comboRetomaTimer);
+  comboRetomaTimer = setTimeout(comboAgendarProximo, COMBO_RETOMA_MS);
+}
+function comboComecar() {
+  comboJaComecou = true;
+  const track = document.getElementById('combos-grid');
+  if (track) track.scrollTo({ left: 0, behavior: 'auto' });
+  comboAgendarProximo();
+}
+// Chamado sempre que os combos são (re)carregados.
+function iniciarComboAutoplay() {
+  const track = document.getElementById('combos-grid');
+  if (!track) return;
+  if (!('IntersectionObserver' in window)) { comboVisivel = true; if (!comboJaComecou) comboComecar(); return; }
+  if (comboObservador) { if (comboVisivel && comboJaComecou) comboAgendarProximo(); return; }
+  comboObservador = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      comboVisivel = entry.isIntersecting;
+      if (!comboVisivel) { pararComboAutoplay(); return; }
+      if (!comboJaComecou) comboComecar(); else comboAgendarProximo();
+    });
+  }, { threshold: 0.6 });
+  comboObservador.observe(track);
+}
+(function ligarInteracoesCombo() {
+  const track = document.getElementById('combos-grid');
+  const wrap = track && track.closest('.combos-carousel-wrap');
+  if (!track || !wrap) return;
+  ['pointerdown', 'touchstart', 'wheel', 'keydown', 'focusin'].forEach(ev =>
+    track.addEventListener(ev, registrarInteracaoCombo, { passive: true }));
+  // Mouse em cima pausa (só mouse de verdade: no celular o toque já conta acima)
+  wrap.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { comboMouseEmCima = true; pararComboAutoplay(); } });
+  wrap.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { comboMouseEmCima = false; registrarInteracaoCombo(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pararComboAutoplay(); else comboAgendarProximo(); });
+})();
 function observarComboFadeIn() {
   const cards = document.querySelectorAll('#combos-grid .combo-card');
   if (!('IntersectionObserver' in window)) { cards.forEach(c => c.classList.add('in-view')); return; }
