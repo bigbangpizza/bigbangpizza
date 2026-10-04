@@ -130,11 +130,13 @@ export async function consultarCep(cep) {
       bairro: data.bairro || '',
       cidade: data.localidade || '',
       logradouro: data.logradouro || '',
-      // Final 900-999: CEP especial (grande usuário, condomínio, caixa postal)
-      // — o bairro que o ViaCEP devolve é o do cadastro do CEP, não o do
-      // cliente. Ex. real: 42702-900 volta "Centro" pra toda a Av. Luiz
-      // Tarquínio Pontes, mas o cliente do nº 710 é do Parque Jockey Clube.
-      especial: Number(digitos.slice(5)) >= 900,
+      // CEP genérico — não indica o bairro do cliente:
+      // - final 900-999: grande usuário, empresa, condomínio, caixa postal. Ex.
+      //   real: 42702-900 volta "Centro" pra toda a Av. Luiz Tarquínio Pontes,
+      //   mas o cliente do nº 710 é do Parque Jockey Clube;
+      // - ViaCEP sem rua ou sem bairro: CEP geral da cidade. (Final 000 sozinho
+      //   não basta: 42707-000 é a Rua José Ribeiro da Silva, em Vilas.)
+      especial: Number(digitos.slice(5)) >= 900 || !data.logradouro || !data.bairro,
     };
   } catch (err) {
     console.error('[bairroMatch] falha ao consultar CEP no ViaCEP:', err.message);
@@ -165,7 +167,7 @@ export function mensagemBairroNaoReconhecido(bairros, texto, cep, cepInfo) {
   const lista = bairros.map((b) => b.nome).join(', ');
   const infoCep = cep
     ? cepInfo?.especial
-      ? ` O CEP ${cep} é um CEP especial (de condomínio ou grande usuário) e não indica o bairro do cliente — não use o bairro dele.`
+      ? ` O CEP ${cep} é genérico (de cidade, empresa, condomínio ou caixa postal) e NÃO indica o bairro do cliente — não use esse CEP pra definir bairro nem frete.`
       : cepInfo
         ? ` O CEP ${cep} é do bairro "${cepInfo.bairro || '(sem bairro)'}", ${cepInfo.cidade}, que também não está na lista.`
         : ` O CEP ${cep} não foi encontrado.`
@@ -174,7 +176,7 @@ export function mensagemBairroNaoReconhecido(bairros, texto, cep, cepInfo) {
     `Não reconheci o bairro "${texto || ''}" na lista de entrega.${infoCep} ` +
     'NÃO diga ao cliente que o bairro não existe, que não está na lista ou que não entregamos lá. ' +
     (cep && cepInfo?.especial
-      ? 'Pergunte ao cliente o nome do bairro ou um ponto de referência (uma pergunta só) e chame esta ferramenta de novo com o campo "bairro". Se ainda assim não reconhecer, chame chamar_atendente e diga que a equipe vai confirmar a entrega por aqui.'
+      ? 'Peça ao cliente um ponto de referência do endereço (uma pergunta só) e, se der pra identificar o bairro, chame esta ferramenta de novo com o campo "bairro" (sem o CEP). Se ainda assim não der, chame chamar_atendente (motivo: confirmar o bairro e a entrega) e diga que a equipe vai confirmar por aqui.'
       : cep
       ? 'Agora chame a ferramenta chamar_atendente (motivo: confirmar entrega no bairro informado) e diga ao cliente que a equipe vai confirmar a entrega por aqui.'
       : 'Peça o CEP ou um ponto de referência do endereço e chame esta ferramenta de novo com o campo "cep". Se o cliente não souber o CEP e pelo ponto de referência você não conseguir identificar um bairro da lista, chame chamar_atendente e diga que a equipe vai confirmar a entrega por aqui.') +

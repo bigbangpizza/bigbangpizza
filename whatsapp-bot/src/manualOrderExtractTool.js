@@ -32,7 +32,7 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
       forma_pagamento: {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link', ''],
-        description: '"presencial" = dinheiro/cartão na entrega (maquininha) — inclusive quando o texto diz só "cartão", "débito" ou "crédito"; "pix" = Pix; "cartao_link" = link de pagamento (Ton), SÓ se o texto falar em link/pagar online. String vazia se o texto não deixar claro.',
+        description: '"presencial" = dinheiro ou cartão na maquininha, na entrega; "pix" = Pix; "cartao_link" = link de pagamento (Ton), só se o texto falar em link. Se o texto disser só "cartão", sem dizer se é maquininha ou link, deixe vazio "" (a equipe confirma). String vazia se o texto não deixar claro.',
       },
       observacao_geral: { type: 'string', description: 'Observação geral do pedido (ex: sem cebola, campainha quebrada), se houver.' },
       itens: {

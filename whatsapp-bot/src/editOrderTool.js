@@ -69,7 +69,7 @@ export const EDITAR_PEDIDO_TOOL = {
       forma_pagamento: {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link'],
-        description: 'Nova forma de pagamento. Omita se não vai mudar. "cartão" sem falar em link = "presencial" (maquininha na entrega); "cartao_link" só se o cliente pedir link.',
+        description: 'Nova forma de pagamento. Omita se não vai mudar. Se o cliente disse só "cartão", pergunte antes se é na maquininha (presencial) ou por link (cartao_link).',
       },
       observacao_geral: { type: 'string', description: 'Nova observação geral do pedido. Omita se não vai mudar.' },
     },
