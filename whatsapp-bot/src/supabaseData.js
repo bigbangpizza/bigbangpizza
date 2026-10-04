@@ -12,10 +12,27 @@ import { config } from './config.js';
 // admin.html: const hasOrdem = [...].includes(table)).
 const TABELAS_COM_ORDEM = ['combos', 'pizzas_salgadas', 'pizzas_doces', 'bebidas', 'bairros'];
 
+// "configuracoes" (telefones da equipe, motoboy, alertas) e "cupons" (todos os
+// códigos) NÃO são mais de leitura pública: a chave pública só enxerga as
+// chaves de configuração que o site usa, e cupom só pela RPC do checkout.
+// Por isso o bot lê essas duas com a service_role (só leitura, tabelas fixas,
+// nada de dado de cliente) — e, se ela faltar ou falhar, cai pra chave pública.
+const TABELAS_PRIVADAS = ['configuracoes', 'cupons'];
+
 async function fetchTable(table, query = '') {
   const sep = query ? '&' : '';
   const orderBy = TABELAS_COM_ORDEM.includes(table) ? 'ordem.asc,id.asc' : 'id.asc';
   const url = `${config.supabase.url}/rest/v1/${table}?${query}${sep}order=${orderBy}`;
+  const chavePrivada = TABELAS_PRIVADAS.includes(table) ? config.supabase.serviceRoleKey : '';
+  if (chavePrivada) {
+    try {
+      const rp = await fetch(url, { headers: { apikey: chavePrivada, Authorization: `Bearer ${chavePrivada}` } });
+      if (rp.ok) return rp.json();
+      console.error(`[supabase] erro ao buscar ${table} com a service_role:`, rp.status, '— tentando com a chave pública');
+    } catch (err) {
+      console.error(`[supabase] erro ao buscar ${table} com a service_role:`, err.message, '— tentando com a chave pública');
+    }
+  }
   const r = await fetch(url, {
     headers: {
       apikey: config.supabase.anonKey,
