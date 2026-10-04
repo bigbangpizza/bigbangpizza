@@ -2266,6 +2266,7 @@ function renderPedidoCard(p){
       <div style="font-size:10px;font-weight:700;color:#facc15;margin-bottom:3px;">⚠️ OBSERVAÇÃO</div>
       <div style="font-size:13px;font-weight:600;">${esc(p.observacao)}</div></div>`:''}
     <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">📍 ${esc(p.endereco||'')} ${p.complemento?'— '+esc(p.complemento):''}</div>
+    ${historicoEdicoesHTML(p)}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <select onchange="atualizarStatus(${p.id},this.value,this.closest('.pedido-card'),'${bucket}')" style="flex:1;min-width:200px;background:var(--bg-input);color:var(--text-primary);border:2px solid ${cor};padding:8px;border-radius:7px;font-size:13px;font-weight:600;">
         <option value="aguardando"       ${bucket==='aguardando'?'selected':''}>⏳ Aguardando</option>
@@ -2273,6 +2274,7 @@ function renderPedidoCard(p){
         <option value="saiu"             ${bucket==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
         <option value="entregue"         ${bucket==='entregue'?'selected':''}>🏁 Entregue</option>
       </select>
+      ${STATUS_EDITAVEIS.includes(bucket)?`<button class="bp" onclick="abrirEdicaoPedido(${p.id})">✏️ Editar pedido</button>`:''}
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
@@ -2796,15 +2798,21 @@ async function processarPedidoManualIA(){
   }
 }
 
-async function carregarMenuPedidoManual(){
-  const [salgadas, doces, combos, bebidas, bairros, cfg] = await Promise.all([
-    api('pizzas_salgadas', 'ativo=eq.true'),
-    api('pizzas_doces', 'ativo=eq.true'),
-    api('combos', 'ativo=eq.true'),
-    api('bebidas', 'ativo=eq.true'),
+// incluirInativos: usado na edição de pedido — um pedido antigo pode ter
+// produto ou bairro que foi desativado depois; eles continuam selecionáveis
+// só pra esse pedido (as opções mostram os inativos apenas se já escolhidos).
+async function carregarMenuPedidoManual(incluirInativos = false, bairroDoPedido = null){
+  const filtro = incluirInativos ? '' : 'ativo=eq.true';
+  const [salgadas, doces, combos, bebidas, bairrosAtivos, cfg, bairroExtra] = await Promise.all([
+    api('pizzas_salgadas', filtro),
+    api('pizzas_doces', filtro),
+    api('combos', filtro),
+    api('bebidas', filtro),
     api('bairros', 'ativo=eq.true'),
     carregarConfigs(),
+    bairroDoPedido ? api('bairros', `nome=eq.${encodeURIComponent(bairroDoPedido)}`) : Promise.resolve([]),
   ]);
+  const bairros = [...bairrosAtivos, ...bairroExtra.filter(b => !bairrosAtivos.some(a => a.id === b.id))];
   return {
     salgadas, doces, combos, bebidas, bairros,
     bordaSalgada: parseFloat(cfg.borda_preco_salgada) || 12,
@@ -2817,15 +2825,16 @@ async function carregarMenuPedidoManual(){
 // Rótulo do bairro com a regra de frete: zona base (R$ 0 no cadastro) cobra o frete padrão.
 function rotuloBairroPedidoManual(b, menu){
   const zona = Number(b.frete) > 0 ? Number(b.frete) : menu.fretePadrao;
-  return `${b.nome} — ${brl(zona)} · ${b.frete_gratis_minimo != null ? `grátis acima de ${brl(b.frete_gratis_minimo)}` : 'sem frete grátis'}`;
+  return `${b.nome} — ${brl(zona)} · ${b.frete_gratis_minimo != null ? `grátis acima de ${brl(b.frete_gratis_minimo)}` : 'sem frete grátis'}${b.ativo === false ? ' (bairro inativo)' : ''}`;
 }
 
 // Opções de sabor; nas salgadas, separadas por categoria (Tradicionais, Especiais, Premium) e na ordem do cardápio.
 function opcoesSaborPedidoManual(catalogo, tipo, selecionado){
-  const opt = p => `<option value="${p.id}" ${selecionado===p.id?'selected':''}>${esc(p.nome)}</option>`;
-  if(tipo!=='pizza_salgada') return catalogo.map(opt).join('');
+  const opt = p => `<option value="${p.id}" ${selecionado===p.id?'selected':''}>${esc(p.nome)}${p.ativo===false?' (inativo)':''}</option>`;
+  const visiveis = catalogo.filter(p => p.ativo !== false || p.id === selecionado);
+  if(tipo!=='pizza_salgada') return visiveis.map(opt).join('');
   return CATEGORIAS_SALGADAS.map(c => {
-    const doGrupo = catalogo.filter(p => categoriaSalgada(p.categoria).id===c.id).sort((a,b)=>(a.ordem||0)-(b.ordem||0)||a.id-b.id);
+    const doGrupo = visiveis.filter(p => categoriaSalgada(p.categoria).id===c.id).sort((a,b)=>(a.ordem||0)-(b.ordem||0)||a.id-b.id);
     return doGrupo.length ? `<optgroup label="${c.titulo}">${doGrupo.map(opt).join('')}</optgroup>` : '';
   }).join('');
 }
@@ -2908,6 +2917,7 @@ function montarEstadoPedidoManual(extraido, menu){
 }
 
 function calcPrecoItemPedidoManual(item, menu){
+  if(item.tipo === 'original') return { precoUnitario: Number(item._original.precoUnitario) || 0, nomeExibicao: nomeItemOriginal(item._original) };
   if(!item.tipo || !item.produto1Id) return null;
   const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
   const p1 = catalogo.find(p => p.id === item.produto1Id);
@@ -2943,10 +2953,14 @@ function calcPrecoItemPedidoManual(item, menu){
 function renderPedidoManualConfirmacao(){
   const st = window.__pedidoManualState;
   const menu = window.__pedidoManualMenu;
-  document.getElementById('mod-title').textContent = '📝 Confirmar pedido manual';
+  const ed = st._edicao;
+  document.getElementById('mod-title').textContent = ed ? `✏️ Editar pedido #${ed.id}` : '📝 Confirmar pedido manual';
 
   document.getElementById('mod-body').innerHTML = `
-    <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">${st._semIA ? '✍️ Preencha os campos abaixo. Nada foi salvo ainda.' : '⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.'} Preços, oferta da pizza doce, frete e cupom seguem as mesmas regras do site.</div>
+    ${ed && ed.emPreparo ? `<div style="background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.45);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff7777;font-weight:700;">⚠️ Este pedido já está em preparo. Confirme com a cozinha antes de alterar.</div>` : ''}
+    <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">${ed ? `✏️ Alterando o pedido #${ed.id} (o número continua o mesmo). Nada foi salvo ainda.` : st._semIA ? '✍️ Preencha os campos abaixo. Nada foi salvo ainda.' : '⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.'} Preços, oferta da pizza doce, frete e cupom seguem as mesmas regras do site.</div>
+    ${ed && ed.semItensDetalhados ? `<div style="background:rgba(255,200,0,.1);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">Pedido antigo, sem itens detalhados. Itens originais: <strong>${esc(ed.itensTextoOriginal)}</strong> — monte os itens abaixo.</div>` : ''}
+    ${ed ? `<div class="fg"><label>Quem está alterando *</label><input id="pm-editor" value="${esc(st._editor||'')}" placeholder="Seu nome" oninput="pmAtualizarCampo('_editor',this.value)"></div>` : ''}
     <div class="fr">
       <div class="fg"><label>Nome do cliente</label><input id="pm-nome" value="${esc(st.nome)}" oninput="pmAtualizarCampo('nome',this.value)"></div>
       <div class="fg"><label>WhatsApp</label><input id="pm-whatsapp" value="${esc(st.whatsapp)}" oninput="pmAtualizarCampo('whatsapp',this.value)"></div>
@@ -2972,6 +2986,7 @@ function renderPedidoManualConfirmacao(){
         <option value="presencial" ${st.pagamento==='presencial'?'selected':''}>Presencial (dinheiro/cartão)</option>
         <option value="pix" ${st.pagamento==='pix'?'selected':''}>Pix</option>
         <option value="cartao_link" ${st.pagamento==='cartao_link'?'selected':''}>Cartão via link (Ton)</option>
+        ${ed && ed.pagamentoOriginal && !Object.values(PAGAMENTO_TEXTO_MANUAL).includes(ed.pagamentoOriginal) ? `<option value="__original" ${st.pagamento==='__original'?'selected':''}>Manter: ${esc(ed.pagamentoOriginal)}</option>` : ''}
       </select>
     </div>
     <div class="fg"><label>Cupom (opcional)</label><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"></div>
@@ -2987,11 +3002,23 @@ function renderPedidoManualConfirmacao(){
 
   const btn = document.getElementById('mod-save-btn');
   btn.disabled = false;
-  btn.textContent = 'LANÇAR PEDIDO';
-  btn.onclick = salvarPedidoManual;
+  btn.textContent = ed ? 'SALVAR ALTERAÇÕES' : 'LANÇAR PEDIDO';
+  btn.onclick = ed ? salvarEdicaoPedido : salvarPedidoManual;
 }
 
 function renderItemPedidoManual(item, i, menu){
+  if(item.tipo === 'original'){
+    const info = calcPrecoItemPedidoManual(item, menu);
+    return `<div class="bc2" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px;">
+      <div style="font-size:12px;color:#facc15;">📌 Item mantido como foi lançado — esse produto não está mais no cardápio.</div>
+      <div style="font-weight:700;">${item.qty}x ${esc(info.nomeExibicao)}</div>
+      ${item.obs ? `<div style="font-size:12px;color:var(--text-secondary);">${esc(item.obs)}</div>` : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div id="pm-preco-${i}" style="font-size:13px;font-weight:700;">${brl(info.precoUnitario * item.qty)}</div>
+        <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
+      </div>
+    </div>`;
+  }
   const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
   const opcoesBorda = item.tipo==='pizza_salgada' ? [{id:'',nome:'Sem borda'},{id:'catupiry',nome:'Catupiry'},{id:'cheddar',nome:'Cheddar'}]
     : item.tipo==='pizza_doce' ? [{id:'',nome:'Sem borda'},{id:'chocolate',nome:'Chocolate'}]
@@ -3099,6 +3126,7 @@ function pmRemoverItem(i){
 // Itens do pedido manual no mesmo formato que o site/bot gravam.
 function montarItensJsonPedidoManual(st, menu, precos){
   return st.itens.map((it,i) => {
+    if (it.tipo === 'original') return { ...it._original, qty: it.qty };
     const catalogo = catalogoPedidoManualPorTipo(menu, it.tipo);
     const p1 = catalogo.find(p => p.id===it.produto1Id);
     const p2 = it.produto2Id ? catalogo.find(p => p.id===it.produto2Id) : null;
@@ -3158,7 +3186,7 @@ async function atualizarResumoPedidoManual(){
   el.innerHTML = `${avisos}<div style="color:rgba(255,255,255,.5);">Calculando total…</div>`;
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, st.cupom);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, st.cupom, st._edicao ? st._edicao.id : null);
   } catch(e) {
     console.error('calcularCheckoutPedidoManual', e);
     if(seq === _pmResumoSeq) el.innerHTML = `${avisos}<div style="color:#ff4444;">⚠️ Não consegui calcular o total agora. Tente de novo.</div>`;
@@ -3187,6 +3215,7 @@ async function atualizarResumoPedidoManual(){
     <div>Frete: <strong>${Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
     ${Number(r.falta_para_frete_gratis) > 0 && !st.retirada ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Faltam ${brl(r.falta_para_frete_gratis)} para frete grátis</div>` : ''}
     <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(r.total)}</strong></div>
+    ${st._edicao ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Antes da edição: ${brl(st._edicao.totalOriginal)}${Math.abs(Number(r.total) - st._edicao.totalOriginal) >= 0.01 ? ` → diferença de ${Number(r.total) > st._edicao.totalOriginal ? '+' : '−'}${brl(Math.abs(Number(r.total) - st._edicao.totalOriginal))}` : ' (mesmo total)'}</div>` : ''}
   `;
 }
 
@@ -3244,6 +3273,176 @@ async function salvarPedidoManual(){
 
   if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); }
   else { showToastAdmin('⚠️ Erro ao lançar o pedido.'); }
+}
+
+// ═══════════════════════════════════════════════════════
+// EDITAR PEDIDO JÁ LANÇADO — mesma tela do pedido manual, preenchida com o
+// pedido atual. Total pela calcular_checkout_v2 (mesmas regras do site),
+// gravação só se o status não mudou no meio, e histórico no próprio pedido.
+// ═══════════════════════════════════════════════════════
+const STATUS_EDITAVEIS = ['aguardando', 'aceito_preparando', 'saiu'];
+const CAMPOS_HISTORICO_EDICAO = [
+  ['itens', 'Itens'], ['nome', 'Nome'], ['whatsapp', 'WhatsApp'], ['endereco', 'Endereço'], ['complemento', 'Complemento'],
+  ['bairro', 'Bairro'], ['pagamento', 'Pagamento'], ['observacao', 'Observação'], ['cupom', 'Cupom'],
+  ['subtotal', 'Subtotal'], ['desconto', 'Desconto'], ['frete', 'Frete'], ['total', 'Total'],
+];
+
+// Item gravado (itens_json do site, bot ou admin) -> item da tela.
+function itemEstadoDeItemJson(it, menu){
+  const s1 = it.sabores?.[0] || {}, s2 = it.sabores?.[1] || null;
+  const porIdOuNome = (lista, s) => (s.id != null && lista.find(p => p.id === s.id)) || buscarProdutoPedidoManual(lista, s.nome);
+  const bordaId = it.borda ? (BORDA_NOME_MANUAL[it.borda.id] ? it.borda.id : Object.keys(BORDA_NOME_MANUAL).find(k => normalizarTextoPedidoManual(BORDA_NOME_MANUAL[k]) === normalizarTextoPedidoManual(it.borda.nome))) || '' : '';
+  const base = { borda: bordaId, qty: Math.max(1, Math.trunc(Number(it.qty) || 1)), obs: it.obs || '', _sabor1Texto: s1.nome || '', _sabor2Texto: s2?.nome || '' };
+  if (it.tamanho) {
+    const p1 = porIdOuNome(menu.salgadas, s1), p2 = s2 ? porIdOuNome(menu.salgadas, s2) : null;
+    return { ...base, tipo: 'pizza_salgada', tamanho: it.tamanho, produto1Id: p1 ? p1.id : null, produto2Id: p2 ? p2.id : null };
+  }
+  for (const [tipo, lista] of [['pizza_doce', menu.doces], ['combo', menu.combos], ['bebida', menu.bebidas]]) {
+    const prod = buscarProdutoPedidoManual(lista, s1.nome);
+    if (prod) return { ...base, tipo, tamanho: '', produto1Id: prod.id, produto2Id: null };
+  }
+  // Produto que não existe mais no cardápio: o item fica como foi lançado
+  // (nome, preço e borda originais) — pode ser removido, não alterado.
+  return { ...base, tipo: 'original', tamanho: '', produto1Id: null, produto2Id: null, _original: it };
+}
+
+function nomeItemOriginal(it){
+  const s = it.sabores || [];
+  const nome = s.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}` : (s[0] && s[0].nome) || 'Item';
+  return `${it.tamanho ? `Pizza ${it.tamanho} — ` : ''}${nome}${it.borda && it.borda.nome ? ` — Borda ${it.borda.nome}` : ''}`;
+}
+
+function pagamentoEstadoDeTexto(texto){
+  const achado = Object.entries(PAGAMENTO_TEXTO_MANUAL).find(([, t]) => t === texto);
+  if (achado) return achado[0];
+  return texto ? '__original' : '';
+}
+
+async function abrirEdicaoPedido(id){
+  const [pedido] = await api('pedidos', `id=eq.${id}`);
+  if (!pedido) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
+  const bucket = statusBucket(pedido.status);
+  if (!STATUS_EDITAVEIS.includes(bucket)) { showToastAdmin('⚠️ Pedido entregue ou cancelado não pode ser editado.'); return; }
+  let menu;
+  try { menu = await carregarMenuPedidoManual(true, pedido.bairro !== 'Retirada no local' ? pedido.bairro : null); }
+  catch (e) { console.error('abrirEdicaoPedido', e); showToastAdmin('⚠️ Não consegui carregar o cardápio agora.'); return; }
+  window.__pedidoManualMenu = menu;
+  const itensJson = Array.isArray(pedido.itens_json) ? pedido.itens_json : [];
+  const itens = itensJson.map(it => itemEstadoDeItemJson(it, menu));
+  if (!itens.length) itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
+  let editor = '';
+  try { editor = localStorage.getItem('bb_admin_editor') || ''; } catch (e) {}
+  window.__pedidoManualState = {
+    nome: pedido.nome || '', whatsapp: pedido.whatsapp || '',
+    retirada: pedido.bairro === 'Retirada no local',
+    endereco: pedido.endereco || '', complemento: pedido.complemento || '',
+    bairroNome: pedido.bairro === 'Retirada no local' ? '' : (pedido.bairro || ''),
+    pagamento: pagamentoEstadoDeTexto(pedido.pagamento || ''),
+    observacao: pedido.observacao || '', cupom: (pedido.cupom || '').toUpperCase(),
+    itens, _editor: editor,
+    _edicao: {
+      id: pedido.id, bucket, emPreparo: bucket !== 'aguardando', original: pedido,
+      totalOriginal: Number(pedido.total) || 0, pagamentoOriginal: pedido.pagamento || '',
+      semItensDetalhados: !itensJson.length, itensTextoOriginal: pedido.itens || '',
+    },
+  };
+  document.querySelector('#modal .md').style.width = 'min(640px,100%)';
+  renderPedidoManualConfirmacao();
+  document.getElementById('modal').classList.add('open');
+}
+
+function valorHistorico(v){
+  if (v == null || v === '') return '—';
+  return typeof v === 'number' ? brl(v) : String(v);
+}
+
+async function salvarEdicaoPedido(){
+  const st = window.__pedidoManualState;
+  const menu = window.__pedidoManualMenu;
+  const ed = st._edicao;
+  const btn = document.getElementById('mod-save-btn');
+
+  if (!(st._editor || '').trim()) { showToastAdmin('⚠️ Informe quem está alterando o pedido.'); return; }
+  if (!st.nome.trim()) { showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
+  if (!st.pagamento) { showToastAdmin('⚠️ Selecione a forma de pagamento.'); return; }
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  if (!precos.length || precos.some(p => !p)) { showToastAdmin('⚠️ Tem item incompleto — selecione tipo/sabor/tamanho de todos os itens.'); return; }
+  let bairroNome;
+  if (st.retirada) bairroNome = 'Retirada no local';
+  else {
+    if (!st.endereco.trim()) { showToastAdmin('⚠️ Informe o endereço.'); return; }
+    const bairro = menu.bairros.find(b => b.nome === st.bairroNome);
+    if (!bairro) { showToastAdmin('⚠️ Selecione o bairro.'); return; }
+    bairroNome = bairro.nome;
+  }
+
+  // Status de agora (pode ter mudado desde que a tela abriu)
+  const [atual] = await api('pedidos', `id=eq.${ed.id}&select=status,historico_edicoes`);
+  if (!atual) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
+  const bucketAgora = statusBucket(atual.status);
+  if (!STATUS_EDITAVEIS.includes(bucketAgora)) { showToastAdmin('⚠️ O pedido foi entregue ou cancelado enquanto você editava — nada foi salvo.'); return; }
+  if (bucketAgora !== 'aguardando' && !confirm('Este pedido já está em preparo. Confirme com a cozinha antes de alterar.\n\nSalvar a alteração mesmo assim?')) return;
+
+  // Valores oficiais (mesma função do site), ignorando o próprio pedido no uso do cupom
+  let r;
+  try {
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom, ed.id);
+  } catch (e) { console.error('salvarEdicaoPedido', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
+  if (st.cupom && !r.cupom?.valido) {
+    if (!confirm(`O cupom ${st.cupom} deixa de valer com esta alteração: ${r.cupom?.motivo || 'regras do cupom'}\n\nSalvar o pedido SEM o cupom (total ${brl(r.total)})?`)) return;
+  }
+
+  const o = ed.original;
+  const novo = {
+    nome: st.nome.trim(),
+    whatsapp: st.whatsapp.trim() || null,
+    endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
+    complemento: st.complemento.trim() || null,
+    bairro: bairroNome,
+    pagamento: st.pagamento === '__original' ? ed.pagamentoOriginal : PAGAMENTO_TEXTO_MANUAL[st.pagamento],
+    observacao: st.observacao.trim() || null,
+    cupom: r.cupom?.valido ? r.cupom.codigo : null,
+    itens: st.itens.map((it, i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | '),
+    itens_json: r.itens,
+    subtotal: Number(r.subtotal),
+    desconto: Number(r.desconto) || 0,
+    frete: Number(r.frete) || 0,
+    total: Number(r.total),
+  };
+  const num = (v) => v == null ? null : Number(v);
+  const mudancas = CAMPOS_HISTORICO_EDICAO.map(([campo, rotulo]) => {
+    const ehValor = ['subtotal', 'desconto', 'frete', 'total'].includes(campo);
+    const antes = ehValor ? num(o[campo]) : (o[campo] ?? null);
+    const depois = ehValor ? num(novo[campo]) : (novo[campo] ?? null);
+    const igual = ehValor ? Math.abs((antes || 0) - (depois || 0)) < 0.005 : String(antes ?? '') === String(depois ?? '');
+    return igual ? null : { campo: rotulo, antes: ehValor ? antes : (antes || null), depois: ehValor ? depois : (depois || null) };
+  }).filter(Boolean);
+  if (!mudancas.length) { showToastAdmin('Nada mudou — o pedido continua igual.'); return; }
+
+  const historico = [...(Array.isArray(atual.historico_edicoes) ? atual.historico_edicoes : []),
+    { em: new Date().toISOString(), por: st._editor.trim(), mudancas }];
+  try { localStorage.setItem('bb_admin_editor', st._editor.trim()); } catch (e) {}
+
+  btn.disabled = true;
+  const linhas = await updSeStatus('pedidos', ed.id, bucketAgora, { ...novo, historico_edicoes: historico });
+  btn.disabled = false;
+  if (linhas === null) { showToastAdmin('⚠️ Erro ao salvar a alteração.'); return; }
+  if (!linhas.length) { showToastAdmin('⚠️ O status do pedido mudou enquanto você salvava — nada foi alterado. Abra de novo.'); loadPedidos(); return; }
+  closeMod(); loadPedidos();
+  showToastAdmin(`✅ Pedido #${ed.id} alterado${bucketAgora !== 'aguardando' ? ' — reimprima a comanda pra cozinha' : ''}.`);
+}
+
+// Histórico de edições no card do kanban
+function historicoEdicoesHTML(p){
+  const h = Array.isArray(p.historico_edicoes) ? p.historico_edicoes : [];
+  if (!h.length) return '';
+  const quando = (iso) => (parseUTC(iso) || new Date(iso)).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bahia' });
+  const ult = h[h.length - 1];
+  return `<details style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;">
+    <summary style="cursor:pointer;color:#60a5fa;font-weight:700;">✏️ Editado ${h.length}x · última: ${esc(quando(ult.em))} por ${esc(ult.por || '—')}</summary>
+    ${[...h].reverse().map(e => `<div style="margin-top:8px;"><div style="font-weight:700;">${esc(quando(e.em))} · ${esc(e.por || '—')}</div>
+      ${(e.mudancas || []).map(m => `<div style="color:var(--text-secondary);margin-left:6px;">${esc(m.campo)}: <span style="text-decoration:line-through;opacity:.7;">${esc(valorHistorico(m.antes))}</span> → <strong style="color:var(--text-primary);">${esc(valorHistorico(m.depois))}</strong></div>`).join('')}</div>`).join('')}
+  </details>`;
 }
 
 // ═══════════════════════════════════════════════════════
