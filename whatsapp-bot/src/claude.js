@@ -9,12 +9,34 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // ferramentas repetidamente. Na prática, criar um pedido usa 1.
 const MAX_TOOL_ITERATIONS = 5;
 
+// Prompt caching, 2º ponto de cache: o fim da conversa. A próxima chamada
+// (volta de ferramenta, ou a próxima mensagem do cliente em até 5 min) relê
+// do cache tudo o que já foi processado em vez de pagar de novo. O 1º ponto
+// fica no fim do bloco fixo do system prompt (ver buildSystemPrompt). Copia
+// a última mensagem: o histórico salvo nunca recebe o cache_control.
+function comCacheNoFimDaConversa(messages) {
+  if (!messages.length) return messages;
+  const ultima = messages[messages.length - 1];
+  const blocos = typeof ultima.content === 'string' ? [{ type: 'text', text: ultima.content }] : ultima.content;
+  if (!Array.isArray(blocos) || !blocos.length) return messages;
+  const novosBlocos = [...blocos.slice(0, -1), { ...blocos[blocos.length - 1], cache_control: { type: 'ephemeral' } }];
+  return [...messages.slice(0, -1), { ...ultima, content: novosBlocos }];
+}
+
+// Soma o consumo de tokens (com e sem cache) — vai pro log de cada chamada.
+export function registrarUso(acumulado, usage) {
+  if (!usage) return;
+  for (const k of ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens']) {
+    acumulado[k] = (acumulado[k] || 0) + (usage[k] || 0);
+  }
+}
+
 async function callMessagesApi(systemPrompt, messages, tools, toolChoice) {
   const body = {
     model: config.anthropic.model,
     max_tokens: config.anthropic.maxTokens,
     system: systemPrompt,
-    messages,
+    messages: comCacheNoFimDaConversa(messages),
   };
   if (tools?.length) body.tools = tools;
   if (toolChoice) body.tool_choice = toolChoice;
@@ -33,7 +55,12 @@ async function callMessagesApi(systemPrompt, messages, tools, toolChoice) {
     const errBody = await r.text().catch(() => '');
     throw new Error(`Claude API respondeu ${r.status}: ${mascararSegredos(errBody)}`);
   }
-  return r.json();
+  const data = await r.json();
+  const u = data.usage || {};
+  console.log(
+    `[claude] tokens: novos=${u.input_tokens || 0} cache_lido=${u.cache_read_input_tokens || 0} cache_gravado=${u.cache_creation_input_tokens || 0} saida=${u.output_tokens || 0}`
+  );
+  return data;
 }
 
 function extrairTexto(data) {
@@ -103,16 +130,19 @@ function respostaDeEmergencia(ultimaFerramenta) {
 export async function conversarComFerramentas(systemPrompt, historicoExistente, tools, toolExecutors) {
   const novasMensagens = [];
   let mensagens = [...historicoExistente];
+  const uso = {}; // tokens somados desta mensagem do cliente (todas as chamadas)
 
   let ultimaFerramenta = null; // { nome, resultado } — base da resposta de emergência, se o modelo vier vazio
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     let data = await callMessagesApi(systemPrompt, mensagens, tools);
+    registrarUso(uso, data.usage);
 
     // Resposta final sem nenhum texto: tenta de novo uma vez antes de desistir.
     if (data.stop_reason !== 'tool_use' && !extrairTexto(data)) {
       console.warn('[claude] resposta vazia do modelo — tentando de novo');
       data = await callMessagesApi(systemPrompt, mensagens, tools);
+      registrarUso(uso, data.usage);
     }
 
     if (data.stop_reason !== 'tool_use') {
@@ -121,7 +151,7 @@ export async function conversarComFerramentas(systemPrompt, historicoExistente, 
       // do assistente vazia, que a API recusa na próxima chamada).
       const assistantMessage = { role: 'assistant', content: [{ type: 'text', text: texto }] };
       novasMensagens.push(assistantMessage);
-      return { textoResposta: texto, novasMensagens };
+      return { textoResposta: texto, novasMensagens, uso };
     }
 
     const assistantMessage = { role: 'assistant', content: data.content };
@@ -159,6 +189,7 @@ export async function conversarComFerramentas(systemPrompt, historicoExistente, 
     textoResposta:
       'Desculpa, tive um problema pra finalizar isso agora 😕 pode tentar de novo em instantes ou me chamar em texto que eu te ajudo manualmente?',
     novasMensagens,
+    uso,
   };
 }
 
