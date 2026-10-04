@@ -39,18 +39,20 @@ async function fetchConfiguracoes() {
 let cache = null; // { data, expiresAt }
 
 async function loadMenuData() {
-  const [salgadas, doces, combos, bebidas, bairros, configuracoes, cuponsPrimeiroPedido] = await Promise.all([
+  const [salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cuponsPrimeiroPedido] = await Promise.all([
     fetchTable('pizzas_salgadas', 'ativo=eq.true'),
     fetchTable('pizzas_doces', 'ativo=eq.true'),
     fetchTable('combos', 'ativo=eq.true'),
     fetchTable('bebidas', 'ativo=eq.true'),
     fetchTable('bairros', 'ativo=eq.true'),
+    // Inativos (fora da área / aguardando motoboy): só pra Luiza reconhecer e dizer que não entregamos lá.
+    fetchTable('bairros', 'ativo=eq.false'),
     fetchConfiguracoes(),
     fetchTable('cupons', 'ativo=eq.true&somente_primeiro_pedido=eq.true&limit=1'),
   ]);
   // Cupom de boas-vindas (ex: BIGBANG15) — o bot só oferece se ele estiver ativo.
   const cupomBoasVindas = cuponsPrimeiroPedido?.[0] || null;
-  return { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas };
+  return { salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cupomBoasVindas };
 }
 
 /**

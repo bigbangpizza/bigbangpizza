@@ -1,23 +1,33 @@
 import { getMenuData } from './supabaseData.js';
 
 // Reconhecimento do bairro que o cliente digitou/falou — tolerante a acento,
-// maiúscula, pontuação, pequenos erros de digitação e apelidos cadastrados
-// no admin (coluna `bairros.apelidos`). Usado por criar_pedido e
-// editar_pedido. Nunca "recusa" nada: quem decide o que dizer ao cliente
-// quando não reconhece é o prompt (pedir CEP/referência, depois chamar a
-// equipe).
+// maiúscula, pontuação, abreviações (Pq., Jd., Cond., Lot., Res.), pequenos
+// erros de digitação e apelidos cadastrados no admin (coluna
+// `bairros.apelidos`, que inclui os condomínios e loteamentos de cada
+// bairro). Reconhece também os bairros INATIVOS (fora da área ou aguardando
+// motoboy), pra Luiza poder dizer com educação que ainda não entregamos lá
+// em vez de pedir CEP e chamar a equipe. Usado por verificar_bairro,
+// criar_pedido e editar_pedido.
 
 // Palavras que não ajudam a distinguir bairro: "Centro de Lauro", "Lauro
 // Centro" e "bairro Centro" viram todos só "centro".
 const PALAVRAS_IGNORADAS = new Set(['bairro', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'lauro', 'freitas', 'ba', 'bahia', 'cidade']);
 
+// Abreviações e grafias que viram a forma cheia antes de comparar.
+const EXPANSOES = {
+  pq: 'parque', pque: 'parque', jd: 'jardim', jdm: 'jardim', cond: 'condominio', condominium: 'condominio',
+  lot: 'loteamento', lote: 'loteamento', res: 'residencial', resid: 'residencial', cj: 'conjunto', conj: 'conjunto',
+  joquei: 'jockey', jokey: 'jockey', club: 'clube', av: 'avenida',
+};
+
 export function normalizarBairro(texto) {
   return (texto || '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .split(' ')
+    .map((p) => EXPANSOES[p] || p)
     .filter((p) => p && !PALAVRAS_IGNORADAS.has(p))
     .join(' ');
 }
@@ -44,13 +54,21 @@ function toleranciaPara(tamanho) {
   return 3;
 }
 
-function chavesDo(bairro) {
-  return [bairro.nome, ...(bairro.apelidos || [])].map(normalizarBairro).filter(Boolean);
+// Chaves normalizadas em cache por objeto (a lista com os apelidos é grande).
+const cacheChaves = new WeakMap();
+function chavesDo(bairro, soNome = false) {
+  if (soNome) return [normalizarBairro(bairro.nome)].filter(Boolean);
+  let c = cacheChaves.get(bairro);
+  if (!c) {
+    c = [bairro.nome, ...(bairro.apelidos || [])].map(normalizarBairro).filter(Boolean);
+    cacheChaves.set(bairro, c);
+  }
+  return c;
 }
 
 // Palavras de "tipo" de lugar — não distinguem um bairro de outro
 // ("Jardim do Jockey" e "Parque Jockey Clube" só têm "jockey" em comum).
-const PALAVRAS_DE_TIPO = new Set(['jardim', 'parque', 'vila', 'vilas', 'conjunto', 'residencial', 'loteamento', 'recanto', 'condominio', 'cond', 'clube', 'alto', 'novo', 'nova', 'portal', 'centro']);
+const PALAVRAS_DE_TIPO = new Set(['jardim', 'parque', 'vila', 'vilas', 'conjunto', 'residencial', 'loteamento', 'recanto', 'condominio', 'clube', 'alto', 'novo', 'nova', 'portal', 'centro', 'avenida', 'praia']);
 
 function palavrasDistintivas(chave) {
   return chave.split(' ').filter((p) => p.length >= 4 && !PALAVRAS_DE_TIPO.has(p));
@@ -61,44 +79,34 @@ function unico(lista) {
   return ids.length === 1 ? lista[0] : null;
 }
 
-/**
- * @param {Array<{id:number, nome:string, apelidos?:string[]}>} bairros ativos
- * @param {string} texto o que o cliente disse
- * @returns {object|null} o bairro reconhecido, ou null se não reconheceu / ficou ambíguo
- */
-export function buscarBairro(bairros, texto) {
-  const alvo = normalizarBairro(texto);
-  if (!alvo) return null;
+// Etapas da busca aproximada: null = nada nessa etapa; { achado } = o bairro,
+// ou achado null quando ficou ambíguo.
+const contem = (maior, menor) => menor.length >= 4 && ` ${maior} `.includes(` ${menor} `);
 
-  // 1. Igual ao nome ou a um apelido.
-  const exatos = bairros.filter((b) => chavesDo(b).includes(alvo));
-  if (exatos.length) return unico(exatos);
+function porParte(lista, alvo, soNome) {
+  // Nos apelidos (condomínios, loteamentos), só vale o apelido INTEIRO dentro do
+  // que o cliente escreveu — uma palavra solta não pode puxar o bairro de um
+  // condomínio ("Barra" não é o "Village Barra do Joanes", de Buraquinho).
+  const casa = soNome ? (k) => contem(k, alvo) || contem(alvo, k) : (k) => contem(alvo, k);
+  const r = lista.filter((b) => chavesDo(b, soNome).some(casa));
+  return r.length ? { achado: unico(r) } : null;
+}
 
-  // 2. Um contém o outro como palavras inteiras ("jockey" → Parque Jockey Clube).
-  const contem = (maior, menor) => menor.length >= 4 && ` ${maior} `.includes(` ${menor} `);
-  const parciais = bairros.filter((b) => chavesDo(b).some((k) => contem(k, alvo) || contem(alvo, k)));
-  if (parciais.length) return unico(parciais);
-
-  // 2b. Mesma palavra característica, mudando só o tipo ("Jardim do Jockey" →
-  // Parque Jockey Clube). Vale só se um único bairro tiver essa palavra.
+function porPalavraCaracteristica(lista, alvo, soNome) {
   const palavrasAlvo = palavrasDistintivas(alvo);
-  if (palavrasAlvo.length) {
-    const casa = (p, q) => p === q || (Math.min(p.length, q.length) >= 5 && distancia(p, q) <= 1);
-    const porPalavra = bairros.filter((b) =>
-      chavesDo(b).some((k) => palavrasDistintivas(k).some((pk) => palavrasAlvo.some((pa) => casa(pa, pk))))
-    );
-    if (porPalavra.length) {
-      const achado = unico(porPalavra);
-      if (achado) return achado;
-    }
-  }
+  if (!palavrasAlvo.length) return null;
+  const casa = (p, q) => p === q || (Math.min(p.length, q.length) >= 5 && distancia(p, q) <= 1);
+  const r = lista.filter((b) => chavesDo(b, soNome).some((k) => palavrasDistintivas(k).some((pk) => palavrasAlvo.some((pa) => casa(pa, pk)))));
+  const achado = r.length ? unico(r) : null;
+  return achado ? { achado } : null; // ambíguo aqui não encerra a busca
+}
 
-  // 3. Pequenos erros de digitação: o mais próximo, se só um estiver dentro da tolerância.
+function porDigitacao(lista, alvo, soNome) {
   let melhor = null;
   let melhorDist = Infinity;
   let empate = false;
-  for (const b of bairros) {
-    for (const k of chavesDo(b)) {
+  for (const b of lista) {
+    for (const k of chavesDo(b, soNome)) {
       const d = distancia(alvo, k);
       if (d > toleranciaPara(Math.max(alvo.length, k.length))) continue;
       if (d < melhorDist) {
@@ -110,7 +118,44 @@ export function buscarBairro(bairros, texto) {
       }
     }
   }
-  return melhor && !empate ? melhor : null;
+  return melhor ? { achado: empate ? null : melhor } : null;
+}
+
+/**
+ * @param {Array<{id:number, nome:string, apelidos?:string[]}>} bairros ativos
+ * @param {string} texto o que o cliente disse
+ * @param {Array} [inativos] bairros inativos (fora da área / aguardando motoboy) — o
+ *   resultado traz `ativo: false` quando o cliente está num deles.
+ * @returns {object|null} o bairro reconhecido, ou null se não reconheceu / ficou ambíguo
+ */
+export function buscarBairro(bairros, texto, inativos = []) {
+  const alvo = normalizarBairro(texto);
+  if (!alvo) return null;
+
+  // 1. Igual ao nome ou a um apelido — vale mais que qualquer aproximação,
+  // inclusive de um bairro que não atendemos.
+  for (const lista of [bairros, inativos]) {
+    const exatos = lista.filter((b) => chavesDo(b).includes(alvo));
+    if (exatos.length) return unico(exatos);
+  }
+
+  // 2. Aproximações, nesta ordem: um nome contém o outro ("jockey" → Parque
+  // Jockey Clube); mesma palavra característica mudando só o tipo ("Jardim
+  // do Jockey"); pequenos erros de digitação. Em cada etapa: bairros
+  // atendidos antes dos inativos, e o NOME antes dos apelidos (são centenas
+  // de condomínios; um nome de bairro não pode ficar ambíguo por causa deles).
+  for (const etapa of [porParte, porPalavraCaracteristica, porDigitacao]) {
+    for (const lista of [bairros, inativos]) {
+      for (const soNome of [true, false]) {
+        const r = etapa(lista, alvo, soNome);
+        if (r) {
+          if (r.achado) return r.achado;
+          if (etapa !== porPalavraCaracteristica) return null; // ambíguo: melhor não chutar
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -147,16 +192,27 @@ export async function consultarCep(cep) {
 /**
  * Resolve o bairro a partir do que o cliente disse e/ou do CEP. Se o nome não
  * bater, tenta o bairro que o ViaCEP devolve pro CEP.
- * @returns {Promise<{bairro: object|null, cepInfo: object|null}>}
+ * @param {Array} [inativos] bairros que não atendemos (getMenuData().bairrosInativos)
+ * @returns {Promise<{bairro: object|null, naoAtendido: object|null, cepInfo: object|null}>}
+ *   `bairro` só vem preenchido se for atendido; `naoAtendido` = reconhecido, mas inativo.
  */
-export async function resolverBairro(bairros, texto, cep) {
-  let bairro = texto ? buscarBairro(bairros, texto) : null;
+export async function resolverBairro(bairros, texto, cep, inativos = []) {
+  let achado = texto ? buscarBairro(bairros, texto, inativos) : null;
   let cepInfo = null;
-  if (!bairro && cep) {
+  if (!achado && cep) {
     cepInfo = await consultarCep(cep);
-    if (cepInfo?.bairro && !cepInfo.especial) bairro = buscarBairro(bairros, cepInfo.bairro);
+    if (cepInfo?.bairro && !cepInfo.especial) achado = buscarBairro(bairros, cepInfo.bairro, inativos);
   }
-  return { bairro, cepInfo };
+  const naoAtendido = achado && achado.ativo === false ? achado : null;
+  return { bairro: naoAtendido ? null : achado, naoAtendido, cepInfo };
+}
+
+/** O cliente está num bairro que não atendemos (inativo): a Luiza avisa com educação, sem chamar a equipe. */
+export function mensagemBairroNaoAtendido(bairro) {
+  return (
+    `"${bairro.nome}" é um bairro que ainda NÃO atendemos. Diga ao cliente, com educação e em uma mensagem, que ainda não entregamos em ${bairro.nome}. ` +
+    'Não peça CEP nem chame chamar_atendente por isso, e não registre o pedido com outro bairro. Se o próprio cliente perguntar, ele pode retirar o pedido na loja.'
+  );
 }
 
 /**
@@ -216,14 +272,16 @@ export const VERIFICAR_BAIRRO_TOOL = {
 
 export function criarExecutorVerificarBairro() {
   return async function executarVerificarBairro(input = {}) {
-    const { bairros, configuracoes } = await getMenuData();
-    const { bairro, cepInfo } = await resolverBairro(bairros, input.bairro, input.cep);
+    const { bairros, bairrosInativos, configuracoes } = await getMenuData();
+    const { bairro, naoAtendido, cepInfo } = await resolverBairro(bairros, input.bairro, input.cep, bairrosInativos);
+    if (naoAtendido) return { reconhecido: true, atendido: false, bairro: naoAtendido.nome, instrucao: mensagemBairroNaoAtendido(naoAtendido) };
     if (bairro) {
       const { fretePadrao, freteGratisMinimo } = regrasFrete(configuracoes);
       // Bairro cadastrado com R$ 0 é a "zona base": cobra o frete padrão.
       const freteZona = Number(bairro.frete) > 0 ? Number(bairro.frete) : fretePadrao;
       return {
         reconhecido: true,
+        atendido: true,
         bairro: bairro.nome,
         frete_zona: freteZona,
         regra: `Frete grátis se os produtos somarem R$ ${freteGratisMinimo.toFixed(2).replace('.', ',')} ou mais e o pedido não usar cupom; senão cobra o frete da zona.`,

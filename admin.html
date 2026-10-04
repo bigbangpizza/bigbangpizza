@@ -2004,7 +2004,7 @@ function grupoLabelFrete(frete) {
 
 function bairroCardHTML(b) {
   return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
-    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;">também: ${esc(b.apelidos.join(', '))}</div>`:''}</div>
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;" title="${esc(b.apelidos.join(', '))}">também: ${esc(b.apelidos.slice(0,3).join(', '))}${b.apelidos.length>3?` +${b.apelidos.length-3}`:''}</div>`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
       <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
@@ -2024,19 +2024,25 @@ function renderBairros() {
   const data = bairrosBusca ? bairrosCache.filter(b => b.nome.toLowerCase().includes(bairrosBusca) || (b.apelidos||[]).some(a => a.toLowerCase().includes(bairrosBusca))) : bairrosCache;
   if (!data.length) { document.getElementById('t-bairros').innerHTML = '<div class="loading">Nenhum bairro encontrado.</div>'; return; }
   const ativos = data.filter(b => b.ativo);
-  const inativos = data.filter(b => !b.ativo);
+  // Inativos em dois grupos: "aguardando motoboy" (pode voltar a atender) e
+  // "fora da área" (não atendemos — a Luiza avisa o cliente; vários bairros
+  // de Salvador e Camaçari entram aqui, então o grupo começa recolhido).
+  const inativos = data.filter(b => !b.ativo && !b.fora_da_area);
+  const foraDaArea = data.filter(b => !b.ativo && b.fora_da_area);
   const fretesUnicos = [...new Set(ativos.map(b => Number(b.frete)))].sort((a,b) => a-b);
   let html = '';
   fretesUnicos.forEach(f => {
     html += grupoBairrosHTML(grupoLabelFrete(f), String(f), ativos.filter(b => Number(b.frete) === f));
   });
   html += grupoBairrosHTML('⚫ Inativos (aguardando motoboy)', 'inativo', inativos);
+  html += `<details class="bairros-fora" ${bairrosBusca && foraDaArea.length ? 'open' : ''}><summary style="cursor:pointer;margin:6px 0 10px;color:rgba(255,255,255,.6);font-size:13px;">🚫 Fora da área — não atendemos (${foraDaArea.length}) · a Luiza avisa o cliente que ainda não entregamos lá</summary>${grupoBairrosHTML('🚫 Fora da área', 'fora', foraDaArea)}</details>`;
   document.getElementById('t-bairros').innerHTML = html;
 }
 
 async function togBairro(id, ativo) {
-  const ok = await upd('bairros', id, { ativo });
-  if (ok) { const item = bairrosCache.find(b => b.id === id); if (item) item.ativo = ativo; renderBairros(); }
+  const data = ativo ? { ativo, fora_da_area: false } : { ativo };
+  const ok = await upd('bairros', id, data);
+  if (ok) { const item = bairrosCache.find(b => b.id === id); if (item) Object.assign(item, data); renderBairros(); }
   else showToastAdmin('⚠️ Erro ao atualizar bairro.');
 }
 
@@ -2053,7 +2059,9 @@ async function onBairroDrop(e, freteKey, groupEl) {
   _draggedBairroId = null;
   const item = bairrosCache.find(b => b.id === id);
   if (!item) return;
-  const data = freteKey === 'inativo' ? { ativo: false } : { frete: parseFloat(freteKey), ativo: true };
+  const data = freteKey === 'inativo' ? { ativo: false, fora_da_area: false }
+    : freteKey === 'fora' ? { ativo: false, fora_da_area: true }
+    : { frete: parseFloat(freteKey), ativo: true, fora_da_area: false };
   const ok = await upd('bairros', id, data);
   if (ok) { Object.assign(item, data); renderBairros(); showToastAdmin('✅ Bairro atualizado!'); }
   else showToastAdmin('⚠️ Erro ao mover bairro.');
@@ -4203,9 +4211,62 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
     </tr>`).join('')}
     </tbody></table>`:'<div class="loading">Nenhum pedido nesse dia.</div>'}</div>`
     :`<div style="font-size:12px;color:rgba(255,255,255,.35);">Selecione "Hoje", "Ontem" ou uma data específica (calendário acima) pra ver a lista detalhada de pedidos.</div>`}
+    <div id="rel-bairros" style="margin-top:16px;"></div>
     <div id="rel-oferta-doce" style="margin-top:16px;"></div>
   `;
+  carregarRelatorioBairros();
   carregarRelatorioOfertaDoce();
+}
+
+// Pedidos e faturamento por bairro nos últimos 30 dias — pra revisar o frete
+// com dados. Independe do período escolhido acima. Faturamento e frete contam
+// só pedidos entregues (mesma regra do faturamento acima).
+async function carregarRelatorioBairros(){
+  const el = document.getElementById('rel-bairros');
+  if (!el) return;
+  const inicio = new Date(Date.now() - 30*24*3600*1000);
+  const [pedidos, bairros] = await Promise.all([
+    api('pedidos', `created_at=gte.${inicio.toISOString()}&select=bairro,status,total,frete`, 'created_at.desc'),
+    api('bairros', 'select=nome,frete,ativo,fora_da_area'),
+  ]);
+  const cad = new Map(bairros.map(b => [String(b.nome).toLowerCase(), b]));
+  const por = new Map();
+  for (const p of pedidos) {
+    const nome = (p.bairro || '(sem bairro)').trim();
+    const r = por.get(nome) || { nome, pedidos: 0, entregues: 0, cancelados: 0, fat: 0, frete: 0, freteGratis: 0 };
+    r.pedidos++;
+    if (p.status === 'cancelado') r.cancelados++;
+    if (p.status === 'entregue') {
+      r.entregues++; r.fat += Number(p.total) || 0; r.frete += Number(p.frete) || 0;
+      if (!(Number(p.frete) > 0) && nome !== 'Retirada no local') r.freteGratis++;
+    }
+    por.set(nome, r);
+  }
+  const linhas = [...por.values()].sort((a, b) => b.fat - a.fat || b.pedidos - a.pedidos);
+  const totFat = linhas.reduce((s, r) => s + r.fat, 0);
+  const freteCad = (nome) => {
+    if (nome === 'Retirada no local') return '<span style="color:rgba(255,255,255,.45);">retirada</span>';
+    const b = cad.get(nome.toLowerCase());
+    if (!b) return '<span style="color:#facc15;">não cadastrado</span>';
+    const valor = Number(b.frete) == 0 ? 'Zona base' : brl(b.frete);
+    return b.ativo ? valor : `<span style="color:#ff7777;">${b.fora_da_area ? 'fora da área' : 'inativo'}</span>`;
+  };
+  el.innerHTML = `<div class="tw"><div class="tw-head"><h3>🛵 Pedidos e faturamento por bairro — últimos 30 dias</h3></div>
+    <div style="font-size:11px;color:rgba(255,255,255,.4);margin:0 0 10px;">Não muda com o período escolhido acima. Faturamento, frete cobrado e frete grátis contam só pedidos entregues.</div>
+    ${linhas.length ? `<table><thead><tr><th>Bairro</th><th>Frete cadastrado</th><th>Pedidos</th><th>Entregues</th><th>Faturamento</th><th>% do total</th><th>Ticket médio</th><th>Frete cobrado</th><th>Com frete grátis</th><th>Cancelados</th></tr></thead><tbody>
+    ${linhas.map(r => `<tr>
+      <td data-label="Bairro">${esc(r.nome)}</td>
+      <td data-label="Frete cadastrado">${freteCad(r.nome)}</td>
+      <td data-label="Pedidos">${r.pedidos}</td>
+      <td data-label="Entregues">${r.entregues}</td>
+      <td data-label="Faturamento" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(r.fat)}</td>
+      <td data-label="% do total">${totFat ? (100 * r.fat / totFat).toFixed(1).replace('.', ',') + '%' : '—'}</td>
+      <td data-label="Ticket médio">${r.entregues ? brl(r.fat / r.entregues) : '—'}</td>
+      <td data-label="Frete cobrado">${brl(r.frete)}</td>
+      <td data-label="Com frete grátis">${r.entregues ? `${r.freteGratis} (${Math.round(100 * r.freteGratis / r.entregues)}%)` : '—'}</td>
+      <td data-label="Cancelados">${r.cancelados}</td>
+    </tr>`).join('')}
+    </tbody></table>` : '<div class="loading">Nenhum pedido nos últimos 30 dias.</div>'}</div>`;
 }
 
 // Oferta "pizza doce por preço fixo": doces vendidas com a oferta por semana

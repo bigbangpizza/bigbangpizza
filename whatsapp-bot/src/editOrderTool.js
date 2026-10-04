@@ -2,7 +2,7 @@ import { getMenuData, calcularCheckout } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
 import { processarItens, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero } from './orderTool.js';
-import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
+import { resolverBairro, mensagemBairroNaoReconhecido, mensagemBairroNaoAtendido } from './bairroMatch.js';
 
 const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto,cupom';
 
@@ -165,8 +165,10 @@ export function criarExecutorEditarPedido({ numero }) {
     let freteFinal = Number(pedido.frete) || 0;
     let bairroFinal = pedido.bairro;
     if (input.bairro) {
-      const { bairro: bairroEncontrado, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep);
-      if (!bairroEncontrado) {
+      const { bairro: bairroEncontrado, naoAtendido, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep, menuData.bairrosInativos);
+      if (naoAtendido) {
+        erros.push(mensagemBairroNaoAtendido(naoAtendido));
+      } else if (!bairroEncontrado) {
         erros.push(mensagemBairroNaoReconhecido(menuData.bairros, input.bairro, input.cep, cepInfo));
       } else {
         freteFinal = Number(bairroEncontrado.frete) || 0;

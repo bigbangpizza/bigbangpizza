@@ -1,6 +1,6 @@
 import { config } from './config.js';
 import { getMenuData, inserirPedido, calcularCheckout } from './supabaseData.js';
-import { resolverBairro, mensagemBairroNaoReconhecido } from './bairroMatch.js';
+import { resolverBairro, mensagemBairroNaoReconhecido, mensagemBairroNaoAtendido } from './bairroMatch.js';
 import { montarResumoPedido, textoWhatsApp } from './resumoPedido.js';
 import { enviarTexto } from './evolutionApi.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
@@ -315,9 +315,11 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
     if (input.retirada) {
       bairroEncontrado = { nome: 'Retirada no local', frete: 0 };
     } else {
-      const { bairro, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep);
+      const { bairro, naoAtendido, cepInfo } = await resolverBairro(menuData.bairros, input.bairro, input.cep, menuData.bairrosInativos);
       bairroEncontrado = bairro;
-      if (!bairroEncontrado) {
+      if (naoAtendido) {
+        erros.push(mensagemBairroNaoAtendido(naoAtendido));
+      } else if (!bairroEncontrado) {
         erros.push(mensagemBairroNaoReconhecido(menuData.bairros, input.bairro, input.cep, cepInfo));
       }
       if (!input.endereco || !input.endereco.trim()) {
@@ -545,8 +547,9 @@ export function criarExecutorCalcularTotal({ numero }) {
     const { itensProcessados, erros } = processarItens(input.itens, menuData);
     let bairroNome = 'Retirada no local';
     if (!input.retirada) {
-      const { bairro } = await resolverBairro(menuData.bairros, input.bairro);
-      if (!bairro) erros.push(`Bairro "${input.bairro || ''}" não reconhecido — use verificar_bairro antes.`);
+      const { bairro, naoAtendido } = await resolverBairro(menuData.bairros, input.bairro, undefined, menuData.bairrosInativos);
+      if (naoAtendido) erros.push(mensagemBairroNaoAtendido(naoAtendido));
+      else if (!bairro) erros.push(`Bairro "${input.bairro || ''}" não reconhecido — use verificar_bairro antes.`);
       else bairroNome = bairro.nome;
     }
     if (erros.length) return { erro: erros.join(' ') };
