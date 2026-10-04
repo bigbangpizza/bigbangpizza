@@ -108,7 +108,6 @@ export const config = {
   // este é obrigatório: sem ele configurado, o endpoint recusa toda
   // chamada, porque processa texto arbitrário via Claude API a um custo por
   // chamada e não deve ficar exposto publicamente sem proteção alguma.
-  adminApiSecret: process.env.ADMIN_API_SECRET || '',
 
   // Quantas mensagens (pares usuário/assistente) manter por contato, pra dar
   // contexto de conversa. Vale tanto pro histórico em Redis quanto pro

@@ -40,6 +40,7 @@ import {
 import { vincularPedidosDoHistorico } from './pedidoStatusUtil.js';
 import { BUSCAR_PEDIDOS_RECENTES_TOOL, criarExecutorBuscarPedidosRecentes } from './consultarPedidosTool.js';
 import { avisarFalhaNoAtendimento } from './falhaAtendimento.js';
+import { validarLoginEquipe } from './adminAuth.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -196,7 +197,7 @@ app.post('/alerta-uptime', (req, res) => {
 // colada pelo Gabriel) num pedido — sem gravar nada aqui, só devolve os
 // dados extraídos pra revisão na tela de confirmação. Protegido por
 // ?secret=..., igual /webhook e /alerta-uptime acima, mas aqui é
-// obrigatório (ver config.adminApiSecret): processa texto arbitrário via
+// obrigatório (login da equipe, ver adminAuth.js): processa texto arbitrário via
 // Claude API a um custo por chamada, não pode ficar aberto sem proteção.
 // CORS liberado só pro domínio do site (o browser do Gabriel é quem chama
 // isso direto, não um outro servidor) — sem isso o navegador bloqueia a
@@ -206,14 +207,15 @@ const ADMIN_CORS_ORIGIN = 'https://bigbangpizza.com.br';
 app.options('/admin/extrair-pedido', (req, res) => {
   res.set('Access-Control-Allow-Origin', ADMIN_CORS_ORIGIN);
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey');
   res.sendStatus(204);
 });
 
 app.post('/admin/extrair-pedido', async (req, res) => {
   res.set('Access-Control-Allow-Origin', ADMIN_CORS_ORIGIN);
 
-  if (!config.adminApiSecret || req.query.secret !== config.adminApiSecret) {
+  // Só o login da conta da equipe (token da sessão do admin) — ver adminAuth.js.
+  if (!(await validarLoginEquipe(req.get('authorization')))) {
     return res.sendStatus(401);
   }
 

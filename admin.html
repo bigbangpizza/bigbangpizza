@@ -816,11 +816,10 @@ const ADMIN_EMAIL = 'bigbangpz@outlook.com';
 // Servidor do bot do WhatsApp (Railway) — reaproveitado aqui só pelo endpoint
 // /admin/extrair-pedido (aba Pedidos > "Lançar pedido manual"), que usa a
 // mesma chave da Claude API já configurada no bot pra estruturar um texto
-// livre. Protegido por ?secret=..., igual /webhook e /alerta-uptime do bot —
-// ADMIN_API_SECRET aqui precisa ser IDÊNTICO à variável de ambiente
-// ADMIN_API_SECRET configurada no Railway (ver whatsapp-bot/.env.example).
+// livre. Protegido pelo LOGIN da equipe: o admin manda o token da sessão e o
+// bot confere no Supabase (whatsapp-bot/src/adminAuth.js) — nenhum segredo
+// fica neste arquivo.
 const BOT_API_URL = 'https://bigbangpizza-production.up.railway.app';
-const ADMIN_API_SECRET = '2531d7b69c7ae642591384b93eae600cc871f24d63d7a635';
 
 // ═══════════════════════════════════════════════════════
 // TEMA CLARO/ESCURO
@@ -2787,9 +2786,9 @@ async function processarPedidoManualIA(){
 
   try {
     const [extraido, menu] = await Promise.all([
-      fetch(`${BOT_API_URL}/admin/extrair-pedido?secret=${encodeURIComponent(ADMIN_API_SECRET)}`, {
+      // O bot confere o login da equipe (token da sessão) — sem segredo no código.
+      authFetch(`${BOT_API_URL}/admin/extrair-pedido`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ texto })
       }).then(async r => {
         if(!r.ok){ const body = await r.json().catch(()=>({})); throw new Error(body.erro || `Falha ao processar (HTTP ${r.status}).`); }
