@@ -2,7 +2,7 @@ import { getMenuData } from './supabaseData.js';
 import { getAgoraNoBrasil, parseComoUTC, diasEntre } from './dataUtils.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAtivoDoCliente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
-import { regrasFrete } from './bairroMatch.js';
+import { freteDoBairro } from './bairroMatch.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 // Hora de fechamento por dia da semana (24 = meia-noite).
@@ -83,12 +83,13 @@ export function formatarBebidas(lista) {
 
 export function formatarBairros(lista, configuracoes = {}) {
   if (!lista.length) return '(nenhum bairro cadastrado no momento)';
-  // Bairro cadastrado com R$ 0 é a "zona base": cobra o frete padrão (abaixo do mínimo do frete grátis).
-  const { fretePadrao } = regrasFrete(configuracoes);
+  // Só o nome: os apelidos (grafias, condomínios e loteamentos de cada bairro)
+  // são centenas e quem reconhece é a ferramenta verificar_bairro.
   return lista
-    // Só o nome: os apelidos (grafias, condomínios e loteamentos de cada bairro)
-    // são centenas e quem reconhece é a ferramenta verificar_bairro.
-    .map((b) => `- ${b.nome}: frete ${brl(Number(b.frete) > 0 ? b.frete : fretePadrao)}`)
+    .map((b) => {
+      const { frete, freteGratisMinimo } = freteDoBairro(b, configuracoes);
+      return `- ${b.nome}: frete ${brl(frete)}${freteGratisMinimo != null ? `, grátis a partir de ${brl(freteGratisMinimo)} em produtos` : ', sem frete grátis'}`;
+    })
     .join('\n');
 }
 
@@ -225,7 +226,6 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const blocoPedidoAtivo = await montarBlocoPedidoAtivo(numero);
   const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
   const blocoCupomBoasVindas = montarBlocoCupomBoasVindas(numero, cupomBoasVindas);
-  const { freteGratisMinimo } = regrasFrete(configuracoes);
   // Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesmas chaves da função calcular_checkout_v2.
   const ofertaDoce = {
     ativa: ['true', '1', 'sim'].includes(String(configuracoes.oferta_doce_ativa || '').toLowerCase()),
@@ -276,7 +276,7 @@ Isso é mais importante do que soar simpático: se você não tem certeza absolu
 ## Incluir a pizza doce da oferta num pedido já feito
 Quando o cliente já tem pedido e pede a pizza doce da oferta (ou uma pizza doce):
 1. Chame \`buscar_pedidos_recentes\`. Se o pedido tiver \`pode_incluir_doce_da_oferta: true\`, a doce sai por ${brl(ofertaDoce.preco)} nesse mesmo pedido — ofereça incluir nele em vez de abrir pedido novo. Se o cliente ainda não disse o sabor, pergunte só o sabor.
-2. Se \`pode_editar\` for true: chame \`calcular_total\` com os \`itens_para_editar\` do pedido + a pizza doce (tipo \`pizza_doce\`), o bairro do pedido e sem cupom. Mostre o novo resumo com o valor de cada item (use o campo \`itens\` e os valores de \`calcular_total\`: itens, desconto da oferta, frete — grátis se os produtos passarem de ${brl(freteGratisMinimo)} — e o novo total) e pergunte se pode incluir no pedido #ID.
+2. Se \`pode_editar\` for true: chame \`calcular_total\` com os \`itens_para_editar\` do pedido + a pizza doce (tipo \`pizza_doce\`), o bairro do pedido e sem cupom. Mostre o novo resumo com o valor de cada item (use o campo \`itens\` e os valores de \`calcular_total\`: itens, desconto da oferta, frete — calculado pela regra do bairro — e o novo total) e pergunte se pode incluir no pedido #ID.
 3. Só com um "sim" claro a essa pergunta, chame \`editar_pedido\` só com o campo \`itens\`: a lista COMPLETA (\`itens_para_editar\` + a doce). O sistema recalcula oferta e frete e manda a confirmação. Se a resposta não for um sim claro (ex: "já pedi", "tá no pedido que mandei"), não edite: responda que a pizza salgada já está no pedido #ID e pergunte de novo, em uma linha, se pode incluir a doce nele.
 4. Se \`pode_editar\` for false (a cozinha já aceitou), não edite nem crie pedido novo por conta própria: chame \`chamar_atendente\` (motivo: incluir pizza doce sabor X no pedido #ID) e diga que a equipe vai responder por aqui.` : ''}
 
@@ -320,8 +320,8 @@ A loja fica no Centro de Lauro de Freitas. Clientes escrevem o bairro de muitos 
 Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
 Se a loja estiver fechada (ver "Contexto desta mensagem", no fim) e o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.
 ## Frete e cupons
-- Frete grátis quando os produtos somam ${brl(freteGratisMinimo)} ou mais E o pedido não usa cupom. Abaixo disso, ou com cupom, cobra o frete da zona do bairro (lista de bairros abaixo).
-- Cupom não acumula com frete grátis: com cupom, o frete é cobrado mesmo acima de ${brl(freteGratisMinimo)}.
+- O frete e o frete grátis dependem do bairro (lista de bairros abaixo, e \`verificar_bairro\` devolve a regra do bairro do cliente): cada bairro tem o seu valor de frete e o seu "grátis a partir de" em produtos; alguns bairros não têm frete grátis nunca. Nunca prometa frete grátis sem olhar a regra do bairro.
+- Cupom não acumula com frete grátis: com cupom, o frete é cobrado mesmo acima do mínimo do bairro.
 - Cupom não vale em combos (o desconto só incide nos outros itens; pedido só com combo não aceita cupom).
 - Cada cupom pode ter regras próprias (só primeiro pedido, pedido mínimo, teto de desconto, um uso por cliente) — o sistema confere tudo ao registrar e devolve o motivo se não valer.
 - NÃO escreva você mesma quanto falta para o frete grátis — quando for o caso, o sistema acrescenta essa linha sozinho no resumo.

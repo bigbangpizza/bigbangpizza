@@ -708,9 +708,9 @@ input:checked+.sl::before{transform:translateX(20px);}
       <!-- SEÇÃO 5: FRETE E CUPONS -->
       <div class="tw" style="padding:20px;">
         <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🚚 Frete e cupons</h3>
-        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Valem para o site, o bot e a validação do servidor. Frete grátis só sem cupom; cupom não vale em combos.</p>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Valem para o site, o bot e a validação do servidor. Frete grátis é por bairro e só sem cupom; cupom não vale em combos.</p>
         <div class="fr">
-          <div class="fg"><label>Frete grátis a partir de (R$ em produtos)</label><input type="number" id="bot-frete-gratis-minimo" min="0" step="0.01" placeholder="65.00"></div>
+          <div class="fg"><label>Frete grátis</label><div style="font-size:13px;color:rgba(255,255,255,.6);padding-top:8px;">Agora é por bairro: aba <b>Bairros</b> → editar → "Frete grátis a partir de".</div></div>
           <div class="fg"><label>Frete padrão — bairros da zona base (R$)</label><input type="number" id="bot-frete-padrao" min="0" step="0.01" placeholder="4.99"></div>
         </div>
         <div class="fr">
@@ -2004,7 +2004,7 @@ function grupoLabelFrete(frete) {
 
 function bairroCardHTML(b) {
   return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
-    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;" title="${esc(b.apelidos.join(', '))}">também: ${esc(b.apelidos.slice(0,3).join(', '))}${b.apelidos.length>3?` +${b.apelidos.length-3}`:''}</div>`:''}</div>
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}${b.ativo ? (b.frete_gratis_minimo!=null ? ` · grátis a partir de ${brl(b.frete_gratis_minimo)}` : ' · sem frete grátis') : ''}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;" title="${esc(b.apelidos.join(', '))}">também: ${esc(b.apelidos.slice(0,3).join(', '))}${b.apelidos.length>3?` +${b.apelidos.length-3}`:''}</div>`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
       <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
@@ -2093,6 +2093,11 @@ async function openModBairro(id = null) {
       <input id="bai-frete-custom" type="number" step="0.01" min="0" value="${!isPreset && item.frete!=null ? item.frete : ''}">
     </div>
     <div class="fg">
+      <label>Frete grátis a partir de (R$ em produtos)</label>
+      <input id="bai-gratis-min" type="number" step="0.01" min="0" placeholder="Vazio = nunca grátis" value="${item.frete_gratis_minimo!=null ? item.frete_gratis_minimo : ''}">
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">Vale para site, bot e pedido manual. Com cupom o frete é sempre cobrado. Deixe vazio se esse bairro nunca tem frete grátis.</div>
+    </div>
+    <div class="fg">
       <label>Status</label>
       <select id="bai-ativo">
         <option value="true" ${item.ativo?'selected':''}>Ativo</option>
@@ -2120,7 +2125,11 @@ async function saveBairro() {
   }
   const ativo = document.getElementById('bai-ativo').value === 'true';
   const apelidos = [...new Set(document.getElementById('bai-apelidos').value.split(',').map(a => a.trim()).filter(Boolean))];
-  const data = { nome, frete, ativo, apelidos };
+  const gratisTxt = document.getElementById('bai-gratis-min').value.trim();
+  const frete_gratis_minimo = gratisTxt === '' ? null : parseFloat(gratisTxt);
+  if (frete_gratis_minimo !== null && !(frete_gratis_minimo >= 0)) { alert('Digite um valor válido para o frete grátis (ou deixe vazio).'); return; }
+  const data = { nome, frete, ativo, apelidos, frete_gratis_minimo };
+  if (ativo) data.fora_da_area = false;
   if (!editId) data.ordem = bairrosCache.length ? Math.max(...bairrosCache.map(b => b.ordem||0)) + 1 : 0;
   const ok = editId ? await upd('bairros', editId, data) : await ins('bairros', data);
   if (ok) { closeMod(); loadBairros(); showToastAdmin('✅ Bairro salvo!'); }
@@ -2800,8 +2809,7 @@ async function carregarMenuPedidoManual(){
     salgadas, doces, combos, bebidas, bairros,
     bordaSalgada: parseFloat(cfg.borda_preco_salgada) || 12,
     bordaDoce: parseFloat(cfg.borda_preco_doce) || 12,
-    // Mesmos padrões da função calcular_checkout_v2 (Configurações do Bot).
-    freteGratisMinimo: Number.isFinite(parseFloat(cfg.frete_gratis_minimo)) ? parseFloat(cfg.frete_gratis_minimo) : 65,
+    // Mesmo padrão da função calcular_checkout_v2 (Configurações do Bot).
     fretePadrao: Number.isFinite(parseFloat(cfg.frete_padrao)) ? parseFloat(cfg.frete_padrao) : 4.99,
   };
 }
@@ -2809,7 +2817,7 @@ async function carregarMenuPedidoManual(){
 // Rótulo do bairro com a regra de frete: zona base (R$ 0 no cadastro) cobra o frete padrão.
 function rotuloBairroPedidoManual(b, menu){
   const zona = Number(b.frete) > 0 ? Number(b.frete) : menu.fretePadrao;
-  return `${b.nome} — ${brl(zona)} · grátis acima de ${brl(menu.freteGratisMinimo)}`;
+  return `${b.nome} — ${brl(zona)} · ${b.frete_gratis_minimo != null ? `grátis acima de ${brl(b.frete_gratis_minimo)}` : 'sem frete grátis'}`;
 }
 
 // Opções de sabor; nas salgadas, separadas por categoria (Tradicionais, Especiais, Premium) e na ordem do cardápio.
@@ -3676,7 +3684,6 @@ async function loadConfigBot(){
   document.getElementById('bot-borda-preco-salgada').value = cfg.borda_preco_salgada || 12;
   document.getElementById('bot-borda-preco-doce').value = cfg.borda_preco_doce || 12;
 
-  document.getElementById('bot-frete-gratis-minimo').value = cfg.frete_gratis_minimo || 65;
   document.getElementById('bot-frete-padrao').value = cfg.frete_padrao || 4.99;
   document.getElementById('bot-oferta-doce-ativa').value = ['true','1','sim'].includes(String(cfg.oferta_doce_ativa||'').toLowerCase()) ? 'true' : 'false';
   document.getElementById('bot-oferta-doce-preco').value = cfg.oferta_doce_preco || 39.90;
@@ -3710,11 +3717,11 @@ async function salvarBotOfertaDoce(){
 
 async function salvarBotFreteCupons(){
   const num = id => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
-  const minimo = num('bot-frete-gratis-minimo'), padrao = num('bot-frete-padrao');
+  const padrao = num('bot-frete-padrao');
   const teto = num('bot-teto-primeiro-pedido'), minReat = num('bot-minimo-reativacao');
-  if (!(minimo >= 0) || !(padrao >= 0)) { alert('Informe valores válidos (0 ou mais) para o frete!'); return; }
+  if (!(padrao >= 0)) { alert('Informe um valor válido (0 ou mais) para o frete padrão!'); return; }
   if ((teto !== null && !(teto >= 0)) || (minReat !== null && !(minReat >= 0))) { alert('Teto e pedido mínimo precisam ser 0 ou mais (ou vazio para sem limite).'); return; }
-  const oks = [await salvarConfigs({ frete_gratis_minimo: minimo, frete_padrao: padrao })];
+  const oks = [await salvarConfigs({ frete_padrao: padrao })];
   if (cupomPrimeiroPedido) oks.push(await upd('cupons', cupomPrimeiroPedido.id, { desconto_maximo: teto }));
   if (cupomReativacao) oks.push(await upd('cupons', cupomReativacao.id, { pedido_minimo: minReat }));
   showToastAdmin(oks.every(Boolean) ? '✅ Frete e cupons atualizados!' : '⚠️ Erro ao salvar.');

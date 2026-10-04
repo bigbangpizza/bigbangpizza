@@ -211,7 +211,7 @@ export async function resolverBairro(bairros, texto, cep, inativos = []) {
 export function mensagemBairroNaoAtendido(bairro) {
   return (
     `"${bairro.nome}" é um bairro que ainda NÃO atendemos. Diga ao cliente, com educação e em uma mensagem, que ainda não entregamos em ${bairro.nome}. ` +
-    'Não peça CEP nem chame chamar_atendente por isso, e não registre o pedido com outro bairro. Se o próprio cliente perguntar, ele pode retirar o pedido na loja.'
+    'Não peça CEP nem chame chamar_atendente por isso, não registre o pedido com outro bairro e NÃO ofereça retirada nem outra alternativa por conta própria. Só se o cliente perguntar por retirada, diga que ele pode retirar na loja.'
   );
 }
 
@@ -240,12 +240,28 @@ export function mensagemBairroNaoReconhecido(bairros, texto, cep, cepInfo) {
   );
 }
 
-/** Valores de frete editáveis em Configurações do Bot (mesmos fallbacks da função calcular_checkout). */
+/** Frete padrão da zona base (bairro cadastrado com R$ 0), editável em Configurações do Bot — mesmo fallback da calcular_checkout_v2. */
 export function regrasFrete(configuracoes = {}) {
   const num = (v, padrao) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : padrao);
+  return { fretePadrao: num(configuracoes.frete_padrao, 4.99) };
+}
+
+/**
+ * Frete e regra de frete grátis de UM bairro: cada bairro tem o seu
+ * "frete grátis a partir de" (coluna bairros.frete_gratis_minimo; vazio =
+ * nunca grátis). Mesma regra da calcular_checkout_v2.
+ */
+export function freteDoBairro(bairro, configuracoes = {}) {
+  const { fretePadrao } = regrasFrete(configuracoes);
+  const frete = Number(bairro.frete) > 0 ? Number(bairro.frete) : fretePadrao;
+  const min = Number.isFinite(parseFloat(bairro.frete_gratis_minimo)) ? parseFloat(bairro.frete_gratis_minimo) : null;
+  const reais = (v) => 'R$ ' + v.toFixed(2).replace('.', ',');
   return {
-    fretePadrao: num(configuracoes.frete_padrao, 4.99),
-    freteGratisMinimo: num(configuracoes.frete_gratis_minimo, 65),
+    frete,
+    freteGratisMinimo: min,
+    regra: min != null
+      ? `Frete ${reais(frete)}; grátis se os produtos somarem ${reais(min)} ou mais e o pedido não usar cupom.`
+      : `Frete ${reais(frete)}, cobrado sempre: esse bairro não tem frete grátis.`,
   };
 }
 
@@ -276,15 +292,14 @@ export function criarExecutorVerificarBairro() {
     const { bairro, naoAtendido, cepInfo } = await resolverBairro(bairros, input.bairro, input.cep, bairrosInativos);
     if (naoAtendido) return { reconhecido: true, atendido: false, bairro: naoAtendido.nome, instrucao: mensagemBairroNaoAtendido(naoAtendido) };
     if (bairro) {
-      const { fretePadrao, freteGratisMinimo } = regrasFrete(configuracoes);
-      // Bairro cadastrado com R$ 0 é a "zona base": cobra o frete padrão.
-      const freteZona = Number(bairro.frete) > 0 ? Number(bairro.frete) : fretePadrao;
+      const { frete, freteGratisMinimo, regra } = freteDoBairro(bairro, configuracoes);
       return {
         reconhecido: true,
         atendido: true,
         bairro: bairro.nome,
-        frete_zona: freteZona,
-        regra: `Frete grátis se os produtos somarem R$ ${freteGratisMinimo.toFixed(2).replace('.', ',')} ou mais e o pedido não usar cupom; senão cobra o frete da zona.`,
+        frete_zona: frete,
+        frete_gratis_a_partir_de: freteGratisMinimo,
+        regra,
       };
     }
     return { reconhecido: false, instrucao: mensagemBairroNaoReconhecido(bairros, input.bairro, input.cep, cepInfo) };

@@ -493,7 +493,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
   <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
-    <span class="badge">🚚 Frete Grátis em Lauro de Freitas</span>
+    <span class="badge">🚚 Frete grátis a partir de R$ 65 em Vilas, Pitangueiras e região</span>
     <span class="badge">⏱️ Entrega Rápida</span>
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
@@ -746,7 +746,7 @@ const SK='sb_publishable_SqkdZz2pkxsNIIudhFHx7Q_yH5_eU33';
 let cart = [], bairrosData = [];
 const BAIRRO_OUTRO = 'outro'; // valor da opção "Meu bairro não está na lista" no checkout
 // Frete (Configurações do Bot no admin) — mesmos padrões da função calcular_checkout do servidor.
-let freteGratisMinimo = 65, fretePadrao = 4.99;
+let fretePadrao = 4.99;
 // Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesma regra da função calcular_checkout_v2.
 let ofertaDoceAtiva = false, ofertaDocePreco = 39.90;
 let ofertaDoceRecusada = false; // cliente clicou "Agora não" no aviso da oferta (vale pra sessão)
@@ -1115,26 +1115,32 @@ async function loadBairros() {
   const sel = document.getElementById('f-bairro');
   const idSelecionado = sel.value ? sel.value.split('|')[0] : null;
 
-  // Bairro cadastrado com R$ 0 é a "zona base" e cobra o frete padrão; todas
-  // as zonas têm frete grátis a partir do mínimo em produtos (sem cupom).
+  // Bairro cadastrado com R$ 0 é a "zona base" e cobra o frete padrão. Cada
+  // bairro tem o seu "frete grátis a partir de" (vazio = nunca grátis), por
+  // isso as faixas juntam bairros com o mesmo frete E o mesmo mínimo.
   const freteZona = b => Number(b.frete) > 0 ? Number(b.frete) : fretePadrao;
-  const fretes = [...new Set(data.map(freteZona))].sort((a,b) => a-b);
+  const faixa = b => `${freteZona(b)}|${minGratisDe(b) ?? ''}`;
+  const faixas = [...new Set(data.map(faixa))].sort((a, b) => {
+    const [fa, ma] = a.split('|'), [fb, mb] = b.split('|');
+    return Number(fa) - Number(fb) || (Number(ma) || Infinity) - (Number(mb) || Infinity);
+  });
   const legenda = document.getElementById('entrega-legenda');
   const grid = document.getElementById('entrega-grid');
-  legenda.innerHTML = `<div style="width:100%;color:#4ade80;font-weight:700;font-size:14px;">🎉 Frete grátis em pedidos a partir de ${brl(freteGratisMinimo)} em produtos (sem cupom)</div>`;
+  legenda.innerHTML = `<div style="width:100%;color:#4ade80;font-weight:700;font-size:14px;">🎉 Frete grátis por bairro, em pedidos a partir do valor indicado em produtos (sem cupom)</div>`;
   grid.innerHTML = '';
   sel.innerHTML = '<option value="">Selecione o bairro *</option>';
 
-  fretes.forEach((frete, i) => {
+  faixas.forEach((chave, i) => {
     const cor = FRETE_CORES[i % FRETE_CORES.length];
-    const label = `Frete ${brl(frete)}`;
-    const doTier = data.filter(b => freteZona(b) === frete);
+    const doTier = data.filter(b => faixa(b) === chave);
+    const frete = freteZona(doTier[0]), min = minGratisDe(doTier[0]);
+    const label = `Frete ${brl(frete)} · ${min != null ? `grátis a partir de ${brl(min)}` : 'sem frete grátis'}`;
 
     legenda.insertAdjacentHTML('beforeend', `<div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;background:${cor};border-radius:3px;"></div><span style="color:rgba(255,255,255,0.7);font-size:13px;">${label}</span></div>`);
     grid.insertAdjacentHTML('beforeend', `<div class="entrega-bloco"><h3><span style="color:${cor};">●</span><span style="color:white;">${label}</span></h3><ul>${doTier.map(b => `<li>${b.nome}</li>`).join('')}</ul></div>`);
 
     const g = document.createElement('optgroup');
-    g.label = `🚚 ${label} · grátis acima de ${brl(freteGratisMinimo)}`;
+    g.label = `🚚 ${label}`;
     doTier.forEach(b => g.appendChild(new Option(b.nome, `${b.id}|${b.frete}`)));
     sel.appendChild(g);
   });
@@ -1252,7 +1258,6 @@ async function aplicarConfigsVisuais() {
 
   if (cfg.borda_preco_salgada != null && cfg.borda_preco_salgada !== '') bordaPrecoSalgada = parseFloat(cfg.borda_preco_salgada);
   if (cfg.borda_preco_doce != null && cfg.borda_preco_doce !== '') bordaPrecoDoce = parseFloat(cfg.borda_preco_doce);
-  if (Number.isFinite(parseFloat(cfg.frete_gratis_minimo))) freteGratisMinimo = parseFloat(cfg.frete_gratis_minimo);
   if (Number.isFinite(parseFloat(cfg.frete_padrao))) fretePadrao = parseFloat(cfg.frete_padrao);
   ofertaDoceAtiva = ['true','1','sim'].includes(String(cfg.oferta_doce_ativa||'').toLowerCase());
   if (Number.isFinite(parseFloat(cfg.oferta_doce_preco))) ofertaDocePreco = parseFloat(cfg.oferta_doce_preco);
@@ -2056,6 +2061,16 @@ function bairroSelecionadoNome() {
   if (!v || v === BAIRRO_OUTRO) return null;
   return bairrosData.find(b => String(b.id) === v.split('|')[0])?.nome || null;
 }
+// "Frete grátis a partir de" do bairro (null = esse bairro nunca tem frete grátis).
+function minGratisDe(b) {
+  const v = parseFloat(b && b.frete_gratis_minimo);
+  return Number.isFinite(v) ? v : null;
+}
+function minGratisSelecionado() {
+  const v = document.getElementById('f-bairro').value;
+  if (!v || v === BAIRRO_OUTRO) return null;
+  return minGratisDe(bairrosData.find(b => String(b.id) === v.split('|')[0]));
+}
 function freteDaZona() {
   const fr = getFrete();
   if (fr === null) return null;
@@ -2076,8 +2091,9 @@ function totaisAtuais() {
     sub = Number(r.subtotal); // com cupom válido não há oferta — vale o subtotal do servidor
     return { sub, desconto: Number(r.desconto)||0, frete: r.frete === null ? zona : Number(r.frete), total: +(sub - (Number(r.desconto)||0) + (r.frete === null ? (zona||0) : Number(r.frete))).toFixed(2), falta: null, comCupom: true };
   }
-  const frete = zona === null ? null : (sub >= freteGratisMinimo ? 0 : zona);
-  return { sub, desconto: 0, frete, total: +(sub + (frete||0)).toFixed(2), falta: sub < freteGratisMinimo ? +(freteGratisMinimo - sub).toFixed(2) : 0, comCupom: false };
+  const min = minGratisSelecionado();
+  const frete = zona === null ? null : (min != null && sub >= min ? 0 : zona);
+  return { sub, desconto: 0, frete, total: +(sub + (frete||0)).toFixed(2), falta: zona !== null && min != null && sub < min ? +(min - sub).toFixed(2) : 0, comCupom: false };
 }
 function calcDesconto() { return totaisAtuais().desconto; }
 
