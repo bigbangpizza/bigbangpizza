@@ -705,7 +705,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
     <div class="frete-info"><span>Frete:</span><span id="frete-val">—</span></div>
-    <div class="campo-hint" id="frete-falta" style="display:none;text-align:right;"></div>
+    <div class="campo-hint" id="frete-falta" style="display:none;text-align:left;margin:0 0 6px 0;"></div>
     <div class="total-row"><span>TOTAL</span><span id="total-val">R$ 0,00</span></div>
     <button class="btn-finalizar" id="btn-finalizar" onclick="finalizarPedido()">💬 Enviar pelo WhatsApp</button>
   </div>
@@ -1627,10 +1627,23 @@ function updateTotals() {
   document.getElementById('desconto-label').textContent = cupomAplicado && t.desconto > 0 ? ` (${cupomAplicado.codigo})` : '';
 
   document.getElementById('frete-val').textContent = t.frete === null ? (bairroForaDaLista() ? 'a confirmar' : '—') : t.frete === 0 ? '🎉 Grátis' : brl(t.frete);
+  // Linha do frete grátis: antes do bairro, só a regra geral (sem prometer
+  // "faltam R$ X", que depende do bairro); depois, a regra do bairro escolhido.
   const falta = document.getElementById('frete-falta');
-  if (t.comCupom) { falta.textContent = 'Com cupom, o frete é cobrado.'; falta.style.display = ''; }
-  else if (t.falta > 0 && cart.length) { falta.textContent = `Faltam ${brl(t.falta)} para frete grátis`; falta.style.display = ''; }
-  else falta.style.display = 'none';
+  const bairro = bairroSelecionadoObj();
+  const minBairro = minGratisDe(bairro);
+  let linhaFrete = '';
+  if (!cart.length || bairroForaDaLista()) linhaFrete = '';
+  else if (t.comCupom) linhaFrete = 'Com cupom, o frete é cobrado.';
+  else if (!bairro) {
+    const mins = bairrosData.map(minGratisDe).filter(v => v != null);
+    linhaFrete = mins.length ? `Frete grátis a partir de ${brl(Math.min(...mins))} em Pitangueiras, Vilas e região. Escolha seu bairro para ver o frete.` : 'Escolha seu bairro para ver o frete.';
+  }
+  else if (minBairro == null) linhaFrete = `Em ${bairro.nome} o frete é ${brl(t.frete)} (sem frete grátis).`;
+  else if (t.falta > 0) linhaFrete = `Faltam ${brl(t.falta)} para frete grátis em ${bairro.nome} (grátis a partir de ${brl(minBairro)}).`;
+  else linhaFrete = `🎉 Frete grátis em ${bairro.nome} (pedidos a partir de ${brl(minBairro)}).`;
+  falta.textContent = linhaFrete;
+  falta.style.display = linhaFrete ? '' : 'none';
   document.getElementById('total-val').textContent = brl(t.total);
   agendarRevalidacaoCupom();
 }
@@ -2065,6 +2078,11 @@ function bairroSelecionadoNome() {
 function minGratisDe(b) {
   const v = parseFloat(b && b.frete_gratis_minimo);
   return Number.isFinite(v) ? v : null;
+}
+function bairroSelecionadoObj() {
+  const v = document.getElementById('f-bairro').value;
+  if (!v || v === BAIRRO_OUTRO) return null;
+  return bairrosData.find(b => String(b.id) === v.split('|')[0]) || null;
 }
 function minGratisSelecionado() {
   const v = document.getElementById('f-bairro').value;
