@@ -39,6 +39,7 @@ import {
 } from './siteOrderNotice.js';
 import { vincularPedidosDoHistorico } from './pedidoStatusUtil.js';
 import { BUSCAR_PEDIDOS_RECENTES_TOOL, criarExecutorBuscarPedidosRecentes } from './consultarPedidosTool.js';
+import { avisarFalhaNoAtendimento } from './falhaAtendimento.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -148,6 +149,8 @@ async function processarFila(numero) {
     await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos));
   } catch (err) {
     console.error(`[webhook] numero=${numero} erro ao processar lote de mensagens:`, err);
+    // Nunca deixa o cliente sem resposta: mensagem fixa + alerta pra equipe.
+    await avisarFalhaNoAtendimento(numero, nomeContato, err).catch((e) => console.error('[falhaAtendimento]', e));
   } finally {
     fila.processando = false;
     if (fila.buffer.length) {
