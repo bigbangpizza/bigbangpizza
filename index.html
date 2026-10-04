@@ -1974,20 +1974,6 @@ function filtrarPizzas(termo) {
 // CUPOM
 let cupomAplicado = null; // { codigo } digitado/vindo por link — se vale, quem diz é o servidor (ver revalidarCupom)
 
-// Conta os usos reais de um cupom via RPC (contar_usos_cupom) — mais
-// confiável que o campo usos_atuais, que só é incrementado quando um
-// pedido é marcado "entregue" no admin (fica atrasado em relação ao uso
-// real no checkout). p_desde=null conta o histórico inteiro.
-async function contarUsosCupom(codigo, desde) {
-  const r = await fetch(`${SB}/rest/v1/rpc/contar_usos_cupom`, {
-    method: 'POST',
-    headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
-    body: JSON.stringify({ p_codigo: codigo, p_desde: desde || null })
-  });
-  if (!r.ok) throw new Error('Falha ao contar usos do cupom: ' + r.status);
-  return await r.json();
-}
-
 // Anima a contagem de 0 até `valorFinal` num efeito tipo odômetro — puramente
 // visual, o valor com que a animação TERMINA é sempre exatamente `valorFinal`
 // (o número real calculado em loadCupomRestantes, sem multiplicador nem ajuste
@@ -2032,8 +2018,12 @@ const CUPOM_BANNER_CODIGO = 'BIGBANG15';
 async function loadCupomRestantes() {
   // Só esconde o banner se o cupom em destaque estiver esgotado/inativo
   try {
-    const r = await fetch(`${SB}/rest/v1/cupons?codigo=eq.${CUPOM_BANNER_CODIGO}&select=usos_max,usos_atuais,ativo,contagem_desde,desconto_maximo,somente_primeiro_pedido`, {
-      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
+    // A chave pública não lê a tabela de cupons: a RPC devolve só o status
+    // deste código (com os usos já contados desde contagem_desde, se houver).
+    const r = await fetch(`${SB}/rest/v1/rpc/cupom_banner_status`, {
+      method: 'POST',
+      headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json'},
+      body: JSON.stringify({ p_codigo: CUPOM_BANNER_CODIGO })
     });
     const data = await r.json();
     const cupom = Array.isArray(data) ? data[0] : null;
@@ -2046,7 +2036,7 @@ async function loadCupomRestantes() {
     // contagem_desde marca o início de uma campanha "primeiros N pedidos"
     // relançada — conta em tempo real a partir dali em vez do usos_atuais
     // (que pode incluir uso anterior ao relançamento, ou ficar atrasado).
-    const usosReais = cupom.contagem_desde ? await contarUsosCupom(CUPOM_BANNER_CODIGO, cupom.contagem_desde) : (cupom.usos_atuais || 0);
+    const usosReais = cupom.usos_reais || 0;
     if (cupom.usos_max != null && usosReais >= cupom.usos_max) {
       if (banner) banner.style.display = 'none';
       return;
