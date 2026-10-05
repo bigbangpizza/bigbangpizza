@@ -27,7 +27,8 @@ import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
 import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
-import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis } from './historicoRedis.js';
+import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis, salvarUltimoContato } from './historicoRedis.js';
+import { chaveTelefone } from './dataUtils.js';
 import { processarAlertaUptime } from './uptimeAlert.js';
 import { ehEcoDoBot, ativarPausaHumana, estaPausadoPorHumano } from './atendimentoHumanoUtil.js';
 import {
@@ -251,6 +252,8 @@ async function processarWebhook(body) {
     return;
   }
 
+  registrarContato(numero);
+
   const nomeContato = data.pushName || '';
   const mensagem = data.message || {};
 
@@ -357,6 +360,16 @@ async function responderPedidoDoSite(numero, texto, token) {
 }
 
 /**
+ * Guarda a hora da última conversa no WhatsApp (cliente ou equipe digitando) —
+ * o abandonedCartJob.js não manda "não finalizou" pra quem conversou depois
+ * de montar o carrinho. Não espera o Redis nem derruba o atendimento.
+ */
+function registrarContato(numero) {
+  const chave = chaveTelefone(numero);
+  if (chave) salvarUltimoContato(chave, Date.now()).catch(() => {});
+}
+
+/**
  * Mensagem fromMe (enviada pelo próprio número conectado) — ou é eco de um
  * enviarTexto() que a nossa API acabou de disparar (nada a fazer), ou foi
  * alguém (Gabriel/equipe) digitando manualmente pelo WhatsApp. Nesse
@@ -365,6 +378,7 @@ async function responderPedidoDoSite(numero, texto, token) {
  */
 function tratarMensagemPropria(numero, messageId) {
   if (ehEcoDoBot(numero, messageId)) return;
+  registrarContato(numero);
   ativarPausaHumana(numero);
   console.log(
     `[atendimentoHumano] mensagem manual detectada numero=${numero} — pausando respostas automáticas por ${config.humanTakeoverPausaMinutos} min`

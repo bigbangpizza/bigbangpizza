@@ -16,6 +16,7 @@ import { config } from './config.js';
 // ser inconfundíveis com o que a Evolution usa.
 const PREFIXO_CHAVE = 'bbpizza:conversa:';
 const PREFIXO_PAUSA = 'bbpizza:pausa:';
+const PREFIXO_CONTATO = 'bbpizza:ultimocontato:';
 
 // TTL renovado a cada leitura/escrita — 24h de inatividade é folga de sobra
 // pra sobreviver a um restart no meio de uma conversa, sem guardar histórico
@@ -122,11 +123,45 @@ export function criarHistoricoStore(ClienteRedis, url) {
     }
   }
 
+  /**
+   * Último contato no WhatsApp (mensagem do cliente ou da equipe digitando
+   * manualmente) — usado pelo abandonedCartJob.js pra não mandar "você não
+   * finalizou" pra quem já está conversando. A chave é o telefone já
+   * normalizado por chaveTelefone() (dataUtils.js). TTL de 48h.
+   * @returns {Promise<boolean>} se gravou.
+   */
+  async function salvarUltimoContato(chaveTel, ms) {
+    if (!cliente) return false;
+    try {
+      await cliente.set(`${PREFIXO_CONTATO}${chaveTel}`, String(ms), 'EX', 48 * 60 * 60);
+      return true;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao salvar último contato de ${chaveTel}:`, err.message);
+      return false;
+    }
+  }
+
+  /**
+   * @returns {Promise<number|null|undefined>} ms do último contato; null se não
+   *   há registro; undefined se NÃO deu pra saber (Redis ausente ou falhou).
+   */
+  async function obterUltimoContato(chaveTel) {
+    if (!cliente) return undefined;
+    try {
+      const bruto = await cliente.get(`${PREFIXO_CONTATO}${chaveTel}`);
+      const ms = Number(bruto);
+      return bruto && Number.isFinite(ms) ? ms : null;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao ler último contato de ${chaveTel}:`, err.message);
+      return undefined;
+    }
+  }
+
   function redisConfigurado() {
     return Boolean(cliente);
   }
 
-  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, redisConfigurado };
+  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, salvarUltimoContato, obterUltimoContato, redisConfigurado };
 }
 
 const store = criarHistoricoStore(Redis, config.redis.url);
@@ -135,4 +170,6 @@ export const obterHistorico = store.obterHistorico;
 export const salvarHistorico = store.salvarHistorico;
 export const salvarPausa = store.salvarPausa;
 export const obterPausa = store.obterPausa;
+export const salvarUltimoContato = store.salvarUltimoContato;
+export const obterUltimoContato = store.obterUltimoContato;
 export const redisConfigurado = store.redisConfigurado;
