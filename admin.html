@@ -79,6 +79,7 @@ tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);bord
 .btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
 .btn-csv{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
+.mb-in{background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-input);border-radius:6px;padding:5px 7px;font-size:12px;}
 
 /* KANBAN DE PEDIDOS */
 .kanban-board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start;}
@@ -280,6 +281,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('doces')"     id="nav-doces">    <span class="ic">🍫</span> Doces</div>
       <div class="nav-item" onclick="show('bebidas')"   id="nav-bebidas">  <span class="ic">🥤</span> Bebidas</div>
       <div class="nav-item" onclick="show('bairros')"   id="nav-bairros">  <span class="ic">🛵</span> Bairros</div>
+      <div class="nav-item" onclick="show('motoboy')"   id="nav-motoboy">  <span class="ic">🏍️</span> Motoboy</div>
       <div class="nav-item" onclick="show('pedidos')"   id="nav-pedidos">  <span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('cozinha')"   id="nav-cozinha">  <span class="ic">👨‍🍳</span> Cozinha</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
@@ -759,6 +761,22 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div id="auto-content"><div class="loading">Carregando...</div></div>
     </div>
 
+    <!-- MOTOBOY — custo de entrega -->
+    <div id="pg-motoboy" class="hidden">
+      <div class="page-title">MOTOBOY</div>
+      <div class="page-sub">Custo de entrega: valor por bairro + diária + extras, comparado com o frete cobrado. O dia é o expediente (pedidos depois da meia-noite contam no dia anterior).</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="motoboy-periodos">
+        <button class="be filtro-btn" onclick="setMotoboyPeriodo(this,'dia')">📅 Dia</button>
+        <button class="bt filtro-btn" onclick="setMotoboyPeriodo(this,'semana')">📅 Semana</button>
+        <button class="bt filtro-btn" onclick="setMotoboyPeriodo(this,'mes')">📅 Mês</button>
+        <button class="bt" onclick="navegarMotoboy(-1)" title="Anterior">◀</button>
+        <input type="date" id="motoboy-data" class="bt" style="color-scheme:dark;padding:7px 10px;" onchange="setMotoboyData(this.value)">
+        <button class="bt" onclick="navegarMotoboy(1)" title="Próximo">▶</button>
+        <select id="motoboy-filtro-motoboy" class="bt" style="padding:8px 10px;" onchange="setMotoboyFiltroMotoboy(this.value)"><option value="">Todos os motoboys</option></select>
+      </div>
+      <div id="motoboy-content"><div class="loading">Carregando...</div></div>
+    </div>
+
   </div><!-- /main -->
 
   <!-- BOTTOM NAVIGATION MOBILE -->
@@ -781,6 +799,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('doces');fecharMaisMenu()"><span class="ic">🍫</span> Doces</div>
       <div class="nav-item" onclick="show('bebidas');fecharMaisMenu()"><span class="ic">🥤</span> Bebidas</div>
       <div class="nav-item" onclick="show('bairros');fecharMaisMenu()"><span class="ic">🛵</span> Bairros</div>
+      <div class="nav-item" onclick="show('motoboy');fecharMaisMenu()"><span class="ic">🏍️</span> Motoboy</div>
       <div class="nav-item" onclick="show('avaliacoes');fecharMaisMenu()"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('clientes');fecharMaisMenu()"><span class="ic">👥</span> Clientes</div>
       <div class="nav-item" onclick="show('contatos');fecharMaisMenu()"><span class="ic">💬</span> Contatos</div>
@@ -1417,6 +1436,7 @@ function show(page) {
   const map = {
     dashboard: () => { loadDash(); loadModoLoja(); },
     bairros: loadBairros,
+    motoboy: loadMotoboy,
     pedidos: () => loadPedidos(),
     cozinha: () => { loadCozinha(); _cozinhaTimer = setInterval(loadCozinha, 15000); },
     estoque: loadEstoque,
@@ -2042,8 +2062,11 @@ let bairrosCache = [];
 let bairrosBusca = '';
 let _draggedBairroId = null;
 
+let custoMotoboyBairroCache = new Map(); // bairro_id -> valor (tabela só da equipe, fora de "bairros")
 async function loadBairros() {
-  bairrosCache = await api('bairros');
+  const [bairros, custos] = await Promise.all([api('bairros'), api('motoboy_custo_bairro', 'select=bairro_id,valor', 'bairro_id.asc')]);
+  bairrosCache = bairros;
+  custoMotoboyBairroCache = new Map(custos.map(c => [c.bairro_id, Number(c.valor)]));
   renderBairros();
 }
 
@@ -2062,7 +2085,7 @@ function grupoLabelFrete(frete) {
 
 function bairroCardHTML(b) {
   return `<div class="bc2" draggable="true" data-id="${b.id}" ondragstart="onBairroDragStart(event,${b.id})">
-    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}${b.ativo ? (b.frete_gratis_minimo!=null ? ` · grátis a partir de ${brl(b.frete_gratis_minimo)}` : ' · sem frete grátis') : ''}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;" title="${esc(b.apelidos.join(', '))}">também: ${esc(b.apelidos.slice(0,3).join(', '))}${b.apelidos.length>3?` +${b.apelidos.length-3}`:''}</div>`:''}</div>
+    <div><div class="bn-nome">${esc(b.nome)}</div><div class="bn-frete">${b.frete==0?'Zona base':brl(b.frete)}${b.ativo ? (b.frete_gratis_minimo!=null ? ` · grátis a partir de ${brl(b.frete_gratis_minimo)}` : ' · sem frete grátis') : ''}${b.ativo ? (custoMotoboyBairroCache.has(b.id) ? ` · 🏍️ ${brl(custoMotoboyBairroCache.get(b.id))}` : ' · <span style="color:#facc15;">🏍️ sem custo</span>') : ''}</div>${(b.apelidos||[]).length?`<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;" title="${esc(b.apelidos.join(', '))}">também: ${esc(b.apelidos.slice(0,3).join(', '))}${b.apelidos.length>3?` +${b.apelidos.length-3}`:''}</div>`:''}</div>
     <div style="display:flex;align-items:center;gap:6px;">
       <button class="be" onclick="openModBairro(${b.id})" title="Editar">✏️</button>
       <button class="bd" onclick="remBairro(${b.id})" title="Excluir">🗑️</button>
@@ -2156,6 +2179,11 @@ async function openModBairro(id = null) {
       <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">Vale para site, bot e pedido manual. Com cupom o frete é sempre cobrado. Deixe vazio se esse bairro nunca tem frete grátis.</div>
     </div>
     <div class="fg">
+      <label>Custo motoboy por entrega (R$)</label>
+      <input id="bai-custo-motoboy" type="number" step="0.01" min="0" placeholder="Vazio = não definido" value="${id && custoMotoboyBairroCache.has(id) ? custoMotoboyBairroCache.get(id) : ''}">
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">Quanto o motoboy recebe por entrega neste bairro (aba Motoboy). Só a equipe vê — não aparece no site.</div>
+    </div>
+    <div class="fg">
       <label>Status</label>
       <select id="bai-ativo">
         <option value="true" ${item.ativo?'selected':''}>Ativo</option>
@@ -2186,12 +2214,22 @@ async function saveBairro() {
   const gratisTxt = document.getElementById('bai-gratis-min').value.trim();
   const frete_gratis_minimo = gratisTxt === '' ? null : parseFloat(gratisTxt);
   if (frete_gratis_minimo !== null && !(frete_gratis_minimo >= 0)) { alert('Digite um valor válido para o frete grátis (ou deixe vazio).'); return; }
+  const custoTxt = document.getElementById('bai-custo-motoboy').value.trim();
+  const custoMotoboy = custoTxt === '' ? null : parseFloat(custoTxt);
+  if (custoMotoboy !== null && !(custoMotoboy >= 0)) { alert('Digite um custo de motoboy válido (ou deixe vazio).'); return; }
   const data = { nome, frete, ativo, apelidos, frete_gratis_minimo };
   if (ativo) data.fora_da_area = false;
   if (!editId) data.ordem = bairrosCache.length ? Math.max(...bairrosCache.map(b => b.ordem||0)) + 1 : 0;
   const ok = editId ? await upd('bairros', editId, data) : await ins('bairros', data);
-  if (ok) { closeMod(); loadBairros(); showToastAdmin('✅ Bairro salvo!'); }
-  else alert('Erro ao salvar bairro!');
+  if (!ok) { alert('Erro ao salvar bairro!'); return; }
+  const bairroId = editId || (await api('bairros', `nome=eq.${encodeURIComponent(nome)}&select=id`, 'id.desc'))[0]?.id;
+  if (bairroId && custoMotoboy !== (custoMotoboyBairroCache.has(bairroId) ? custoMotoboyBairroCache.get(bairroId) : null)) {
+    const rc = custoMotoboy === null
+      ? await authFetch(`${SB}/rest/v1/motoboy_custo_bairro?bairro_id=eq.${bairroId}`, { method: 'DELETE' })
+      : await authFetch(`${SB}/rest/v1/motoboy_custo_bairro?on_conflict=bairro_id`, { method: 'POST', headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ bairro_id: bairroId, valor: custoMotoboy, updated_at: new Date().toISOString() }) });
+    if (!rc.ok) showToastAdmin('⚠️ Bairro salvo, mas o custo do motoboy não.');
+  }
+  closeMod(); loadBairros(); showToastAdmin('✅ Bairro salvo!');
 }
 
 async function remBairro(id) {
@@ -2333,6 +2371,7 @@ function renderPedidoCard(p){
         <option value="saiu"             ${bucket==='saiu'?'selected':''}>🛵 Saiu para entrega</option>
         <option value="entregue"         ${bucket==='entregue'?'selected':''}>🏁 Entregue</option>
       </select>
+      ${motoboyCardHTML(p, bucket)}
       ${STATUS_EDITAVEIS.includes(bucket)?`<button class="bp" onclick="abrirEdicaoPedido(${p.id})">✏️ Editar pedido</button>`:''}
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
@@ -2354,6 +2393,7 @@ async function loadPedidos(){
   const resultados = await Promise.all(statusParaCarregar.map(s=>api('pedidos', queryParaStatus(s), 'created_at.desc')));
   const porStatus = {};
   statusParaCarregar.forEach((s,i)=>{ porStatus[s]=resultados[i]; });
+  await carregarEntregasDosPedidos([...(porStatus.saiu||[]), ...(porStatus.entregue||[])]).catch(e => console.error('[motoboy]', e));
 
   COLUNAS_KANBAN_PEDIDOS.forEach(status=>{
     const corpo = document.getElementById('t-pedidos-'+status);
@@ -2503,7 +2543,7 @@ function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw, dataset){
  */
 function enviarWhatsAppEntregador(dataset){
   if(!dataset) return;
-  const numero = normalizarWhatsapp(whatsappEntregadorCache);
+  const numero = normalizarWhatsapp(telefoneEntregadorDoPedido(dataset.id));
   if(!numero){ showToastAdmin('⚠️ WhatsApp do entregador não configurado — configure na aba Aparência.'); return; }
 
   const endereco = dataset.endereco || '';
@@ -2574,6 +2614,7 @@ async function atualizarStatus(id,status,cardEl,statusEsperado){
   if(status==='entregue') { await baixarEstoquePedido(id); await incrementarUsoCupom(id); }
   if(status==='aceito_preparando') imprimirPedido(id);
   registrarHistorico(`Pedido #${id} marcado como ${STATUS_LABEL[status]||status}`);
+  if(status==='saiu'||status==='entregue') await registrarEntregaMotoboy(id);
   loadPedidos();
   return true;
 }
@@ -2589,6 +2630,323 @@ async function incrementarUsoCupom(id){
 }
 
 async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(); } }
+
+// ═══════════════════════════════════════════════════════
+// MOTOBOY — custo de entrega (aba "Motoboy")
+// Tabelas só da equipe: motoboys, motoboy_custo_bairro, motoboy_entregas,
+// motoboy_diarias. Cada pedido entregue (não retirada) vira UMA entrega ligada
+// a um motoboy, com o valor do bairro (editável) + extra. A diária é criada
+// pelo banco na 1ª entrega do motoboy no dia. O "dia" é o expediente: horário
+// da Bahia, pedidos até as 6h contam no dia anterior (dia_expediente no banco).
+// ═══════════════════════════════════════════════════════
+const RETIRADA_NOME = 'Retirada no local';
+let motoboysCache = [];                 // todos (ativos e inativos)
+let entregaPorPedidoCache = new Map();  // pedido_id -> {motoboy_id, ...} dos cards do kanban
+let motoboyFiltro = { periodo: 'dia', data: null, motoboy: '' };
+let motoboyDados = null;                // último carregamento da aba (pra edição inline)
+
+function diaExpedienteISO(pgTimestamp){
+  const d = parseUTC(pgTimestamp);
+  if (!d) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bahia' }).format(new Date(d.getTime() - 6*3600000));
+}
+function hojeExpedienteISO(){ return diaExpedienteISO(new Date().toISOString()); }
+function somarDiasISO(iso, n){ const d = new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function fmtDiaBR(iso){ const [a,m,d] = iso.split('-'); const sem = ['dom','seg','ter','qua','qui','sex','sáb'][new Date(iso+'T12:00:00Z').getUTCDay()]; return `${sem} ${d}/${m}`; }
+function num(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
+
+// [início, fim] (dias de expediente, inclusive) do período escolhido.
+function intervaloMotoboy(){
+  const base = motoboyFiltro.data || hojeExpedienteISO();
+  if (motoboyFiltro.periodo === 'semana') {
+    const dow = (new Date(base+'T12:00:00Z').getUTCDay() + 6) % 7; // seg=0
+    const ini = somarDiasISO(base, -dow);
+    return { ini, fim: somarDiasISO(ini, 6) };
+  }
+  if (motoboyFiltro.periodo === 'mes') {
+    const ini = base.slice(0,8) + '01';
+    const prox = new Date(ini+'T12:00:00Z'); prox.setUTCMonth(prox.getUTCMonth()+1);
+    return { ini, fim: somarDiasISO(prox.toISOString().slice(0,10), -1) };
+  }
+  return { ini: base, fim: base };
+}
+
+async function carregarMotoboys(){
+  motoboysCache = await api('motoboys', '', 'nome.asc');
+  return motoboysCache;
+}
+function motoboysAtivos(){ return motoboysCache.filter(m => m.ativo); }
+function nomeMotoboy(id){ return motoboysCache.find(m => m.id == id)?.nome || '—'; }
+
+async function custoMotoboyDoBairro(nomeBairro){
+  if (!nomeBairro || nomeBairro === RETIRADA_NOME) return null;
+  const b = await api('bairros', `nome=eq.${encodeURIComponent(nomeBairro)}&select=id`);
+  if (!b[0]) return null;
+  const c = await api('motoboy_custo_bairro', `bairro_id=eq.${b[0].id}&select=valor`, 'bairro_id.asc');
+  return c[0] ? Number(c[0].valor) : null;
+}
+
+// Escolha do motoboy (só pergunta quando há mais de um ativo).
+function escolherMotoboy(pedidoId){
+  const ativos = motoboysAtivos();
+  if (ativos.length <= 1) return Promise.resolve(ativos[0]?.id ?? null);
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.className = 'mo open';
+    ov.innerHTML = `<div class="md" style="max-width:360px;"><h3>🛵 Quem vai levar o pedido #${pedidoId}?</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">${ativos.map(m =>
+        `<button class="be" style="padding:12px;font-size:14px;" data-id="${m.id}">${esc(m.nome)}</button>`).join('')}</div>
+      <button class="bt" data-id="">Decidir depois (fica "sem motoboy")</button></div>`;
+    ov.addEventListener('click', e => {
+      const b = e.target.closest('button[data-id]');
+      if (!b) return;
+      ov.remove();
+      resolve(b.dataset.id ? Number(b.dataset.id) : null);
+    });
+    document.body.appendChild(ov);
+  });
+}
+
+// Liga o pedido a um motoboy quando ele sai pra entrega (ou é marcado entregue
+// direto). Retirada não gera custo. Se já tem motoboy, não mexe.
+async function registrarEntregaMotoboy(pedidoId){
+  try {
+    const ped = (await api('pedidos', `id=eq.${pedidoId}&select=id,bairro`))[0];
+    if (!ped || ped.bairro === RETIRADA_NOME) return;
+    const ja = await api('motoboy_entregas', `pedido_id=eq.${pedidoId}&select=pedido_id`, 'pedido_id.asc');
+    if (ja.length) return;
+    if (!motoboysCache.length) await carregarMotoboys();
+    if (!motoboysAtivos().length) { showToastAdmin('🛵 Cadastre um motoboy na aba Motoboy para registrar o custo das entregas.', 5000); return; }
+    const motoboyId = await escolherMotoboy(pedidoId);
+    if (!motoboyId) return;
+    await salvarEntregaMotoboy(pedidoId, { motoboy_id: motoboyId, valor: await custoMotoboyDoBairro(ped.bairro) }, true);
+  } catch (e) { console.error('[motoboy] falha ao registrar entrega', e); }
+}
+
+async function salvarEntregaMotoboy(pedidoId, dados, nova){
+  const r = nova
+    ? await authFetch(`${SB}/rest/v1/motoboy_entregas`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({ pedido_id: pedidoId, ...dados }) })
+    : await authFetch(`${SB}/rest/v1/motoboy_entregas?pedido_id=eq.${pedidoId}`, { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(dados) });
+  if (!r.ok) showToastAdmin('⚠️ Erro ao salvar a entrega do motoboy.');
+  return r.ok;
+}
+
+// Select de motoboy no card do kanban (saiu/entregue).
+async function carregarEntregasDosPedidos(pedidos){
+  const ids = pedidos.filter(p => p.bairro !== RETIRADA_NOME).map(p => p.id);
+  entregaPorPedidoCache = new Map();
+  if (!ids.length) return;
+  if (!motoboysCache.length) await carregarMotoboys();
+  const linhas = await api('motoboy_entregas', `pedido_id=in.(${ids.join(',')})&select=pedido_id,motoboy_id`, 'pedido_id.asc');
+  linhas.forEach(l => entregaPorPedidoCache.set(l.pedido_id, l));
+}
+function motoboyCardHTML(p, bucket){
+  if (!['saiu','entregue'].includes(bucket) || p.bairro === RETIRADA_NOME || !motoboysCache.length) return '';
+  const atual = entregaPorPedidoCache.get(p.id)?.motoboy_id ?? '';
+  const opcoes = motoboysCache.filter(m => m.ativo || m.id == atual)
+    .map(m => `<option value="${m.id}" ${m.id == atual ? 'selected' : ''}>🛵 ${esc(m.nome)}</option>`).join('');
+  return `<select onchange="trocarMotoboyDoPedido(${p.id}, this.value, this.closest('.pedido-card').dataset.bairro)" title="Motoboy desta entrega" style="background:var(--bg-input);color:var(--text-primary);border:1px solid ${atual ? 'var(--border-input)' : '#facc15'};padding:7px;border-radius:7px;font-size:12px;">
+    ${atual ? '' : '<option value="" selected>⚠️ Sem motoboy</option>'}${opcoes}</select>`;
+}
+async function trocarMotoboyDoPedido(pedidoId, motoboyId, bairro){
+  if (!motoboyId) return;
+  const ja = entregaPorPedidoCache.has(pedidoId);
+  const ok = ja
+    ? await salvarEntregaMotoboy(pedidoId, { motoboy_id: Number(motoboyId) }, false)
+    : await salvarEntregaMotoboy(pedidoId, { motoboy_id: Number(motoboyId), valor: await custoMotoboyDoBairro(bairro) }, true);
+  if (ok) { entregaPorPedidoCache.set(pedidoId, { pedido_id: pedidoId, motoboy_id: Number(motoboyId) }); showToastAdmin(`🛵 #${pedidoId} → ${nomeMotoboy(motoboyId)}`); }
+}
+// WhatsApp do motoboy do pedido (ou o único ativo); sem isso, o "WhatsApp do entregador" da Aparência.
+function telefoneEntregadorDoPedido(pedidoId){
+  const id = entregaPorPedidoCache.get(Number(pedidoId))?.motoboy_id;
+  const ativos = motoboysAtivos();
+  const m = id ? motoboysCache.find(x => x.id == id) : (ativos.length === 1 ? ativos[0] : null);
+  return m?.telefone || whatsappEntregadorCache;
+}
+
+// ── Aba Motoboy ──
+function setMotoboyPeriodo(btn, periodo){
+  document.querySelectorAll('#motoboy-periodos .filtro-btn').forEach(b => b.className = 'bt filtro-btn');
+  if (btn) btn.className = 'be filtro-btn';
+  motoboyFiltro.periodo = periodo;
+  loadMotoboy();
+}
+function navegarMotoboy(passo){
+  const base = motoboyFiltro.data || hojeExpedienteISO();
+  if (motoboyFiltro.periodo === 'mes') { const d = new Date(base.slice(0,8)+'15T12:00:00Z'); d.setUTCMonth(d.getUTCMonth()+passo); motoboyFiltro.data = d.toISOString().slice(0,10); }
+  else motoboyFiltro.data = somarDiasISO(base, passo * (motoboyFiltro.periodo === 'semana' ? 7 : 1));
+  loadMotoboy();
+}
+function setMotoboyData(v){ motoboyFiltro.data = v || null; loadMotoboy(); }
+function setMotoboyFiltroMotoboy(v){ motoboyFiltro.motoboy = v; loadMotoboy(); }
+
+async function loadMotoboy(){
+  const el = document.getElementById('motoboy-content');
+  el.innerHTML = '<div class="loading">Carregando...</div>';
+  if (!motoboyFiltro.data) motoboyFiltro.data = hojeExpedienteISO();
+  const { ini, fim } = intervaloMotoboy();
+  // Pedidos do período (por horário: das 6h do 1º dia às 6h do dia seguinte ao último, Bahia).
+  const iniUTC = new Date(`${ini}T06:00:00-03:00`).toISOString();
+  const fimUTC = new Date(`${somarDiasISO(fim, 1)}T06:00:00-03:00`).toISOString();
+  const [motoboys, pedidos, entregas, diarias, custos, bairros, cfg] = await Promise.all([
+    carregarMotoboys(),
+    api('pedidos', `select=id,nome,bairro,frete,total,status,created_at&status=in.(saiu,entregue)&created_at=gte.${iniUTC}&created_at=lt.${fimUTC}`, 'created_at.asc'),
+    api('motoboy_entregas', `dia=gte.${ini}&dia=lte.${fim}`, 'pedido_id.asc'),
+    api('motoboy_diarias', `dia=gte.${ini}&dia=lte.${fim}`, 'dia.asc'),
+    api('motoboy_custo_bairro', 'select=bairro_id,valor', 'bairro_id.asc'),
+    api('bairros', 'select=id,nome', 'nome.asc'),
+    api('configuracoes', 'chave=eq.motoboy_diaria&select=valor'),
+  ]);
+  const diariaPadrao = cfg[0] ? num(cfg[0].valor) : 40;
+  const custoPorBairro = new Map();
+  bairros.forEach(b => { const c = custos.find(x => x.bairro_id === b.id); if (c) custoPorBairro.set(b.nome, Number(c.valor)); });
+  const pedidoPorId = new Map(pedidos.map(p => [p.id, p]));
+  const filtroM = motoboyFiltro.motoboy ? Number(motoboyFiltro.motoboy) : null;
+
+  // Entregas válidas = pedido ainda saiu/entregue (cancelado depois não conta).
+  const lista = entregas.filter(e => pedidoPorId.has(e.pedido_id)).map(e => ({ ...e, pedido: pedidoPorId.get(e.pedido_id) }));
+  const comEntrega = new Set(entregas.map(e => e.pedido_id));
+  const semMotoboy = pedidos.filter(p => p.bairro !== RETIRADA_NOME && !comEntrega.has(p.id))
+    .map(p => ({ pedido_id: p.id, motoboy_id: null, dia: diaExpedienteISO(p.created_at), valor: custoPorBairro.get(p.bairro) ?? null, extra: 0, obs: '', pedido: p, estimado: true }));
+  const retiradas = pedidos.filter(p => p.bairro === RETIRADA_NOME);
+  const visiveis = filtroM ? lista.filter(e => e.motoboy_id === filtroM) : lista;
+  motoboyDados = { lista, semMotoboy, diarias, diariaPadrao, custoPorBairro };
+
+  // Resumo por dia + motoboy.
+  const grupos = new Map();
+  visiveis.forEach(e => {
+    const k = `${e.dia}|${e.motoboy_id}`;
+    if (!grupos.has(k)) grupos.set(k, { dia: e.dia, motoboy_id: e.motoboy_id, n: 0, soma: 0, extras: 0, semValor: 0 });
+    const g = grupos.get(k);
+    g.n++; g.soma += num(e.valor); g.extras += num(e.extra); if (e.valor == null) g.semValor++;
+  });
+  const linhas = [...grupos.values()].sort((a,b) => a.dia.localeCompare(b.dia) || nomeMotoboy(a.motoboy_id).localeCompare(nomeMotoboy(b.motoboy_id)));
+  linhas.forEach(g => {
+    const d = diarias.find(x => x.dia === g.dia && x.motoboy_id === g.motoboy_id);
+    g.diaria = d ? num(d.valor) : diariaPadrao; g.pago = !!d?.pago; g.pagoEm = d?.pago_em; g.temDiaria = !!d;
+    g.total = g.soma + g.extras + g.diaria;
+  });
+  const T = linhas.reduce((t,g) => ({ n: t.n+g.n, soma: t.soma+g.soma, extras: t.extras+g.extras, diaria: t.diaria+g.diaria, total: t.total+g.total }), { n:0, soma:0, extras:0, diaria:0, total:0 });
+  const pedidosDoFiltro = filtroM ? visiveis.map(e => e.pedido) : pedidos;
+  const freteCobrado = visiveis.reduce((s,e) => s + num(e.pedido.frete), 0);
+  const faturamento = pedidosDoFiltro.reduce((s,p) => s + num(p.total), 0);
+  const cobriu = T.total - freteCobrado;
+  const semValorTotal = linhas.reduce((s,g) => s + g.semValor, 0);
+  const rotulo = motoboyFiltro.periodo === 'dia' ? fmtDiaBR(ini) : `${fmtDiaBR(ini)} a ${fmtDiaBR(fim)}`;
+
+  const opcoesMotoboy = (sel, comVazio) => (comVazio ? '<option value="">—</option>' : '') +
+    motoboys.filter(m => m.ativo || m.id == sel).map(m => `<option value="${m.id}" ${m.id == sel ? 'selected' : ''}>${esc(m.nome)}</option>`).join('');
+
+  let html = `<div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:10px;">${rotulo}${filtroM ? ' · ' + esc(nomeMotoboy(filtroM)) : ''}</div>`;
+  if (semMotoboy.length && !filtroM) html += `<div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      ⚠️ <b>${semMotoboy.length} entrega(s) sem motoboy</b> neste período — não entram no custo até você atribuir.
+      <select id="mb-atribuir-todas" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-input);padding:6px;border-radius:6px;">${opcoesMotoboy('', false)}</select>
+      <button class="be" onclick="atribuirSemMotoboy()">Atribuir todas</button></div>`;
+  if (semValorTotal) html += `<div style="background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;">⚠️ ${semValorTotal} entrega(s) de bairro <b>sem custo de motoboy cadastrado</b> (contando R$ 0). Defina o valor na lista abaixo ou no cadastro do bairro.</div>`;
+
+  html += `<div class="stats">
+      <div class="stat"><div class="stat-n">${brl(freteCobrado)}</div><div class="stat-l">Frete cobrado dos clientes</div></div>
+      <div class="stat"><div class="stat-n">${brl(T.total)}</div><div class="stat-l">Custo total do motoboy</div></div>
+      <div class="stat"><div class="stat-n" style="color:${cobriu > 0 ? '#ff6666' : '#4ade80'};">${brl(Math.abs(cobriu))}</div><div class="stat-l">${cobriu > 0 ? 'A loja cobriu do próprio bolso' : 'Frete cobriu o custo (sobra)'}</div></div>
+      <div class="stat"><div class="stat-n">${T.n ? brl(T.total / T.n) : '—'}</div><div class="stat-l">Custo médio por entrega (com diária)</div></div>
+      <div class="stat"><div class="stat-n">${faturamento ? (T.total / faturamento * 100).toFixed(1).replace('.', ',') + '%' : '—'}</div><div class="stat-l">Do faturamento (${brl(faturamento)})</div></div>
+    </div>`;
+
+  html += `<div class="tw"><div class="tw-head"><h3>💰 Resumo a pagar</h3></div>${linhas.length ? `<div style="overflow-x:auto;"><table><thead><tr>
+      <th>Dia</th><th>Motoboy</th><th>Entregas</th><th>Soma entregas</th><th>Diária</th><th>Extras</th><th>Total a pagar</th><th>Pagamento</th></tr></thead><tbody>
+      ${linhas.map(g => `<tr>
+        <td>${fmtDiaBR(g.dia)}</td><td><b>${esc(nomeMotoboy(g.motoboy_id))}</b></td><td>${g.n}</td><td>${brl(g.soma)}</td>
+        <td><input type="number" step="0.01" min="0" value="${g.diaria.toFixed(2)}" class="mb-in" style="width:80px;" onchange="salvarDiariaMotoboy('${g.dia}',${g.motoboy_id},{valor:Number(this.value)})" ${g.pago ? 'disabled title="Já pago — desmarque para editar"' : ''}></td>
+        <td>${brl(g.extras)}</td><td><b style="color:var(--orange);">${brl(g.total)}</b></td>
+        <td>${g.pago
+          ? `<span style="color:#4ade80;font-weight:700;">✅ Pago</span> <span style="font-size:10px;color:var(--text-faint);">${g.pagoEm ? new Date(g.pagoEm).toLocaleDateString('pt-BR',{timeZone:'America/Bahia'}) : ''}</span> <button class="bt" onclick="salvarDiariaMotoboy('${g.dia}',${g.motoboy_id},{pago:false,pago_em:null})">desfazer</button>`
+          : `<button class="be" onclick="salvarDiariaMotoboy('${g.dia}',${g.motoboy_id},{pago:true,pago_em:new Date().toISOString()})">Marcar como pago</button>`}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;"><td colspan="2">TOTAL</td><td>${T.n}</td><td>${brl(T.soma)}</td><td>${brl(T.diaria)}</td><td>${brl(T.extras)}</td><td style="color:var(--orange);">${brl(T.total)}</td><td></td></tr>
+      </tbody></table></div>` : '<div class="loading">Nenhuma entrega com motoboy neste período.</div>'}</div>`;
+
+  const linhasEntregas = [...visiveis, ...(filtroM ? [] : semMotoboy)].sort((a,b) => a.dia.localeCompare(b.dia) || a.pedido_id - b.pedido_id);
+  html += `<div class="tw"><div class="tw-head"><h3>📋 Entregas (${linhasEntregas.length})</h3>${retiradas.length && !filtroM ? `<span style="font-size:12px;color:var(--text-secondary);">+ ${retiradas.length} retirada(s) no local, sem custo</span>` : ''}</div>
+    ${linhasEntregas.length ? `<div style="overflow-x:auto;"><table><thead><tr><th>Dia</th><th>Pedido</th><th>Bairro</th><th>Motoboy</th><th>Valor</th><th>Extra</th><th>Observação</th><th>Total</th></tr></thead><tbody>
+    ${linhasEntregas.map(e => `<tr${e.estimado ? ' style="background:rgba(255,200,0,.05);"' : ''}>
+      <td>${fmtDiaBR(e.dia)}</td>
+      <td>#${e.pedido_id} <span style="color:var(--text-faint);">${esc((e.pedido.nome||'').split(' ')[0])}</span></td>
+      <td>${esc(e.pedido.bairro||'')} <span style="font-size:10px;color:var(--text-faint);">frete ${brl(e.pedido.frete)}</span></td>
+      <td><select onchange="${e.estimado ? `atribuirEntregaMotoboy(${e.pedido_id}, this.value)` : `salvarEntregaMotoboy(${e.pedido_id}, {motoboy_id:Number(this.value)}, false).then(loadMotoboy)`}" style="background:var(--bg-input);color:var(--text-primary);border:1px solid ${e.estimado ? '#facc15' : 'var(--border-input)'};padding:5px;border-radius:6px;">${opcoesMotoboy(e.motoboy_id ?? '', e.estimado)}</select></td>
+      ${e.estimado
+        ? `<td colspan="3" style="color:var(--text-secondary);">${e.valor != null ? brl(e.valor) + ' pelo bairro' : 'bairro sem custo cadastrado'} — atribua um motoboy</td><td>—</td>`
+        : `<td><input type="number" step="0.01" min="0" value="${e.valor != null ? Number(e.valor).toFixed(2) : ''}" placeholder="definir" class="mb-in" style="width:72px;${e.valor == null ? 'border-color:#ff6666;' : ''}" onchange="salvarEntregaMotoboy(${e.pedido_id}, {valor: this.value === '' ? null : Number(this.value)}, false).then(loadMotoboy)"></td>
+           <td><input type="number" step="0.01" min="0" value="${num(e.extra) ? Number(e.extra).toFixed(2) : ''}" placeholder="0,00" class="mb-in" style="width:72px;" onchange="salvarEntregaMotoboy(${e.pedido_id}, {extra: Number(this.value || 0)}, false).then(loadMotoboy)"></td>
+           <td><input value="${esc(e.obs||'')}" placeholder="chuva, 2ª viagem..." class="mb-in" style="width:150px;" onchange="salvarEntregaMotoboy(${e.pedido_id}, {obs: this.value.trim() || null}, false)"></td>
+           <td><b>${brl(num(e.valor) + num(e.extra))}</b></td>`}
+    </tr>`).join('')}</tbody></table></div>` : '<div class="loading">Nenhuma entrega neste período.</div>'}</div>`;
+
+  html += `<div class="tw"><div class="tw-head"><h3>🛵 Motoboys</h3><button class="btn-new" onclick="abrirModMotoboy()">+ Novo motoboy</button></div>
+    <div style="padding:12px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border-color);font-size:13px;">
+      Diária padrão (por dia trabalhado): <input type="number" step="0.01" min="0" id="mb-diaria-padrao" value="${diariaPadrao.toFixed(2)}" class="mb-in" style="width:90px;">
+      <button class="be" onclick="salvarDiariaPadrao()">Salvar</button>
+      <span style="font-size:11px;color:var(--text-faint);">Vale para os próximos dias; a diária de cada dia pode ser editada no resumo.</span></div>
+    ${motoboys.length ? `<table><thead><tr><th>Nome</th><th>Telefone</th><th>Ativo</th><th></th></tr></thead><tbody>
+      ${motoboys.map(m => `<tr><td><b>${esc(m.nome)}</b></td><td>${esc(m.telefone||'—')}</td>
+        <td><label class="ts"><input type="checkbox" ${m.ativo ? 'checked' : ''} onchange="upd('motoboys',${m.id},{ativo:this.checked}).then(carregarMotoboys)"><span class="sl"></span></label></td>
+        <td><button class="be" onclick="abrirModMotoboy(${m.id})">✏️</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="loading">Nenhum motoboy cadastrado.</div>'}</div>`;
+
+  el.innerHTML = html;
+  const sel = document.getElementById('motoboy-filtro-motoboy');
+  if (sel) sel.innerHTML = '<option value="">Todos os motoboys</option>' + motoboys.map(m => `<option value="${m.id}" ${m.id == motoboyFiltro.motoboy ? 'selected' : ''}>${esc(m.nome)}</option>`).join('');
+  const inp = document.getElementById('motoboy-data');
+  if (inp) inp.value = motoboyFiltro.data;
+}
+
+async function salvarDiariaMotoboy(dia, motoboyId, dados){
+  const existe = motoboyDados?.diarias.some(d => d.dia === dia && d.motoboy_id === motoboyId);
+  const r = existe
+    ? await authFetch(`${SB}/rest/v1/motoboy_diarias?dia=eq.${dia}&motoboy_id=eq.${motoboyId}`, { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(dados) })
+    : await authFetch(`${SB}/rest/v1/motoboy_diarias`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({ dia, motoboy_id: motoboyId, valor: motoboyDados?.diariaPadrao ?? 40, ...dados }) });
+  if (!r.ok) showToastAdmin('⚠️ Erro ao salvar a diária.');
+  loadMotoboy();
+}
+
+async function atribuirEntregaMotoboy(pedidoId, motoboyId){
+  if (!motoboyId) return;
+  const e = motoboyDados?.semMotoboy.find(x => x.pedido_id === pedidoId);
+  if (await salvarEntregaMotoboy(pedidoId, { motoboy_id: Number(motoboyId), valor: e?.valor ?? null }, true)) loadMotoboy();
+}
+
+async function atribuirSemMotoboy(){
+  const motoboyId = Number(document.getElementById('mb-atribuir-todas')?.value);
+  const pend = motoboyDados?.semMotoboy || [];
+  if (!motoboyId || !pend.length) return;
+  if (!(await confirmCustom(`Atribuir ${pend.length} entrega(s) sem motoboy a ${nomeMotoboy(motoboyId)}? Cada uma entra com o valor do bairro, e a diária é lançada nos dias com entrega.`))) return;
+  const r = await authFetch(`${SB}/rest/v1/motoboy_entregas`, { method: 'POST', headers: { 'Prefer': 'return=minimal' },
+    body: JSON.stringify(pend.map(e => ({ pedido_id: e.pedido_id, motoboy_id: motoboyId, valor: e.valor }))) });
+  showToastAdmin(r.ok ? `✅ ${pend.length} entrega(s) atribuída(s).` : '⚠️ Erro ao atribuir as entregas.');
+  loadMotoboy();
+}
+
+async function salvarDiariaPadrao(){
+  const v = Number(document.getElementById('mb-diaria-padrao').value);
+  if (!(v >= 0)) { alert('Digite um valor válido.'); return; }
+  showToastAdmin((await salvarConfigs({ motoboy_diaria: v.toFixed(2) })) ? '✅ Diária padrão salva.' : '⚠️ Erro ao salvar.');
+}
+
+function abrirModMotoboy(id = null){
+  const m = id ? motoboysCache.find(x => x.id === id) || {} : { nome: '', telefone: '' };
+  document.getElementById('mod-title').textContent = id ? 'Editar motoboy' : 'Novo motoboy';
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fg"><label>Nome</label><input id="mb-nome" value="${esc(m.nome||'')}" placeholder="Ex: Marcos"></div>
+    <div class="fg"><label>Telefone (WhatsApp)</label><input id="mb-tel" value="${esc(m.telefone||'')}" placeholder="(71) 99999-9999">
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px;">O botão "🛵 Entregador" do pedido manda a entrega para este número.</div></div>`;
+  document.getElementById('mod-save-btn').onclick = async () => {
+    const nome = document.getElementById('mb-nome').value.trim();
+    const telefone = document.getElementById('mb-tel').value.trim() || null;
+    if (!nome) { alert('Digite o nome do motoboy!'); return; }
+    const ok = id ? await upd('motoboys', id, { nome, telefone }) : await ins('motoboys', { nome, telefone });
+    if (ok) { closeMod(); showToastAdmin('✅ Motoboy salvo!'); loadMotoboy(); } else alert('Erro ao salvar motoboy!');
+  };
+  document.getElementById('modal').classList.add('open');
+}
 
 // ═══════════════════════════════════════════════════════
 // EDITAR BORDA DE UM PEDIDO JÁ EXISTENTE
