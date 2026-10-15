@@ -68,3 +68,37 @@ export function getAgoraNoBrasil() {
   const mapaDia = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   return { diaSemana: mapaDia[weekdayShort], hora };
 }
+
+export const NOMES_DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+/**
+ * Data e hora completas no horário de Lauro de Freitas (BA) — o servidor roda
+ * em UTC, então nunca usar getDay()/getHours() direto. `agora` é parâmetro só
+ * pra teste.
+ * @returns {{diaSemana:number, nomeDia:string, data:string, hora:number, minuto:number, horaTexto:string}}
+ */
+export function getAgoraBahiaDetalhado(agora = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bahia',
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(agora)
+      .map((p) => [p.type, p.value])
+  );
+  const diaSemana = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[parts.weekday];
+  return {
+    diaSemana,
+    nomeDia: NOMES_DIAS[diaSemana],
+    data: `${parts.day}/${parts.month}/${parts.year}`,
+    hora: Number(parts.hour),
+    minuto: Number(parts.minute),
+    horaTexto: `${parts.hour}:${parts.minute}`,
+  };
+}

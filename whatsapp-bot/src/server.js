@@ -1,7 +1,7 @@
 import express from 'express';
 import cron from 'node-cron';
 import { config } from './config.js';
-import { buildSystemPrompt, lojaEstaAberta } from './systemPrompt.js';
+import { buildSystemPrompt, lojaEstaAberta, statusDaLoja } from './systemPrompt.js';
 import { getMenuData } from './supabaseData.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
@@ -373,13 +373,29 @@ function tratarMensagemPropria(numero, messageId) {
 // Aviso automático de loja fechada — disparado literalmente (sem passar pela
 // Claude) só na primeira mensagem de uma conversa nova (ver ehConversaNova
 // abaixo) enquanto a loja está fechada. Da segunda mensagem em diante da
-// mesma conversa, o atendimento segue normal pela Claude (que já sabe que a
-// loja está fechada via buildSystemPrompt e pode, por exemplo, anotar um
-// pedido pra quando reabrir) — evita repetir esse aviso a cada mensagem.
+// mesma conversa, o atendimento segue pela Claude (que sabe que a loja está
+// fechada via buildSystemPrompt e não registra pedido até abrir) — evita
+// repetir esse aviso a cada mensagem.
 const APRESENTACAO_LUIZA = 'Oi, aqui é a Luiza, da Big Bang Pizza.';
 
-const MENSAGEM_LOJA_FECHADA =
-  `${APRESENTACAO_LUIZA} No momento estamos fechados. Funcionamos de quinta a domingo: quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h. Assim que abrirmos, será um prazer te atender.`;
+// Curta e cordial, com a próxima abertura calculada no fuso da Bahia (ver calcularStatusLoja).
+function mensagemLojaFechada(respostaFechada) {
+  return `${APRESENTACAO_LUIZA} ${respostaFechada}`;
+}
+
+// Com a loja fechada não entra pedido pelo WhatsApp — trava no código, além
+// da regra no prompt, pra não depender só da Claude obedecer.
+function comLojaAberta(executor) {
+  return async (input) => {
+    const status = await statusDaLoja();
+    if (status.aberta) return executor(input);
+    console.log('[criar_pedido] recusado: loja fechada');
+    return {
+      erro: 'Loja fechada: pedido não registrado.',
+      mensagem_para_cliente: `${status.respostaFechada.replace(/ Vai ser um prazer te atender!$/, '')} Só consigo receber pedidos a partir da abertura. Obrigada pela compreensão!`,
+    };
+  };
+}
 
 /**
  * Processa um lote de content blocks (uma ou mais mensagens do cliente
@@ -413,9 +429,11 @@ async function processarLote(numero, nomeContato, userContent) {
     return;
   }
 
-  if (ehConversaNova && !(await lojaEstaAberta())) {
-    await enviarRespostaHumanizada(numero, MENSAGEM_LOJA_FECHADA);
-    historico.push({ role: 'assistant', content: [textBlock(MENSAGEM_LOJA_FECHADA)] });
+  const statusLoja = ehConversaNova ? await statusDaLoja() : null;
+  if (ehConversaNova && !statusLoja.aberta) {
+    const mensagem = mensagemLojaFechada(statusLoja.respostaFechada);
+    await enviarRespostaHumanizada(numero, mensagem);
+    historico.push({ role: 'assistant', content: [textBlock(mensagem)] });
     aplicarLimiteHistorico(historico);
     await persistirHistorico(numero, historico);
     return;
@@ -424,7 +442,7 @@ async function processarLote(numero, nomeContato, userContent) {
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
   const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL];
   const toolExecutors = {
-    criar_pedido: criarExecutorCriarPedido({ numero, nomeContato }),
+    criar_pedido: comLojaAberta(criarExecutorCriarPedido({ numero, nomeContato })),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
     editar_pedido: criarExecutorEditarPedido({ numero }),
     chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),

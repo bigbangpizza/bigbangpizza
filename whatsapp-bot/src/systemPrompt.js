@@ -1,5 +1,5 @@
 import { getMenuData } from './supabaseData.js';
-import { getAgoraNoBrasil, parseComoUTC, diasEntre } from './dataUtils.js';
+import { getAgoraBahiaDetalhado, NOMES_DIAS, parseComoUTC, diasEntre } from './dataUtils.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAtivoDoCliente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
 import { freteDoBairro } from './bairroMatch.js';
@@ -9,23 +9,78 @@ const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
 // Quinta e domingo fecham às 23h; sexta e sábado à meia-noite.
 const HORA_FECHA = { 0: 23, 4: 23, 5: 24, 6: 24 };
 
-function estaAbertoAgora(modoLoja) {
-  if (modoLoja === 'aberta') return true;
-  if (modoLoja === 'fechada') return false;
-  const { diaSemana, hora } = getAgoraNoBrasil();
-  return DIAS_ABERTOS.includes(diaSemana) && hora >= 18 && hora < HORA_FECHA[diaSemana];
+const textoHoraFecha = (dia) => (HORA_FECHA[dia] === 24 ? 'à meia-noite' : `às ${HORA_FECHA[dia]}h`);
+
+// Próximo dia de funcionamento a partir de amanhã (1..7 dias à frente).
+function proximoDiaAberto(diaSemana) {
+  for (let n = 1; n <= 7; n++) {
+    const dia = (diaSemana + n) % 7;
+    if (DIAS_ABERTOS.includes(dia)) return { dia, emDias: n };
+  }
+  return null;
+}
+
+// status: pro contexto da Luiza; quando: trecho da frase pro cliente ("hoje abrimos às 18h").
+function textoProximaAbertura(diaSemana) {
+  const prox = proximoDiaAberto(diaSemana);
+  if (!prox) return { status: 'sem previsão de abertura', quando: '' };
+  const nome = NOMES_DIAS[prox.dia].replace('-feira', '');
+  return prox.emDias === 1
+    ? { status: `abre AMANHÃ (${nome}) às 18h`, quando: `amanhã (${nome}) abrimos às 18h` }
+    : { status: `próxima abertura: ${nome} às 18h`, quando: `nossa próxima abertura é ${nome} às 18h` };
+}
+
+const FECHO_CORDIAL = 'Vai ser um prazer te atender!';
+
+/**
+ * Status da loja agora, no fuso da Bahia. `modo_loja` forçado ("aberta" /
+ * "fechada", no admin) prevalece sobre o horário; "automatico" segue o
+ * horário de funcionamento (qui e dom 18h–23h, sex e sáb 18h–00h).
+ * @returns {{aberta:boolean, resumo:string, respostaFechada:string}}
+ *   resumo: linha pro contexto da Luiza; respostaFechada: resposta curta pronta
+ *   pro cliente quando fechada (ex: "No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
+ */
+export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date()) {
+  const { diaSemana, hora } = getAgoraBahiaDetalhado(agora);
+  const diaAberto = DIAS_ABERTOS.includes(diaSemana);
+  if (modoLoja === 'aberta') {
+    const fecha = diaAberto && hora >= 18 ? `, fecha ${textoHoraFecha(diaSemana)}` : '';
+    return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe)${fecha}`, respostaFechada: '' };
+  }
+  if (modoLoja === 'fechada') {
+    const prox = textoProximaAbertura(diaSemana);
+    return {
+      aberta: false,
+      resumo: `FECHADA agora (fechada manualmente pela equipe — não prometa abrir hoje); no horário normal, ${prox.status}`,
+      respostaFechada: `Hoje não vamos abrir${prox.quando ? `, mas ${prox.quando}` : ''}. ${FECHO_CORDIAL}`,
+    };
+  }
+  if (diaAberto && hora >= 18 && hora < HORA_FECHA[diaSemana]) {
+    return { aberta: true, resumo: `ABERTA agora, fecha ${textoHoraFecha(diaSemana)}`, respostaFechada: '' };
+  }
+  const prox = diaAberto && hora < 18
+    ? { status: 'abre HOJE às 18h', quando: 'hoje abrimos às 18h' }
+    : textoProximaAbertura(diaSemana);
+  return {
+    aberta: false,
+    resumo: `FECHADA, ${prox.status}`,
+    respostaFechada: `No momento estamos fechados${prox.quando ? `, mas ${prox.quando}` : ''}. ${FECHO_CORDIAL}`,
+  };
 }
 
 /**
  * Consulta `configuracoes.modo_loja` no Supabase (via getMenuData, já
- * cacheado) e resolve se a loja está aberta agora — mesma regra usada no
- * system prompt, exposta aqui pra quem precisar decidir algo (ex: mandar o
- * aviso automático de loja fechada em server.js) sem duplicar a lógica de
- * horário/modo manual.
+ * cacheado) e devolve o status da loja agora — mesma regra usada no system
+ * prompt, exposta aqui pra quem precisar decidir algo (ex: mandar o aviso
+ * automático de loja fechada em server.js) sem duplicar a lógica.
  */
-export async function lojaEstaAberta() {
+export async function statusDaLoja() {
   const { configuracoes } = await getMenuData();
-  return estaAbertoAgora(configuracoes.modo_loja || 'automatico');
+  return calcularStatusLoja(configuracoes.modo_loja || 'automatico');
+}
+
+export async function lojaEstaAberta() {
+  return (await statusDaLoja()).aberta;
 }
 
 export function brl(v) {
@@ -244,7 +299,8 @@ function montarBlocoCupomBoasVindas(numero, cupom) {
  */
 export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas } = await getMenuData();
-  const aberto = estaAbertoAgora(configuracoes.modo_loja || 'automatico');
+  const statusLoja = calcularStatusLoja(configuracoes.modo_loja || 'automatico');
+  const agora = getAgoraBahiaDetalhado();
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';
   const blocoPedidoAtivo = await montarBlocoPedidoAtivo(numero);
@@ -338,11 +394,17 @@ A loja fica no Centro de Lauro de Freitas. Clientes escrevem o bairro de muitos 
 ## Regras gerais (sempre válidas)
 - O padrão é sempre entrega. Também é possível retirar no local (Rua Nilton Calmon, 96 - Centro, Lauro de Freitas - BA), mas **nunca ofereça ou sugira retirada por conta própria** — só use essa opção se o cliente pedir explicitamente.
 - O valor oficial cobrado é sempre o que a ferramenta \`criar_pedido\` (pedido novo) ou \`editar_pedido\` (pedido existente) retorna — elas recalculam tudo. Pro resumo de confirmação, some você mesma os preços do cardápio abaixo + frete do bairro (sem desconto de cupom, que só o sistema calcula). Se a ferramenta retornar um total diferente, informe o valor da ferramenta.
-- Se a loja estiver fechada, ainda dá pra anotar o pedido, mas avise que ele só será preparado quando reabrirmos (não prometa entrega imediata).
+- Com a loja FECHADA, você NÃO anota nem registra pedido (nem chama \`criar_pedido\`) — ver "Horário de funcionamento".
 
 ## Horário de funcionamento
 Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
-Se a loja estiver fechada (ver "Contexto desta mensagem", no fim) e o cliente perguntar sobre pedir agora, avise que a loja está fechada no momento e informe o próximo horário de funcionamento.
+Você SEMPRE sabe o dia da semana, a data, a hora e se a loja está aberta: estão em "Contexto desta mensagem", no fim, já no horário de Lauro de Freitas/BA. Nunca diga que não sabe ou não tem como confirmar o dia, a data ou a hora — use essas informações.
+Com a loja FECHADA:
+- Você não anota, não monta e não registra pedido, e não oferece "adiantar" o pedido.
+- Responda de forma educada, cordial e curta, sem explicação longa, usando a resposta pronta do "Contexto desta mensagem" (ex: "Oi, tudo bem? No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
+- Se o cliente insistir em pedir, explique com gentileza, em uma ou duas frases, que só consegue receber pedidos a partir da abertura, e agradeça a compreensão.
+- Dúvidas sobre cardápio, preços, bairros e frete você responde normalmente, só não fecha pedido.
+- Se a loja foi fechada manualmente pela equipe, não prometa abrir hoje.
 ## Frete e cupons
 - O frete e o frete grátis dependem do bairro (lista de bairros abaixo, e \`verificar_bairro\` devolve a regra do bairro do cliente): cada bairro tem o seu valor de frete e o seu "grátis a partir de" em produtos; alguns bairros não têm frete grátis nunca. Nunca prometa frete grátis sem olhar a regra do bairro.
 - Cupom não acumula com frete grátis: com cupom, o frete é cobrado mesmo acima do mínimo do bairro.
@@ -420,7 +482,8 @@ ${formatarBairros(bairros, configuracoes)}
 Responda sempre em português do Brasil, seguindo as regras de "Como você escreve" lá em cima (mensagens curtas e separadas, sem parágrafo único longo). Se a pergunta não tiver relação com a pizzaria, responda com simpatia mas traga a conversa de volta pra como você pode ajudar com o pedido.`;
   const textoContexto = `## Contexto desta mensagem (muda a cada mensagem)
 - ${instrucaoApresentacao}
-- Loja agora: ${aberto ? 'ABERTA ✅' : 'FECHADA 🔴'}.
+- Agora é ${agora.nomeDia}, ${agora.data}, ${agora.horaTexto} (horário de Lauro de Freitas/BA).
+- Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}"`}
 ${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}`;
   return [
     { type: 'text', text: textoFixo, cache_control: { type: 'ephemeral' } },
