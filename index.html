@@ -194,7 +194,17 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .combo-name{font-family:'Bebas Neue',sans-serif;font-size:23px;letter-spacing:1px;margin-bottom:5px;}
 .combo-desc{font-size:13px;color:rgba(255,255,255,0.55);margin-bottom:14px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .combo-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-.combo-price{font-family:'Bebas Neue',sans-serif;font-size:34px;color:var(--orange);}
+.combo-price{font-family:'Bebas Neue',sans-serif;font-size:34px;color:var(--orange);white-space:nowrap;}
+/* Celular estreito (≤380px): preço e botão do combo menores, pra caber na mesma linha sem quebrar o "R$" */
+@media(max-width:380px){.combo-bottom{flex-wrap:wrap;}.combo-price{font-size:28px;}.combo-bottom .btn-add{padding:12px 13px;font-size:14px;}}
+/* PREÇO DE/POR — linha própria acima do preço (não aperta a linha preço + botão do carrossel) */
+.de-por{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin-bottom:2px;}
+.preco-de{font-size:13px;color:#999;text-decoration:line-through;font-weight:600;}
+.combo-card .preco-de{color:rgba(255,255,255,0.45);}
+.selo-economia{display:inline-block;background:var(--green);color:white;font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;white-space:nowrap;}
+.size-btn .preco-de{display:block;font-size:11px;margin-top:2px;}
+.size-btn span.selo-economia{display:inline-block;font-family:inherit;color:white;font-size:10px;letter-spacing:0;padding:2px 6px;margin-top:4px;white-space:normal;line-height:1.2;}
+.size-btn.active .preco-de{color:rgba(255,255,255,0.75);}
 
 /* PIZZA CARDS */
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
@@ -763,6 +773,19 @@ const OPCOES_BORDA = {
   pizza_doce: [{ id: 'chocolate', nome: 'Chocolate' }],
 };
 function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
+// Preço "de/por": só exibição. Devolve a economia (original - atual) quando o
+// preço original está preenchido e é MAIOR que o atual; senão 0 (não mostra nada).
+// Carrinho, checkout e WhatsApp nunca usam o preço original.
+function economiaDePor(original, atual) {
+  if (original == null || original === '') return 0;
+  const o = Number(original), a = Number(atual);
+  return Number.isFinite(o) && Number.isFinite(a) && o - a > 0.004 ? o - a : 0;
+}
+function blocoDePor(original, atual, rotulo = '') {
+  const economia = economiaDePor(original, atual);
+  if (!economia) return '';
+  return `<div class="de-por"><s class="preco-de">${rotulo}${brl(original)}</s><span class="selo-economia">Economize ${brl(economia)}</span></div>`;
+}
 function novoId() { return crypto.randomUUID ? crypto.randomUUID() : Date.now()+'-'+Math.random().toString(36).slice(2); }
 // Precisa ser um UUID de verdade (a coluna pedidos.rastreio_token é uuid no
 // Postgres, ao contrário dos ids de item do carrinho acima) — usa o mesmo
@@ -953,6 +976,7 @@ async function loadCombos() {
         <span class="combo-tag">${c.tag || 'PROMOÇÃO'}</span>
         <div class="combo-name">${c.nome}</div>
         <div class="combo-desc">${c.descricao||''}</div>
+        ${blocoDePor(c.preco_original, c.preco, 'Separado: ')}
         <div class="combo-bottom">
           <span class="combo-price">R$ ${c.preco.toFixed(2).replace('.',',')}</span>
           <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>
@@ -1084,6 +1108,12 @@ function observarComboFadeIn() {
 
 let salgadasCache = [], docesCache = [], bebidasCache = [];
 const UPSELL_BEBIDAS = ['Coca-Cola 1L Tradicional', 'Coca-Cola 1L Zero', 'Guaraná Antarctica 1L'];
+// Preço dentro do botão de tamanho: riscado acima, selo de economia abaixo (só com de/por ativo).
+function precoBotaoTamanho(original, atual) {
+  const economia = economiaDePor(original, atual);
+  if (!economia) return `<span>${brl(atual)}</span>`;
+  return `<s class="preco-de">${brl(original)}</s><span>${brl(atual)}</span><span class="selo-economia">Economize ${brl(economia)}</span>`;
+}
 function renderPizzaCard(p) {
   const temFamilia = p.preco_familia != null;
   return `
@@ -1093,8 +1123,8 @@ function renderPizzaCard(p) {
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
         <div class="size-selector">
-          <button class="size-btn" onclick="abrirModalSabor('Grande',${p.id})">Grande<br><span>${brl(p.preco_grande)}</span></button>
-          ${temFamilia ? `<button class="size-btn" onclick="abrirModalSabor('Família',${p.id})">Família<br><span>${brl(p.preco_familia)}</span></button>` : ''}
+          <button class="size-btn" onclick="abrirModalSabor('Grande',${p.id})">Grande<br>${precoBotaoTamanho(p.preco_original_grande, p.preco_grande)}</button>
+          ${temFamilia ? `<button class="size-btn" onclick="abrirModalSabor('Família',${p.id})">Família<br>${precoBotaoTamanho(p.preco_original_familia, p.preco_familia)}</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -1135,6 +1165,7 @@ async function loadDoces() {
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
         <div class="pizza-size">Tamanho: 25cm</div>
+        ${blocoDePor(p.preco_original, p.preco)}
         <div class="pizza-bottom">
           <span class="pizza-price">R$ ${p.preco.toFixed(2).replace('.',',')}</span>
           <button class="btn-add" onclick="abrirModalSabor(null,${p.id})">🍕 Pedir Agora</button>

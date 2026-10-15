@@ -1725,6 +1725,27 @@ function precoForaDoPadrao(catId, grande, familia){
   return difere(grande, c.grande) || difere(familia, c.familia);
 }
 
+// Preço "de/por" (preço original riscado no site) — só exibição, nunca entra no cálculo do pedido.
+const AVISO_PRECO_ORIGINAL = `<div style="margin:-4px 0 13px;padding:8px 11px;border-radius:7px;background:rgba(250,204,21,.12);color:#facc15;font-size:12px;font-weight:600;">⚖️ Use só preço realmente praticado ou a soma dos itens avulsos. Preço inflado é publicidade enganosa (CDC art. 37).</div>`;
+// Só vale se for maior que o preço atual (mesma regra do site).
+function dePorAtivo(original, atual){
+  return original!=null && original!=='' && !isNaN(original) && atual!=null && !isNaN(atual) && Number(original)-Number(atual) > 0.004;
+}
+// Lê o campo do formulário: vazio → null; menor ou igual ao preço atual → null + motivo em `avisos`.
+function lerPrecoOriginal(inputId, atual, rotulo, avisos){
+  const v = document.getElementById(inputId)?.value;
+  if(v==null || v==='') return null;
+  const n = parseFloat(v);
+  if(dePorAtivo(n, atual)) return n;
+  avisos.push(`${rotulo} (${brl(n)}) não é maior que o preço atual${atual!=null && !isNaN(atual) ? ` (${brl(atual)})` : ''}.`);
+  return null;
+}
+function itemTemDePor(item){
+  return dePorAtivo(item.preco_original, item.preco)
+    || dePorAtivo(item.preco_original_grande, item.preco_grande)
+    || dePorAtivo(item.preco_original_familia, item.preco_familia);
+}
+
 async function loadTable(type) {
   const tbl = type==='salgadas'?'pizzas_salgadas':type==='doces'?'pizzas_doces':type;
   const data = await api(tbl);
@@ -1735,6 +1756,12 @@ async function loadTable(type) {
       : brl(item.preco||0);
     if(type==='salgadas' && precoForaDoPadrao(item.categoria, item.preco_grande, item.preco_familia)){
       pr += ` <span title="Preço diferente do padrão da categoria" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:20px;background:rgba(250,204,21,.15);color:#facc15;font-size:10px;font-weight:700;white-space:nowrap;">⚠️ fora do padrão</span>`;
+    }
+    if(itemTemDePor(item)){
+      const de = item.preco_grande !== undefined
+        ? [item.preco_original_grande!=null?`Grande ${brl(item.preco_original_grande)}`:'', item.preco_original_familia!=null?`Família ${brl(item.preco_original_familia)}`:''].filter(Boolean).join(' / ')
+        : brl(item.preco_original);
+      pr += ` <span title="Preço de/por ativo no site — de ${de}" style="display:inline-block;margin-left:4px;padding:2px 7px;border-radius:20px;background:rgba(34,197,94,.15);color:#4ade80;font-size:10px;font-weight:700;white-space:nowrap;">🏷️ de/por</span>`;
     }
     return `<tr data-id="${item.id}">
       <td data-label="Ordem" class="drag-col"><span class="drag-handle" title="Arraste para reordenar">☰</span></td>
@@ -1805,6 +1832,11 @@ async function openMod(type, id=null) {
       <div class="fg"><label>Preço Família (R$)</label><input id="fpf" type="number" step="0.01" value="${novo?cat.familia:(item.preco_familia||'')}" placeholder="Opcional" oninput="atualizarAvisoPrecoSalgada()"></div>
     </div>
     <div id="fcat-aviso" style="display:none;margin:-4px 0 13px;padding:8px 11px;border-radius:7px;background:rgba(250,204,21,.12);color:#facc15;font-size:12px;font-weight:600;"></div>
+    <div class="fr">
+      <div class="fg"><label>Preço original Grande (de) — opcional</label><input id="fpog" type="number" step="0.01" value="${item.preco_original_grande??''}" placeholder="Opcional"></div>
+      <div class="fg"><label>Preço original Família (de) — opcional</label><input id="fpof" type="number" step="0.01" value="${item.preco_original_familia??''}" placeholder="Opcional"></div>
+    </div>
+    ${AVISO_PRECO_ORIGINAL}
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
     <div class="fg"><label>Tag (ex: 🔥 Mais Pedido)</label><input id="ftag" value="${item.tag||''}"></div>`;
   } else if(type==='bebidas'){
@@ -1814,6 +1846,8 @@ async function openMod(type, id=null) {
   } else {
     body+=`<div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
     <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
+    <div class="fg"><label>Preço original (de) — opcional</label><input id="fpo" type="number" step="0.01" value="${item.preco_original??''}" placeholder="Opcional"></div>
+    ${AVISO_PRECO_ORIGINAL}
     <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
     <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>`;
   }
@@ -1875,6 +1909,15 @@ async function saveItem() {
     data.preco=parseFloat(document.getElementById('fp').value);
     data.descricao=document.getElementById('fd')?.value.trim()||'';
   }
+  // Preço original (de/por): menor ou igual ao preço atual não vale — avisa e salva vazio.
+  const avisosDePor=[];
+  if(type==='salgadas'){
+    data.preco_original_grande=lerPrecoOriginal('fpog', data.preco_grande, 'Preço original Grande', avisosDePor);
+    data.preco_original_familia=lerPrecoOriginal('fpof', data.preco_familia, 'Preço original Família', avisosDePor);
+  } else if(type==='combos' || type==='doces'){
+    data.preco_original=lerPrecoOriginal('fpo', data.preco, 'Preço original', avisosDePor);
+  }
+  if(avisosDePor.length) alert(avisosDePor.join('\n')+'\n\nO preço original precisa ser maior que o preço atual. Vai ser salvo vazio (sem de/por).');
   if(!editId && type!=='salgadas'){
     const cache=tableDataCache[type]||[];
     data.ordem=cache.length?Math.max(...cache.map(i=>i.ordem||0))+1:0;

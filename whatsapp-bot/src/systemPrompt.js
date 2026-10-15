@@ -69,11 +69,30 @@ export function formatarDoces(lista) {
     .join('\n');
 }
 
-export function formatarCombos(lista) {
+// Preço "de/por" do combo (coluna preco_original): só vale se for maior que o preço atual.
+function precoSeparadoCombo(c) {
+  const original = Number(c.preco_original);
+  return c.preco_original != null && Number.isFinite(original) && original - Number(c.preco) > 0.004 ? original : null;
+}
+
+/**
+ * @param {object} [opcoes]
+ * @param {boolean} [opcoes.comDePor] inclui o "separado sairia R$ X" (só no
+ *   atendimento da Luiza — a extração de pedido manual do admin não precisa).
+ */
+export function formatarCombos(lista, { comDePor = false } = {}) {
   if (!lista.length) return '(nenhum combo ativo no momento)';
-  return lista
-    .map((c) => `- ${c.nome}${c.descricao ? ` — ${c.descricao}` : ''} (${brl(c.preco)})`)
-    .join('\n');
+  const linhas = lista.map((c) => {
+    const separado = comDePor ? precoSeparadoCombo(c) : null;
+    const preco = separado ? `${brl(c.preco)}; separado sairia ${brl(separado)}` : brl(c.preco);
+    return `- ${c.nome}${c.descricao ? ` — ${c.descricao}` : ''} (${preco})`;
+  });
+  if (comDePor && lista.some(precoSeparadoCombo)) {
+    linhas.push(
+      '(Quando o cliente perguntar de combos ou estiver escolhendo um, você pode citar a economia de forma natural, uma vez só na conversa — ex: "separado sairia R$ 116,70, no combo fica R$ 89,90". Não repita nem insista. O valor cobrado é sempre o preço do combo, nunca o "separado".)'
+    );
+  }
+  return linhas.join('\n');
 }
 
 export function formatarBebidas(lista) {
@@ -390,7 +409,7 @@ ${formatarSalgadas(salgadas)}
 ${formatarDoces(doces)}
 
 ## Cardápio — Combos
-${formatarCombos(combos)}
+${formatarCombos(combos, { comDePor: true })}
 
 ## Bebidas
 ${formatarBebidas(bebidas)}
