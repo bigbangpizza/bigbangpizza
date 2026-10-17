@@ -5,6 +5,7 @@ import { montarResumoPedido, textoWhatsApp } from './resumoPedido.js';
 import { enviarTexto } from './evolutionApi.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAbertoRecente } from './pedidoStatusUtil.js';
+import { ENDERECO_LOJA } from './loja.js';
 
 /**
  * Definição da tool `criar_pedido` no formato esperado pela Anthropic
@@ -137,10 +138,9 @@ export function brl(v) {
   return 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',');
 }
 
-// Endereço físico da loja — usado só quando o cliente pede retirada no
-// local (campo "retirada" da tool). Mesmo endereço já publicado no
-// schema.org do site (index.html) — atualize os dois juntos se a loja mudar.
-export const ENDERECO_LOJA = 'Rua Nilton Calmon, 96 - Centro, Lauro de Freitas - BA';
+// Endereço físico da loja — gravado no pedido de retirada no local (campo
+// "retirada" da tool). Vem de loja.js, a fonte única (ver lá).
+export { ENDERECO_LOJA };
 
 export const PAGAMENTO_TEXTO = {
   presencial: 'Presencial (dinheiro/cartão na entrega)',

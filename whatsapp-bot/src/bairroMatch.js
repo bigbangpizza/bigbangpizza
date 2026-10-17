@@ -212,7 +212,8 @@ export function mensagemBairroNaoAtendido(bairro) {
   return (
     `"${bairro.nome}" é um bairro que ainda NÃO atendemos. Diga ao cliente, com educação e em uma mensagem, que ainda não entregamos em ${bairro.nome} — só isso. ` +
     'NÃO ofereça cupom, desconto, oferta da pizza doce nem nenhuma promoção a esse cliente (nem na apresentação). ' +
-    'Não peça CEP nem chame chamar_atendente por isso, não registre o pedido com outro bairro e NÃO ofereça retirada nem outra alternativa por conta própria. Só se o cliente perguntar por retirada, diga que ele pode retirar na loja.'
+    'Na mesma mensagem, diga que ele pode retirar na loja sem custo de entrega (se quiser retirar, registre com retirada: true). ' +
+    'Não peça CEP nem chame chamar_atendente por isso e não registre o pedido com outro bairro.'
   );
 }
 

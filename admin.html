@@ -2291,6 +2291,7 @@ function renderPedidoCard(p){
         <div>
           <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
           <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
+          ${etiquetaRetirada(p)}
           ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
           ${mostrarTimer?`<div class="pedido-timer" data-created="${p.created_at}" style="font-size:12px;font-weight:700;margin-top:2px;"></div>`:''}
         </div>
@@ -2677,6 +2678,13 @@ function cupomLinhaValor(label, valor){
   return label + ' '.repeat(espacos) + valor;
 }
 
+// Pedido de retirada na loja (gravado com bairro "Retirada no local", como no bot, no site e no pedido manual).
+// Função (não const) porque o kanban pode renderizar antes do resto do script terminar de carregar.
+function ehRetirada(p){ return (p && p.bairro) === 'Retirada no local'; }
+function etiquetaRetirada(p){
+  return ehRetirada(p) ? `<span style="display:inline-block;margin-top:3px;padding:2px 8px;border-radius:20px;background:#facc15;color:#000;font-size:11px;font-weight:800;letter-spacing:.5px;">🏪 RETIRADA</span>` : '';
+}
+
 function montarCupomTermico(p){
   const dt = parseUTC(p.created_at)||new Date();
   const dataStr = dt.toLocaleDateString('pt-BR', {timeZone:'America/Bahia'});
@@ -2698,8 +2706,9 @@ Pedido: #${p.id}
 Data: ${dataStr} ${horaStr}
 ${CUPOM_LINHA}
 Cliente: ${esc(nome)}
-Endereco: ${esc(endereco)}
-Bairro: ${esc(bairro)}
+${ehRetirada(p) ? `<strong>*** RETIRADA NO LOCAL ***</strong>
+Cliente busca na loja` : `Endereco: ${esc(endereco)}
+Bairro: ${esc(bairro)}`}
 ${CUPOM_LINHA}
 <strong>*** ITENS DO PEDIDO ***</strong>
 
@@ -2788,7 +2797,7 @@ window.addEventListener('load', function(){ setTimeout(function(){ window.print(
 // revisar/corrigir cada campo e clicar em "Lançar pedido". Grava com
 // origem:'manual' pra diferenciar de pedidos do site/bot nos relatórios.
 // ═══════════════════════════════════════════════════════
-const ENDERECO_LOJA_MANUAL = 'Rua Nilton Calmon, 96 - Centro, Lauro de Freitas - BA';
+const ENDERECO_LOJA_MANUAL = 'Av. Amarílio Thiago dos Santos, 1152, sala 03 - Vila Praiana, Lauro de Freitas - BA, CEP 42704-550';
 const PAGAMENTO_TEXTO_MANUAL = {
   presencial: 'Presencial (dinheiro/cartão na entrega)',
   pix: 'Pix (aguardando pagamento)',
@@ -2805,7 +2814,7 @@ function abrirPedidoManual(){
   document.getElementById('mod-body').innerHTML = `
     <div class="fg">
       <label>Cole ou digite o pedido (ex: texto copiado da conversa do WhatsApp)</label>
-      <textarea id="pm-texto" rows="9" placeholder="Ex: Oi, queria uma pizza grande de calabresa com borda catupiry e uma coca 2L. Rua Nilton Calmon 123, bairro Centro. Pago no pix. Nome: Maria"></textarea>
+      <textarea id="pm-texto" rows="9" placeholder="Ex: Oi, queria uma pizza grande de calabresa com borda catupiry e uma coca 2L. Rua das Flores 123, bairro Centro. Pago no pix. Nome: Maria"></textarea>
     </div>
     <div id="pm-erro" style="color:#ff4444;font-size:13px;margin-top:4px;"></div>
     <button type="button" class="bc" style="width:100%;margin-top:10px;" onclick="pedidoManualSemIA()">✍️ Preencher sem IA</button>
@@ -3637,6 +3646,7 @@ async function loadCozinha(){
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
     return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}">
       <div class="cozinha-num">#${p.id}</div>
+      ${etiquetaRetirada(p)}
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
       <div class="cozinha-tempo">${texto}</div>

@@ -40,6 +40,7 @@ import {
 import { vincularPedidosDoHistorico } from './pedidoStatusUtil.js';
 import { BUSCAR_PEDIDOS_RECENTES_TOOL, criarExecutorBuscarPedidosRecentes } from './consultarPedidosTool.js';
 import { avisarFalhaNoAtendimento } from './falhaAtendimento.js';
+import { ENVIAR_LOCALIZACAO_TOOL, criarExecutorEnviarLocalizacao, localizacaoJaEnviadaNoHistorico, enviarLocalizacaoLoja } from './localizacaoTool.js';
 import { validarLoginEquipe } from './adminAuth.js';
 
 const app = express();
@@ -440,7 +441,9 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 
   const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL];
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL, ENVIAR_LOCALIZACAO_TOOL];
+  // Localização da loja: a ferramenta só agenda; o envio sai depois da resposta (ver o fim desta função).
+  let enviarLocalizacaoDepois = false;
   const toolExecutors = {
     criar_pedido: comLojaAberta(criarExecutorCriarPedido({ numero, nomeContato })),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
@@ -449,6 +452,10 @@ async function processarLote(numero, nomeContato, userContent) {
     verificar_bairro: criarExecutorVerificarBairro(),
     calcular_total: criarExecutorCalcularTotal({ numero }),
     buscar_pedidos_recentes: criarExecutorBuscarPedidosRecentes({ numero }),
+    enviar_localizacao_loja: criarExecutorEnviarLocalizacao({
+      jaEnviada: localizacaoJaEnviadaNoHistorico(historico),
+      agendar: () => { enviarLocalizacaoDepois = true; },
+    }),
   };
 
   ultimoResumoPorNumero.delete(numero);
@@ -489,6 +496,10 @@ async function processarLote(numero, nomeContato, userContent) {
   await persistirHistorico(numero, historico);
 
   await enviarRespostaHumanizada(numero, textoResposta);
+
+  if (enviarLocalizacaoDepois) {
+    await enviarLocalizacaoLoja(numero).catch((err) => console.error(`[localizacao] numero=${numero} falha ao enviar localização da loja:`, err.message));
+  }
 }
 
 /** Converte a mensagem recebida da Evolution API em content blocks pra Claude. */

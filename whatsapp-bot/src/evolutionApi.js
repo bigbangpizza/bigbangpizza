@@ -46,6 +46,29 @@ export async function enviarTexto(number, text) {
 }
 
 /**
+ * Envia uma localização nativa do WhatsApp (pin no mapa) — usado pra mandar
+ * a localização da loja (ver localizacaoTool.js). Mesmo registro de eco do
+ * enviarTexto, pra não ser confundido com mensagem manual da equipe.
+ * @param {string} number
+ * @param {{nome:string, endereco:string, latitude:number, longitude:number}} local
+ */
+export async function enviarLocalizacao(number, { nome, endereco, latitude, longitude }) {
+  registrarEnvioBot(number);
+  const r = await fetch(evolutionUrl('/message/sendLocation'), {
+    method: 'POST',
+    headers: evolutionHeaders(),
+    body: JSON.stringify({ number, name: nome, address: endereco, latitude, longitude }),
+  });
+  if (!r.ok) {
+    const errBody = await r.text().catch(() => '');
+    throw new Error(`Evolution API (sendLocation) respondeu ${r.status}: ${mascararSegredos(errBody)}`);
+  }
+  const data = await r.json();
+  registrarIdEnviado(data?.key?.id);
+  return data;
+}
+
+/**
  * Mostra (ou não, se a chamada falhar) o indicador de "digitando..." pro
  * número, por `delayMs` milissegundos — usado pra simular tempo de digitação
  * humana antes de mandar cada mensagem (ver respostaHumanizada.js). É
