@@ -27,17 +27,20 @@ function textoProximaAbertura(diaSemana) {
   if (!prox) return { status: 'sem previsão de abertura', quando: '' };
   const nome = NOMES_DIAS[prox.dia].replace('-feira', '');
   return prox.emDias === 1
-    ? { status: `abre AMANHÃ (${nome}) às 18h`, quando: `amanhã (${nome}) abrimos às 18h` }
-    : { status: `próxima abertura: ${nome} às 18h`, quando: `nossa próxima abertura é ${nome} às 18h` };
+    ? { status: `abre AMANHÃ (${nome}) às 18h`, quando: `amanhã (${nome}) abrimos às 18h`, aPartir: `de amanhã (${nome}) às 18h` }
+    : { status: `próxima abertura: ${nome} às 18h`, quando: `nossa próxima abertura é ${nome} às 18h`, aPartir: `de ${nome} às 18h` };
 }
 
 const FECHO_CORDIAL = 'Vai ser um prazer te atender!';
+// Quando o cliente insiste em pedir com a loja fechada.
+const respostaInsistencia = (aPartir) =>
+  `Infelizmente só consigo receber pedidos a partir ${aPartir || 'da abertura'}. Obrigada pela compreensão!`;
 
 /**
  * Status da loja agora, no fuso da Bahia. `modo_loja` forçado ("aberta" /
  * "fechada", no admin) prevalece sobre o horário; "automatico" segue o
  * horário de funcionamento (qui e dom 18h–23h, sex e sáb 18h–00h).
- * @returns {{aberta:boolean, resumo:string, respostaFechada:string}}
+ * @returns {{aberta:boolean, resumo:string, respostaFechada:string, respostaInsistencia:string}}
  *   resumo: linha pro contexto da Luiza; respostaFechada: resposta curta pronta
  *   pro cliente quando fechada (ex: "No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
  */
@@ -46,7 +49,7 @@ export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date()) 
   const diaAberto = DIAS_ABERTOS.includes(diaSemana);
   if (modoLoja === 'aberta') {
     const fecha = diaAberto && hora >= 18 ? `, fecha ${textoHoraFecha(diaSemana)}` : '';
-    return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe)${fecha}`, respostaFechada: '' };
+    return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe)${fecha}`, respostaFechada: '', respostaInsistencia: '' };
   }
   if (modoLoja === 'fechada') {
     const prox = textoProximaAbertura(diaSemana);
@@ -54,18 +57,20 @@ export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date()) 
       aberta: false,
       resumo: `FECHADA agora (fechada manualmente pela equipe — não prometa abrir hoje); no horário normal, ${prox.status}`,
       respostaFechada: `Hoje não vamos abrir${prox.quando ? `, mas ${prox.quando}` : ''}. ${FECHO_CORDIAL}`,
+      respostaInsistencia: respostaInsistencia(prox.aPartir),
     };
   }
   if (diaAberto && hora >= 18 && hora < HORA_FECHA[diaSemana]) {
-    return { aberta: true, resumo: `ABERTA agora, fecha ${textoHoraFecha(diaSemana)}`, respostaFechada: '' };
+    return { aberta: true, resumo: `ABERTA agora, fecha ${textoHoraFecha(diaSemana)}`, respostaFechada: '', respostaInsistencia: '' };
   }
   const prox = diaAberto && hora < 18
-    ? { status: 'abre HOJE às 18h', quando: 'hoje abrimos às 18h' }
+    ? { status: 'abre HOJE às 18h', quando: 'hoje abrimos às 18h', aPartir: 'de hoje às 18h' }
     : textoProximaAbertura(diaSemana);
   return {
     aberta: false,
     resumo: `FECHADA, ${prox.status}`,
     respostaFechada: `No momento estamos fechados${prox.quando ? `, mas ${prox.quando}` : ''}. ${FECHO_CORDIAL}`,
+    respostaInsistencia: respostaInsistencia(prox.aPartir),
   };
 }
 
@@ -410,9 +415,10 @@ Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de
 Você SEMPRE sabe o dia da semana, a data, a hora e se a loja está aberta: estão em "Contexto desta mensagem", no fim, já no horário de Lauro de Freitas/BA. Nunca diga que não sabe ou não tem como confirmar o dia, a data ou a hora — use essas informações.
 Com a loja FECHADA:
 - Você não anota, não monta e não registra pedido, e não oferece "adiantar" o pedido.
-- Responda de forma educada, cordial e curta, sem explicação longa, usando a resposta pronta do "Contexto desta mensagem" (ex: "Oi, tudo bem? No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
-- Se o cliente insistir em pedir, explique com gentileza, em uma ou duas frases, que só consegue receber pedidos a partir da abertura, e agradeça a compreensão.
-- Dúvidas sobre cardápio, preços, bairros e frete você responde normalmente, só não fecha pedido.
+- Se o cliente pedir algo, responda com a "Resposta pronta" do "Contexto desta mensagem" (ex: "No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
+- Se ele insistir (pedir de novo, pedir pra anotar, pra deixar agendado ou registrar mesmo assim), responda com a "Resposta se insistir" do contexto (ex: "Infelizmente só consigo receber pedidos a partir de hoje às 18h. Obrigada pela compreensão!"). Use essa frase exatamente como está, sempre com o "Obrigada pela compreensão!" — mesmo que repita a mesma frase de antes.
+- No máximo 2 frases curtas por resposta. NÃO repita nem resuma o pedido do cliente (itens, bairro, pagamento) — isso soa como se você tivesse anotado. Não fale de "sistema", não se desculpe longamente nem justifique. Não diga "me chama que eu lanço/fecho o pedido".
+- Dúvidas sobre cardápio, preços, bairros e frete você responde normalmente (curto), só não fecha pedido.
 - Se a loja foi fechada manualmente pela equipe, não prometa abrir hoje.
 ## Frete e cupons
 - O frete e o frete grátis dependem do bairro (lista de bairros abaixo, e \`verificar_bairro\` devolve a regra do bairro do cliente): cada bairro tem o seu valor de frete e o seu "grátis a partir de" em produtos; alguns bairros não têm frete grátis nunca. Nunca prometa frete grátis sem olhar a regra do bairro.
@@ -492,7 +498,7 @@ Responda sempre em português do Brasil, seguindo as regras de "Como você escre
   const textoContexto = `## Contexto desta mensagem (muda a cada mensagem)
 - ${instrucaoApresentacao}
 - Agora é ${agora.nomeDia}, ${agora.data}, ${agora.horaTexto} (horário de Lauro de Freitas/BA).
-- Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}"`}
+- Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}" Resposta se insistir: "${statusLoja.respostaInsistencia}"`}
 ${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}`;
   return [
     { type: 'text', text: textoFixo, cache_control: { type: 'ephemeral' } },

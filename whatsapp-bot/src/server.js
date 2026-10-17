@@ -393,7 +393,7 @@ function comLojaAberta(executor) {
     console.log('[criar_pedido] recusado: loja fechada');
     return {
       erro: 'Loja fechada: pedido não registrado.',
-      mensagem_para_cliente: `${status.respostaFechada.replace(/ Vai ser um prazer te atender!$/, '')} Só consigo receber pedidos a partir da abertura. Obrigada pela compreensão!`,
+      mensagem_para_cliente: status.respostaInsistencia,
     };
   };
 }
