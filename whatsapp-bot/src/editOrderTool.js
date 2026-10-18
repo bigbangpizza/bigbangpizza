@@ -1,7 +1,7 @@
 import { getMenuData, calcularCheckout } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
-import { processarItens, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero } from './orderTool.js';
+import { processarItens, itemParaJson, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero } from './orderTool.js';
 import { resolverBairro, mensagemBairroNaoReconhecido, mensagemBairroNaoAtendido } from './bairroMatch.js';
 
 const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto,cupom';
@@ -55,6 +55,23 @@ export const EDITAR_PEDIDO_TOOL = {
             },
             quantidade: { type: 'integer', minimum: 1 },
             obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
+            pizzas_do_combo: {
+              type: 'array',
+              description:
+                'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
+                'com o sabor (e sabor2 se aquela pizza for meio a meio). Na Dupla, só sabores Tradicionais.',
+              items: {
+                type: 'object',
+                properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },
+                required: ['sabor1'],
+              },
+            },
+            brinde_fidelidade: {
+              type: 'boolean',
+              description:
+                'true só na Pizza Grande Tradicional de presente da fidelidade (tipo "pizza_salgada", tamanho "Grande", sem borda). ' +
+                'Use só se o bloco "Fidelidade deste cliente" disser que ele tem direito. O sistema confere; sem direito, ela é cobrada.',
+            },
           },
           required: ['tipo', 'sabor1', 'quantidade'],
         },
@@ -149,15 +166,7 @@ export function criarExecutorEditarPedido({ numero }) {
         subtotalFinal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
         itensTextoFinal = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
         patch.itens = itensTextoFinal;
-        patch.itens_json = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
-          tipo,
-          tamanho,
-          sabores,
-          borda,
-          precoUnitario,
-          qty,
-          obs,
-        }));
+        patch.itens_json = itensProcessados.map(itemParaJson);
         patch.subtotal = subtotalFinal;
       }
     }

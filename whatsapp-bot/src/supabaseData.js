@@ -109,6 +109,26 @@ export async function calcularCheckout({ itensJson, bairro, cupom, whatsapp, ret
 }
 
 /**
+ * Selos da fidelidade do número ("a cada 5 pedidos, o 6º ganha uma Grande"), pela
+ * RPC fidelidade_status — mesma regra do site e da validação do presente no checkout.
+ * @returns {Promise<{valido:boolean, selos:number, meta:number, tem_brinde:boolean, brinde_pendente:boolean}|null>}
+ */
+export async function consultarFidelidade(whatsapp) {
+  try {
+    const r = await fetch(`${config.supabase.url}/rest/v1/rpc/fidelidade_status`, {
+      method: 'POST',
+      headers: { apikey: config.supabase.anonKey, Authorization: `Bearer ${config.supabase.anonKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ p_whatsapp: whatsapp || null }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (err) {
+    console.error('[supabase] erro ao consultar fidelidade:', mascararSegredos(err.message));
+    return null;
+  }
+}
+
+/**
  * Insere um pedido na tabela `pedidos` — mesma estrutura usada pelo
  * checkout do site (index.html), então o pedido aparece no kanban do
  * admin normalmente. Usa a chave pública (anon), igual ao site.

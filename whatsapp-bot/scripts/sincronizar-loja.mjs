@@ -70,4 +70,16 @@ if (novoAdmin === htmlAdmin && !htmlAdmin.includes(`const ENDERECO_LOJA_MANUAL =
 }
 if (novoAdmin !== htmlAdmin) { writeFileSync(admin, novoAdmin); mudou++; }
 console.log(`admin.html: ENDERECO_LOJA_MANUAL ${novoAdmin !== htmlAdmin ? 'atualizado' : 'já em dia'}`);
+// index.html: endereço da retirada no checkout e no rodapé
+const indexHtml = join(RAIZ, 'index.html');
+const htmlIndex = readFileSync(indexHtml, 'utf8');
+const rodape = `${LOJA_RUA}, ${LOJA_BAIRRO}, ${LOJA_CIDADE} - ${LOJA_UF}`;
+let novoIndex = htmlIndex.replace(/const ENDERECO_LOJA_SITE = '[^']*';/, `const ENDERECO_LOJA_SITE = '${ENDERECO_LOJA.replace(/'/g, "\\'")}';`);
+novoIndex = novoIndex.replace(/(<span id="footer-endereco">)[^<]*(<\/span>)/, `$1${rodape}$2`);
+if (!/const ENDERECO_LOJA_SITE = '/.test(htmlIndex) || !/<span id="footer-endereco">/.test(htmlIndex)) {
+  throw new Error('index.html: ENDERECO_LOJA_SITE ou <span id="footer-endereco"> não encontrado');
+}
+if (novoIndex !== htmlIndex) { writeFileSync(indexHtml, novoIndex); mudou++; }
+console.log(`index.html: endereço do checkout/rodapé ${novoIndex !== htmlIndex ? 'atualizado' : 'já em dia'}`);
+
 console.log(`\n${mudou} arquivo(s) alterado(s). Endereço: ${ENDERECO_LOJA} | coordenadas: ${lojaTemCoordenadas() ? `${LOJA_LAT}, ${LOJA_LNG}` : 'vazias (sem "geo")'}`);

@@ -15,10 +15,16 @@
     return (n < 0 ? '-' : '') + 'R$ ' + Math.abs(n).toFixed(2).replace('.', ',');
   }
 
+  const textoSabores = (s) => (s.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}` : (s[0] && s[0].nome) || 'Item');
+
   function nomeItem(i, nomesDoces) {
     const s = i.sabores || [];
-    const nome = s.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}` : (s[0] && s[0].nome) || 'Item';
-    if (i.tamanho) return `Pizza ${i.tamanho} ${nome}`;
+    const nome = textoSabores(s);
+    // Combo com pizzas escolhidas pelo cliente (ex: Dupla Tradicional): sabores de cada pizza.
+    if (Array.isArray(i.combo_pizzas) && i.combo_pizzas.length) {
+      return `${(s[0] && s[0].nome) || 'Combo'} (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores || [])}`).join(' / ')})`;
+    }
+    if (i.tamanho) return `Pizza ${i.tamanho} ${nome}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''}`;
     const nomeBase = String((s[0] && s[0].nome) || '').toLowerCase();
     const ehDoce = i.oferta_doce || i.tabela === 'pizzas_doces' || (i.tipo === 'pizza' && !i.tamanho) || (nomesDoces && nomesDoces.has(nomeBase));
     return ehDoce ? `Pizza doce ${nome}` : nome;

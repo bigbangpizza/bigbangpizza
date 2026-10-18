@@ -2284,7 +2284,7 @@ function renderPedidoCard(p){
   const itensHtml=`<div style="font-size:14px;">${ResumoPedido.html(ResumoPedido.montarResumoPedido(p, nomesDocesPedidos), esc)}</div>`;
   const mostrarTimer=(bucket==='aguardando'||bucket==='aceito_preparando');
   const bordas=bordasDoPedido(p);
-  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
+  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
@@ -2354,6 +2354,7 @@ async function loadPedidos(){
   });
 
   atualizarTemporizadoresPedidos();
+  carregarFidelidade(Object.values(porStatus).flat()); // em segundo plano (mensagem de "saiu")
   _pedidoTimer=setTimeout(()=>{
     if(!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos();
   }, 30000);
@@ -2395,8 +2396,50 @@ const STATUS_LABEL = {aguardando:'Aguardando',aceito_preparando:'Aceito/Preparan
 // "entregue" não dispara mensagem automática (decisão de produto).
 const STATUS_WPP_MSGS = {
   aceito_preparando: nome => `Oi ${nome}! Seu pedido está em preparo e logo logo sua explosão de sabor sai para entrega!`,
-  saiu:              nome => `Oi ${nome}! Sua Big Bang Pizza está a caminho!`
+  // Retirada: "pronto para retirada" com o endereço da loja (mantém a linha dos selos).
+  saiu:              (nome, ds) => ds?.bairro === 'Retirada no local'
+    ? `Oi ${nome}! Seu pedido está pronto para retirada! 🍕\n📍 ${ENDERECO_LOJA_MANUAL}${linhaSelosSaiu(ds)}`
+    : `Oi ${nome}! Sua Big Bang Pizza está a caminho!${linhaSelosSaiu(ds)}`
 };
+
+// FIDELIDADE ("a cada 5 pedidos, o 6º ganha uma Grande") — selos por telefone pela
+// RPC fidelidade_status (mesma regra do site e do servidor). Carregados em segundo
+// plano quando o kanban/cozinha montam os cards: a mensagem de "saiu" usa o cache,
+// sem await no clique (senão o navegador bloqueia o wa.me).
+const fidelidadeCache = new Map(); // chave do telefone -> { st, em }
+// Mesma normalização da função chave_telefone do banco: DDD + 8 últimos dígitos.
+function chaveTelefoneAdmin(raw){
+  let d = String(raw||'').replace(/\D/g,'');
+  if(d.length>=12 && d.startsWith('55')) d = d.slice(2);
+  return d.length<10 ? null : d.slice(0,2)+d.slice(-8);
+}
+async function carregarFidelidade(pedidos){
+  const tels = [...new Set((pedidos||[]).map(p=>p.whatsapp).filter(Boolean))];
+  await Promise.all(tels.map(async w=>{
+    const k = chaveTelefoneAdmin(w);
+    if(!k) return;
+    const c = fidelidadeCache.get(k);
+    if(c && Date.now()-c.em < 120000) return;
+    try{
+      const r = await authFetch(`${SB}/rest/v1/rpc/fidelidade_status`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ p_whatsapp: w }) });
+      if(r.ok) fidelidadeCache.set(k, { st: await r.json(), em: Date.now() });
+    }catch(e){ console.error('fidelidade_status', e); }
+  }));
+}
+function linhaSelosSaiu(ds){
+  const st = fidelidadeCache.get(chaveTelefoneAdmin(ds?.whatsapp))?.st;
+  if(!st || !st.valido) return '';
+  if(ds.brinde==='1') return '\n\n🎁 Seu presente da fidelidade está indo junto!';
+  if(st.tem_brinde) return `\n\n🎁 Você tem ${st.meta} de ${st.meta} selos: o próximo pedido ganha uma Grande de presente!`;
+  if(Number(ds.subtotal) >= 40){
+    const n = Math.min(st.selos + 1, st.meta);
+    return n >= st.meta
+      ? `\n\n🎉 Com este pedido você completa ${st.meta} de ${st.meta} selos: o próximo ganha uma Grande de presente!`
+      : `\n\n🍕 Com este pedido você fica com ${n} de ${st.meta} selos. A cada ${st.meta} pedidos, o 6º ganha uma Grande de presente.`;
+  }
+  return `\n\n🍕 Você tem ${st.selos} de ${st.meta} selos (pedidos a partir de R$ 40 contam selo).`;
+}
+const pedidoTemBrinde = p => (p.itens_json||[]).some(i => i && i.brinde_fidelidade);
 
 // Normaliza o campo pedidos.whatsapp (texto livre, sem máscara na origem) para o
 // formato que o wa.me espera: só dígitos, com DDI 55. Se já vier com 55 (12-13
@@ -2409,13 +2452,13 @@ function normalizarWhatsapp(raw){
   return digits;
 }
 
-function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw){
+function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw, dataset){
   const gerarMsg = STATUS_WPP_MSGS[status];
   if(!gerarMsg) return;
   const numero = normalizarWhatsapp(whatsappRaw);
   if(!numero){ showToastAdmin('⚠️ Pedido sem WhatsApp cadastrado — status atualizado, mensagem não enviada.'); return; }
   const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
-  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(gerarMsg(primeiroNome))}`, '_blank');
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(gerarMsg(primeiroNome, dataset || { whatsapp: whatsappRaw }))}`, '_blank');
 }
 
 /**
@@ -2471,8 +2514,8 @@ async function atualizarStatus(id,status,cardEl,statusEsperado){
   // É otimista (roda antes de saber se a escrita abaixo vai vingar), mas o
   // dano de um falso positivo é mínimo: wa.me só abre um rascunho de
   // mensagem, ninguém é enviado sem o Gabriel apertar enviar manualmente.
-  if(STATUS_WPP_MSGS[status]) enviarWhatsAppStatus(status, cardEl?.dataset?.nome, cardEl?.dataset?.whatsapp);
-  if(status==='saiu') enviarWhatsAppEntregador(cardEl?.dataset);
+  if(STATUS_WPP_MSGS[status]) enviarWhatsAppStatus(status, cardEl?.dataset?.nome, cardEl?.dataset?.whatsapp, cardEl?.dataset);
+  if(status==='saiu' && cardEl?.dataset?.bairro !== 'Retirada no local') enviarWhatsAppEntregador(cardEl?.dataset);
 
   const linhas = await updSeStatus('pedidos', id, statusEsperado, {status});
 
@@ -3637,6 +3680,7 @@ async function loadCozinha(){
   if(!grid) return;
   const data = await api('pedidos', 'status=in.(aguardando,aceito_preparando,aceito,preparando)', 'created_at.asc');
   if(!data.length){ grid.innerHTML = '<div class="cozinha-vazio">🎉 Nenhum pedido em preparo no momento.</div>'; return; }
+  carregarFidelidade(data); // em segundo plano (mensagem de "saiu")
   grid.innerHTML = data.map(p=>{
     const bucket = statusBucket(p.status);
     const itensHtml = (p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="cozinha-item">🍕 ${esc(i)}</div>`).join('');
@@ -3644,7 +3688,7 @@ async function loadCozinha(){
     const avanco = bucket === 'aguardando'
       ? {status:'aceito_preparando', label:'✅🔥 Aceitar e Preparar'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
-    return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}">
+    return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}">
       <div class="cozinha-num">#${p.id}</div>
       ${etiquetaRetirada(p)}
       ${itensHtml}
@@ -4427,6 +4471,10 @@ function contarPizzasPorSabor(pedidosLista, nomesDoces, nomesCombos){
       const nomeItem=(item.sabores||[])[0]?.nome||'';
       if(nomesDoces.has(nomeItem)){
         cont[nomeItem]=(cont[nomeItem]||0)+qty; // pizza doce avulsa
+      } else if(nomesCombos.has(nomeItem) && Array.isArray(item.combo_pizzas) && item.combo_pizzas.length){
+        // combo com pizzas escolhidas pelo cliente (ex: Dupla Tradicional): cada
+        // pizza conta pelos sabores dela (meio a meio = 1 por metade, como a avulsa).
+        item.combo_pizzas.forEach(pz=>(pz.sabores||[]).forEach(s=>{ if(s?.nome) cont[s.nome]=(cont[s.nome]||0)+qty; }));
       } else if(nomesCombos.has(nomeItem)){
         // combo: 1 pizza salgada (fixa na receita do combo) + 1 pizza doce
         // (escolhida pelo cliente na conversa) = 2 unidades físicas — mas
@@ -4977,22 +5025,46 @@ async function loadClientes() {
     ultimaReativacaoPorWhatsapp.set(r.whatsapp, r.enviado_em);
   }
 
-  // Deduplicate by whatsapp or nome — como "data" vem ordenado por created_at.desc,
-  // o primeiro registro encontrado para cada cliente é o pedido MAIS RECENTE dele.
+  // Um cliente por telefone NORMALIZADO (chave_telefone: "71 99999-0000" e
+  // "+55 71999990000" são o mesmo cliente; sem telefone, agrupa pelo nome). Como
+  // "data" vem ordenado por created_at.desc, o primeiro registro de cada cliente é
+  // o pedido MAIS RECENTE dele (nome/telefone/bairro mostrados vêm dele).
+  const chaveCliente = (x) => chaveTelefoneAdmin(x.whatsapp) || ('nome:' + String(x.nome || '').trim().toLowerCase());
   const vistos = new Set();
   const clientes = [];
   for (const p of data) {
-    const key = p.whatsapp || p.nome;
+    const key = chaveCliente(p);
     if (!vistos.has(key)) {
       vistos.add(key);
       clientes.push(p);
     }
   }
 
+  // Fidelidade: mesma regra da função fidelidade_status do banco (exibição — quem
+  // valida o presente no pedido é o servidor). Agrupa pela chave do telefone.
+  // Fora da fidelidade (mesmas exclusões da função fidelidade_status): pedidos de
+  // teste (nome com "teste") e os telefones de configuracoes.fidelidade_telefones_excluidos.
+  const cfgExcluidos = await api('configuracoes', 'chave=eq.fidelidade_telefones_excluidos', 'chave.asc');
+  const telefonesExcluidos = new Set(String(cfgExcluidos?.[0]?.valor || '').split(',').map(chaveTelefoneAdmin).filter(Boolean));
+  const pedidosPorChave = new Map();
+  for (const x of data) {
+    const k = chaveTelefoneAdmin(x.whatsapp);
+    if (!k || telefonesExcluidos.has(k) || /\bteste\b/i.test(x.nome || '')) continue;
+    if (!pedidosPorChave.has(k)) pedidosPorChave.set(k, []);
+    pedidosPorChave.get(k).push(x);
+  }
+  const fidelidadeDoCliente = (whatsapp) => {
+    const lista = pedidosPorChave.get(chaveTelefoneAdmin(whatsapp)) || [];
+    const usos = lista.filter(x => pedidoTemBrinde(x) && x.status !== 'cancelado');
+    const ultimoUso = usos.reduce((m, x) => (!m || x.created_at > m ? x.created_at : m), null);
+    const selos = lista.filter(x => x.status === 'entregue' && Number(x.subtotal||0) >= 40 && !pedidoTemBrinde(x) && (!ultimoUso || x.created_at > ultimoUso)).length;
+    return { selos: Math.min(selos, 5), temBrinde: selos >= 5, ultimoUso };
+  };
+
   const rows = clientes.map(p => {
     const dt = parseUTC(p.created_at)||new Date();
     const diasDesdeUltimo = Math.floor((Date.now() - dt.getTime()) / 86400000);
-    const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp === p.whatsapp) || (!x.whatsapp && x.nome === p.nome));
+    const pedidosCliente = data.filter(x => chaveCliente(x) === chaveCliente(p));
     const totalGasto = pedidosCliente.reduce((s,x) => s+(x.total||0), 0);
     const segmento = classificarSegmentoCliente(pedidosCliente.length, diasDesdeUltimo);
     const seg = SEGMENTO_INFO[segmento];
@@ -5004,7 +5076,13 @@ async function loadClientes() {
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
       <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
       <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
-      <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}</td>
+      <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}${(() => {
+        if (!p.whatsapp || telefonesExcluidos.has(chaveTelefoneAdmin(p.whatsapp))) return '';
+        const f = fidelidadeDoCliente(p.whatsapp);
+        return `<div title="Fidelidade: a cada 5 pedidos entregues (R$ 40+ em produtos), o 6º ganha uma Grande" style="font-size:10.5px;color:#facc15;white-space:nowrap;margin-top:3px;">🍕 ${f.selos}/5 selos</div>`
+          + (f.temBrinde ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">🎁 tem presente</div>` : '')
+          + (f.ultimoUso ? `<div style="font-size:10.5px;color:rgba(255,255,255,0.45);white-space:nowrap;">🎁 usado em ${(parseUTC(f.ultimoUso)||new Date(f.ultimoUso)).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>` : '');
+      })()}</td>
       <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
       <td data-label="Último Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</td>
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
@@ -5227,13 +5305,15 @@ async function exportarClientesCSV() {
   const data = await api('pedidos','','created_at.desc');
   const vistos = new Set();
   const clientes = [];
+  // Mesmo agrupamento do CRM: um cliente por telefone normalizado (sem telefone, pelo nome).
+  const chaveCliente = (x) => chaveTelefoneAdmin(x.whatsapp) || ('nome:' + String(x.nome || '').trim().toLowerCase());
   for (const p of data) {
-    const key = p.whatsapp || p.nome;
+    const key = chaveCliente(p);
     if (!vistos.has(key)) { vistos.add(key); clientes.push(p); }
   }
   const headers = ['Nome','WhatsApp','Bairro','Endereço','Total Pedidos','Data 1º Pedido'];
   const rows = clientes.map(p => {
-    const pedidosCliente = data.filter(x => (x.whatsapp && x.whatsapp===p.whatsapp)||(!x.whatsapp&&x.nome===p.nome));
+    const pedidosCliente = data.filter(x => chaveCliente(x) === chaveCliente(p));
     return [p.nome, p.whatsapp||'', p.bairro||'', p.endereco||'', pedidosCliente.length, (parseUTC(p.created_at)||new Date()).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})];
   });
   const csv = [headers,...rows].map(r=>r.join(';')).join('\n');

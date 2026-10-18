@@ -97,6 +97,23 @@ export const CRIAR_PEDIDO_TOOL = {
             },
             quantidade: { type: 'integer', minimum: 1 },
             obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
+            pizzas_do_combo: {
+              type: 'array',
+              description:
+                'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
+                'com o sabor (e sabor2 se aquela pizza for meio a meio). Na Dupla, só sabores Tradicionais.',
+              items: {
+                type: 'object',
+                properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },
+                required: ['sabor1'],
+              },
+            },
+            brinde_fidelidade: {
+              type: 'boolean',
+              description:
+                'true só na Pizza Grande Tradicional de presente da fidelidade (tipo "pizza_salgada", tamanho "Grande", sem borda). ' +
+                'Use só se o bloco "Fidelidade deste cliente" disser que ele tem direito. O sistema confere; sem direito, ela é cobrada.',
+            },
           },
           required: ['tipo', 'sabor1', 'quantidade'],
         },
@@ -128,6 +145,28 @@ export function buscarPorNome(lista, campoNome, nomeBusca) {
     return nome.includes(alvo) || alvo.includes(nome);
   });
   return parciais.length === 1 ? parciais[0] : null;
+}
+
+// Item no formato gravado em pedidos.itens_json (sabores das pizzas do combo e a
+// marca do presente da fidelidade vão juntos — o servidor confere o presente).
+export function itemParaJson({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs, combo_pizzas, brinde_fidelidade }) {
+  return {
+    tipo, tamanho, sabores, borda, precoUnitario, qty, obs,
+    ...(combo_pizzas ? { combo_pizzas } : {}),
+    ...(brinde_fidelidade ? { brinde_fidelidade: true } : {}),
+  };
+}
+
+// Combos em que o cliente escolhe os sabores das pizzas (nome do combo em minúsculas).
+const COMBOS_COM_PIZZAS_ESCOLHIDAS = {
+  'dupla tradicional': { pizzas: 2, tamanho: 'Grande', categoria: 'tradicional', rotulo: 'Tradicionais' },
+};
+
+// Sabor de pizza salgada de uma categoria (e tamanho) — usado na Dupla e no presente da fidelidade.
+function saborDaCategoria(menuData, nome, categoria, campoPreco) {
+  const s = buscarPorNome(menuData.salgadas, 'nome', nome);
+  if (!s || (s.categoria || 'tradicional') !== categoria || s[campoPreco] == null) return null;
+  return s;
 }
 
 function catalogoPorTipo(menuData, tipo) {
@@ -199,6 +238,8 @@ export function processarItens(itensInput, menuData) {
     let tamanho = null;
     let tabela = null;
     let tipoItem = 'simples';
+    let comboPizzas = null;
+    let brinde = false;
 
     if (itemInput.tipo === 'pizza_salgada') {
       tipoItem = 'pizza';
@@ -239,14 +280,56 @@ export function processarItens(itensInput, menuData) {
         precoUnitario = encontrado1[campoPreco];
         nomeExibicao = `Pizza ${tamanho} — ${encontrado1.nome}`;
       }
+      // Presente da fidelidade: Grande Tradicional por R$ 0 (o servidor confere o direito).
+      if (itemInput.brinde_fidelidade) {
+        const naoTradicional = sabores.find((sb) => !saborDaCategoria(menuData, sb.nome, 'tradicional', 'preco_grande'));
+        if (tamanho !== 'Grande' || naoTradicional) {
+          erros.push('O presente da fidelidade é uma Pizza Grande Tradicional (pode ser meio a meio entre Tradicionais).');
+          continue;
+        }
+        if (itensProcessados.some((i) => i.brinde_fidelidade)) {
+          erros.push('Só vale 1 pizza de presente da fidelidade por pedido.');
+          continue;
+        }
+        brinde = true;
+        precoUnitario = 0;
+        nomeExibicao = `🎁 ${nomeExibicao} (presente fidelidade)`;
+      }
     } else {
       const prefixo = itemInput.tipo === 'pizza_doce' ? 'Doce ' : '';
       sabores = [{ nome: encontrado1.nome, preco: encontrado1.preco }];
       precoUnitario = encontrado1.preco;
       nomeExibicao = `${prefixo}${encontrado1.nome}`;
+      // Combo com pizzas à escolha (Dupla Tradicional): sabores estruturados em combo_pizzas.
+      const regraCombo = itemInput.tipo === 'combo' ? COMBOS_COM_PIZZAS_ESCOLHIDAS[String(encontrado1.nome).toLowerCase()] : null;
+      if (regraCombo) {
+        const pizzasInput = Array.isArray(itemInput.pizzas_do_combo) ? itemInput.pizzas_do_combo : [];
+        if (pizzasInput.length !== regraCombo.pizzas) {
+          erros.push(`O combo "${encontrado1.nome}" precisa dos sabores das ${regraCombo.pizzas} pizzas em "pizzas_do_combo" (${regraCombo.rotulo}; cada uma pode ser meio a meio). Pergunte ao cliente.`);
+          continue;
+        }
+        const campoPreco = regraCombo.tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
+        const montadas = [];
+        for (const pz of pizzasInput) {
+          const nomes = [pz.sabor1, pz.sabor2].filter(Boolean);
+          const achados = nomes.map((n) => saborDaCategoria(menuData, n, regraCombo.categoria, campoPreco));
+          const invalido = nomes.find((n, k) => !achados[k]);
+          if (invalido) { erros.push(`"${invalido}" não é um sabor ${regraCombo.rotulo} — o combo "${encontrado1.nome}" só aceita ${regraCombo.rotulo}.`); break; }
+          if (achados.length === 2 && achados[0].id === achados[1].id) { erros.push(`Meio a meio precisa de 2 sabores diferentes ("${achados[0].nome}").`); break; }
+          montadas.push({ tamanho: regraCombo.tamanho, sabores: achados.map((a) => ({ id: a.id, nome: a.nome })) });
+        }
+        if (montadas.length !== regraCombo.pizzas) continue;
+        comboPizzas = montadas;
+        const textoPizza = (p) => (p.sabores.length === 2 ? `½ ${p.sabores[0].nome} + ½ ${p.sabores[1].nome}` : p.sabores[0].nome);
+        nomeExibicao = `${encontrado1.nome} — ${montadas.map(textoPizza).join(' / ')}`;
+      }
     }
 
     let borda = null;
+    if (itemInput.borda && brinde) {
+      erros.push('O presente da fidelidade não tem borda recheada.');
+      continue;
+    }
     if (itemInput.borda) {
       const nomeBorda = OPCOES_BORDA[itemInput.tipo]?.[itemInput.borda];
       if (!nomeBorda) {
@@ -260,7 +343,7 @@ export function processarItens(itensInput, menuData) {
       nomeExibicao += ` — Borda ${nomeBorda}`;
     }
 
-    const qty = Math.max(1, Math.trunc(Number(itemInput.quantidade) || 1));
+    const qty = brinde ? 1 : Math.max(1, Math.trunc(Number(itemInput.quantidade) || 1));
     itensProcessados.push({
       tipo: tipoItem,
       tabela,
@@ -271,6 +354,8 @@ export function processarItens(itensInput, menuData) {
       qty,
       obs: itemInput.obs || null,
       nomeExibicao,
+      ...(comboPizzas ? { combo_pizzas: comboPizzas } : {}),
+      ...(brinde ? { brinde_fidelidade: true } : {}),
     });
   }
 
@@ -338,15 +423,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
 
     const subtotal = +itensProcessados.reduce((s, i) => s + i.precoUnitario * i.qty, 0).toFixed(2);
     const itensTexto = itensProcessados.map((i) => `${i.qty}x ${i.nomeExibicao}`).join(' | ');
-    const itensJson = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({
-      tipo,
-      tamanho,
-      sabores,
-      borda,
-      precoUnitario,
-      qty,
-      obs,
-    }));
+    const itensJson = itensProcessados.map(itemParaJson);
 
     // Rede de segurança contra pedido duplicado (ver PEDIDO_DUPLICADO_* em
     // config.js e o aviso de contexto que buildSystemPrompt já injeta antes
@@ -474,6 +551,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       frete,
       total,
       falta_para_frete_gratis: checkout.falta_para_frete_gratis || null,
+      presente_fidelidade: checkout.fidelidade || null,
       bairro: bairroEncontrado.nome,
       endereco: pedido.endereco,
       forma_pagamento: pagamentoTexto,
@@ -554,7 +632,7 @@ export function criarExecutorCalcularTotal({ numero }) {
     }
     if (erros.length) return { erro: erros.join(' ') };
 
-    const itensJson = itensProcessados.map(({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }) => ({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs }));
+    const itensJson = itensProcessados.map(itemParaJson);
     const c = await calcularCheckout({ itensJson, bairro: bairroNome, cupom: input.cupom, whatsapp: numero, retirada: input.retirada });
     const falta = Number(c.falta_para_frete_gratis) || 0;
     ultimoResumoPorNumero.set(numero, { linhaFreteGratis: falta > 0 ? `Faltam ${brl(falta)} para frete grátis.` : null });
@@ -568,6 +646,7 @@ export function criarExecutorCalcularTotal({ numero }) {
       frete_gratis: c.frete === 0 && !input.retirada,
       desconto: c.desconto,
       cupom: c.cupom ? { codigo: c.cupom.codigo, valido: c.cupom.valido, motivo: c.cupom.motivo } : null,
+      presente_fidelidade: c.fidelidade || null,
       total: c.total,
       // Cupom x oferta da doce (não acumulam): total de cada opção e qual sai mais barata.
       comparacao_cupom_x_oferta_doce: c.comparacao
@@ -585,9 +664,13 @@ export function criarExecutorCalcularTotal({ numero }) {
 
 function linhasDosItens(itensNormalizados) {
   return (itensNormalizados || []).map((i) => {
-    const nome = i.sabores?.length === 2 ? `½ ${i.sabores[0].nome} + ½ ${i.sabores[1].nome}` : i.sabores?.[0]?.nome;
+    const textoSabores = (s) => (s?.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}` : s?.[0]?.nome);
+    const nome = textoSabores(i.sabores);
     const tam = i.tamanho ? `${i.tamanho} ` : '';
-    return `${i.qty}x ${tam}${nome} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
+    // Dupla: sabores de cada pizza; presente da fidelidade: marcado.
+    const pizzasCombo = Array.isArray(i.combo_pizzas) && i.combo_pizzas.length
+      ? ` (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores)}`).join(' / ')})` : '';
+    return `${i.qty}x ${tam}${nome}${pizzasCombo}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
   });
 }
 

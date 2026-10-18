@@ -1,4 +1,4 @@
-import { getMenuData } from './supabaseData.js';
+import { getMenuData, consultarFidelidade } from './supabaseData.js';
 import { getAgoraBahiaDetalhado, NOMES_DIAS, parseComoUTC, diasEntre } from './dataUtils.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
 import { buscarPedidoAtivoDoCliente, buscarHistoricoClienteConhecido } from './pedidoStatusUtil.js';
@@ -154,6 +154,18 @@ export function formatarCombos(lista, { comDePor = false } = {}) {
     );
   }
   return linhas.join('\n');
+}
+
+// Fidelidade do número que está conversando (RPC fidelidade_status).
+function montarBlocoFidelidade(st) {
+  if (!st || !st.valido) return '';
+  const faltam = st.meta - st.selos;
+  const situacao = st.tem_brinde
+    ? 'TEM DIREITO ao presente neste pedido (ofereça uma vez, ver "Cartão fidelidade").'
+    : st.brinde_pendente
+      ? 'já usou o presente num pedido que ainda está em andamento; a contagem recomeçou.'
+      : `${faltam === 1 ? 'falta 1 pedido' : `faltam ${faltam} pedidos`} para o presente (não ofereça nada).`;
+  return `\n## Fidelidade deste cliente\n- ${st.selos} de ${st.meta} selos — ${situacao}\n`;
 }
 
 export function formatarBebidas(lista) {
@@ -312,6 +324,7 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const blocoPedidoAtivo = await montarBlocoPedidoAtivo(numero);
   const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
   const blocoCupomBoasVindas = montarBlocoCupomBoasVindas(numero, cupomBoasVindas);
+  const blocoFidelidade = montarBlocoFidelidade(await consultarFidelidade(numero));
   // Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesmas chaves da função calcular_checkout_v2.
   const ofertaDoce = {
     ativa: ['true', '1', 'sim'].includes(String(configuracoes.oferta_doce_ativa || '').toLowerCase()),
@@ -487,6 +500,15 @@ ${formatarDoces(doces)}
 
 ## Cardápio — Combos
 ${formatarCombos(combos, { comDePor: true })}
+- **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza pode ser meio a meio entre Tradicionais. Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode ser meio a meio entre as Tradicionais."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, \`sabor2\` só se aquela for meio a meio), nunca no \`obs\`. Cupom não vale na Dupla (é combo).
+
+## Cartão fidelidade
+- Regra: a cada 5 pedidos entregues (com R$ 40 ou mais em produtos), o 6º pedido ganha 1 Pizza Grande Tradicional de presente (o cliente escolhe o sabor entre as Tradicionais, pode ser meio a meio, sem borda). Depois de usar, a contagem recomeça.
+- Selos do cliente: estão no bloco "Fidelidade deste cliente", no fim. Só fale dos selos se o cliente perguntar — ou para oferecer o presente quando ele tiver direito.
+- Com direito ao presente: ofereça UMA vez, em uma linha, depois de fechar os itens e antes do resumo (ex: "Você completou 5 selos! Quer escolher o sabor da sua Grande Tradicional de presente?"). Se aceitar, inclua a pizza como item \`pizza_salgada\`, tamanho "Grande", com \`brinde_fidelidade: true\`, no \`calcular_total\` e no \`criar_pedido\`.
+- O presente não pode ser pedido sozinho (precisa de outro item pago), é 1 por pedido e não acumula com cupom: se o cliente quiser usar cupom, explique em uma linha que não acumulam e deixe ele escolher.
+- O presente não tem borda e NÃO conta como pizza salgada para a oferta da pizza doce: se o pedido não tiver outra salgada Grande/Família paga, não ofereça borda nem a pizza doce em oferta (na oferta do passo 2, ofereça só bebida).
+- Se \`calcular_total\` ou \`criar_pedido\` devolver \`presente_fidelidade\` com \`brinde_aplicado: false\`, a pizza foi cobrada: avise com o motivo que veio e pergunte se ele quer manter ou tirar a pizza.
 
 ## Bebidas
 ${formatarBebidas(bebidas)}
@@ -499,7 +521,7 @@ Responda sempre em português do Brasil, seguindo as regras de "Como você escre
 - ${instrucaoApresentacao}
 - Agora é ${agora.nomeDia}, ${agora.data}, ${agora.horaTexto} (horário de Lauro de Freitas/BA).
 - Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}" Resposta se insistir: "${statusLoja.respostaInsistencia}"`}
-${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}`;
+${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}${blocoFidelidade}`;
   return [
     { type: 'text', text: textoFixo, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: textoContexto },

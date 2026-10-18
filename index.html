@@ -93,10 +93,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
     "ratingValue": "4.8",
     "reviewCount": "72"
   },
-  "sameAs": [
-    "https://instagram.com/bigbangpz",
-    "https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9"
-  ]
+  "sameAs": ["https://instagram.com/bigbangpz"]
 }
 </script>
 
@@ -200,6 +197,20 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .size-btn .preco-de{display:block;font-size:11px;margin-top:2px;}
 .size-btn span.selo-economia{display:inline-block;font-family:inherit;color:white;font-size:10px;letter-spacing:0;padding:2px 6px;margin-top:4px;white-space:normal;line-height:1.2;}
 .size-btn.active .preco-de{color:rgba(255,255,255,0.75);}
+/* DESTAQUE DA DUPLA (no lugar do banner grande do cupom) */
+.dupla-destaque{background:linear-gradient(135deg,var(--red),#ff4422);color:white;padding:22px 20px;text-align:center;}
+.dupla-destaque .dd-titulo{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;line-height:1.1;}
+.dupla-destaque .dd-sub{font-size:14px;color:rgba(255,255,255,0.9);margin:6px 0 12px;}
+.dupla-destaque .de-por{justify-content:center;margin-bottom:12px;}
+.dupla-destaque .preco-de{color:rgba(255,255,255,0.75);font-size:14px;}
+.dupla-destaque .selo-economia{background:#fff;color:var(--red);}
+.dupla-destaque button{background:#fff;color:var(--red);border:none;padding:13px 26px;border-radius:9px;font-size:16px;font-weight:800;cursor:pointer;}
+/* FIDELIDADE E AVISOS DO CHECKOUT */
+.fid-selo{background:#fff7e0;color:#7a5200;font-size:13px;font-weight:700;text-align:center;padding:8px 14px;border-bottom:1px solid #f0dca0;}
+.fid-status{font-size:13px;line-height:1.45;background:#f6f3ec;border:1px solid var(--cream-dark);border-radius:9px;padding:9px 11px;}
+.fid-status button{margin-top:7px;background:var(--green);color:#fff;border:none;padding:9px 13px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;}
+.cupom-aviso{font-size:12px;color:var(--gray);margin-top:6px;}
+.footer-endereco{font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:8px;line-height:1.5;}
 
 /* PIZZA CARDS */
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
@@ -495,47 +506,23 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <img class="hero-bg-photo" id="hero-bg-photo" alt="" fetchpriority="high" width="1600" height="900">
   <picture><source srcset="logo-hero.webp" type="image/webp"><img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza" width="700" height="700"></picture>
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
-  <h1><span id="hero-slogan">Pizza artesanal,</span><br><em id="hero-destaque">explosão de sabor</em></h1>
-  <p class="hero-sub" id="hero-subtitulo">Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
+  <h1><span id="hero-slogan">2 pizzas Grandes</span><br><em id="hero-destaque">por <span class="hero-dupla-preco">R$ 79,90</span></em></h1>
+  <p class="hero-sub" id="hero-subtitulo">Dupla Tradicional: você escolhe os sabores. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
   <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
     <span class="badge">🚚 Frete grátis a partir de R$ 65 em Vilas, Pitangueiras e região</span>
     <span class="badge">⏱️ Entrega Rápida</span>
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
-  <a href="#combos" class="hero-cta">🍕 Ver Cardápio</a>
+  <a href="#combos" class="hero-cta" onclick="return abrirDupla(event)">🍕 Quero a Dupla</a>
 </div>
 
-<!-- COMO FUNCIONA -->
-<div id="como-funciona" style="background:var(--cream);padding:44px 0;">
-  <div class="sw" style="padding-top:0;padding-bottom:0;text-align:center;">
-    <h2 class="section-title">COMO <span>FUNCIONA</span></h2>
-    <div class="divider" style="margin-left:auto;margin-right:auto;"></div>
-    <div class="cf-grid">
-      <div class="cf-step">
-        <div class="cf-step-num">PASSO 1</div>
-        <div class="cf-icon">🍕</div>
-        <div class="cf-title">Escolha sua pizza</div>
-      </div>
-      <div class="cf-step">
-        <div class="cf-step-num">PASSO 2</div>
-        <div class="cf-icon">📱</div>
-        <div class="cf-title">Monte seu pedido</div>
-      </div>
-      <div class="cf-step">
-        <div class="cf-step-num">PASSO 3</div>
-        <div class="cf-icon">🚀</div>
-        <div class="cf-title">Receba em casa</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- BANNER CUPOM -->
-<div class="cupom-banner" id="cupom-banner">
-  <h3>🎉 15% OFF no seu primeiro pedido com o cupom BIGBANG15!</h3>
-  <div class="cupom-code" onclick="gtag('event', 'select_promotion', {promotion_name: 'BIGBANG15'})">BIGBANG15</div>
-  <div class="cupom-restantes" id="cupom-restantes">Carregando cupons...</div>
+<!-- DESTAQUE DA DUPLA (preço e "de/por" vêm do combo no banco; some se a Dupla estiver inativa) -->
+<div class="dupla-destaque" id="dupla-destaque" style="display:none;">
+  <div class="dd-titulo">🔥 Dupla Tradicional: 2 pizzas Grandes por <span class="hero-dupla-preco">R$ 79,90</span></div>
+  <div class="dd-sub">Você escolhe os sabores entre as Tradicionais (cada uma pode ser meio a meio).</div>
+  <div id="dupla-destaque-depor"></div>
+  <button type="button" onclick="abrirDupla()">🍕 Escolher os sabores</button>
 </div>
 
 <div id="combos" style="background:#0a0a0a;padding:44px 0;">
@@ -654,15 +641,40 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     </div>
   </div>
 </div>
+<!-- COMO FUNCIONA -->
+<div id="como-funciona" style="background:var(--cream);padding:44px 0;">
+  <div class="sw" style="padding-top:0;padding-bottom:0;text-align:center;">
+    <h2 class="section-title">COMO <span>FUNCIONA</span></h2>
+    <div class="divider" style="margin-left:auto;margin-right:auto;"></div>
+    <div class="cf-grid">
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 1</div>
+        <div class="cf-icon">🍕</div>
+        <div class="cf-title">Escolha sua pizza</div>
+      </div>
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 2</div>
+        <div class="cf-icon">📱</div>
+        <div class="cf-title">Monte seu pedido</div>
+      </div>
+      <div class="cf-step">
+        <div class="cf-step-num">PASSO 3</div>
+        <div class="cf-icon">🚀</div>
+        <div class="cf-title">Receba em casa</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <footer>
   <picture><source srcset="logo-header.webp" type="image/webp"><img src="logo-header.png" alt="Big Bang Pizza" width="600" height="600"></picture>
   <div class="footer-slogan" id="footer-slogan">Explosão de Sabor 🍕🔥💥</div>
   <div class="footer-links">
     <a href="https://wa.me/5571993738823" id="wpp-footer" target="_blank">📱 (71) 99373-8823</a>
     <a href="mailto:bigbangpz@outlook.com">✉️ bigbangpz@outlook.com</a>
-    <a href="https://www.ifood.com.br/delivery/lauro-de-freitas-ba/big-bang-pizza-centro/5a5d3224-6dc9-4daf-b8f1-d3164a932fc9" target="_blank">🛵 iFood</a>
     <a href="https://instagram.com/bigbangpz" id="footer-instagram" target="_blank">📷 @bigbangpz</a>
   </div>
+  <div class="footer-endereco">📍 <span id="footer-endereco">Av. Amarílio Thiago dos Santos, 1152, sala 03, Vila Praiana, Lauro de Freitas - BA</span><br>🏪 Retire na loja sem frete</div>
   <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Qui e Dom 18h às 23h | Sex e Sáb 18h às 00h</div>
   <div class="footer-copy">© 2026 Big Bang Pizza — Todos os direitos reservados</div>
 </footer>
@@ -680,17 +692,22 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 <div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
 <div class="cart-panel" id="cart-panel">
   <div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close" onclick="closeCart()">✕</button></div>
+  <div class="fid-selo">🍕 A cada 5 pedidos, o 6º ganha uma Grande de presente</div>
   <div class="cart-scroll">
   <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
   <div class="checkout-form" id="checkout-form" style="display:none;">
     <div class="checkout-form-label"><span class="cfl-icon">📍</span> Dados de entrega</div>
     <input type="text" id="f-nome" placeholder="Nome completo *">
-    <input type="text" id="f-endereco" placeholder="Rua e número *">
-    <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
+    <div id="campos-endereco" style="display:contents;">
+      <input type="text" id="f-endereco" placeholder="Rua e número *">
+      <input type="text" id="f-complemento" placeholder="Complemento (opcional)">
+    </div>
     <input type="tel" id="f-whatsapp" placeholder="📱 WhatsApp com DDD *" inputmode="numeric" maxlength="20" oninput="formatarTelefoneInput(this)">
     <div class="campo-hint">Usamos para confirmar e acompanhar seu pedido.</div>
+    <div class="fid-status" id="fid-status" style="display:none;"></div>
     <select id="f-bairro" onchange="onBairroChange()"><option value="">Selecione o bairro *</option></select>
+    <div class="campo-hint" id="retirada-info" style="display:none;">🏪 Você retira na loja, sem frete: <span id="retirada-endereco"></span></div>
     <div id="bairro-outro" style="display:none;">
       <input type="text" id="f-bairro-outro" placeholder="Qual é o seu bairro?">
       <div class="campo-hint" style="color:var(--red);font-weight:600;">Fale com a gente pelo WhatsApp para confirmar a entrega no seu bairro. O botão abaixo já envia o seu pedido pra gente.</div>
@@ -702,6 +719,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
         <input type="text" id="f-cupom" placeholder="Cupom de desconto (opcional)" style="text-transform:uppercase;">
         <button class="btn-cupom" onclick="aplicarCupom()">Aplicar</button>
       </div>
+      <div class="cupom-aviso" id="cupom-aviso" style="display:none;">Primeiro pedido? Use BIGBANG15 e ganhe 15% OFF (até R$ 10, não vale em combos)</div>
       <div class="cupom-ok" id="cupom-ok">✅ Cupom aplicado!</div>
       <div class="cupom-erro" id="cupom-erro">❌ Cupom inválido ou esgotado</div>
     </div>
@@ -758,6 +776,18 @@ let ofertaDoceAtiva = false, ofertaDocePreco = 39.90;
 let ofertaDoceRecusada = false; // cliente clicou "Agora não" no aviso da oferta (vale pra sessão)
 try { ofertaDoceRecusada = sessionStorage.getItem('ofertaDoceRecusada') === '1'; } catch(e) {}
 let modalState = null;
+// Dupla Tradicional: combo de 2 pizzas Grandes Tradicionais com os sabores escolhidos
+// pelo cliente (vão estruturados em combo_pizzas no itens_json do pedido).
+const DUPLA_NOME = 'Dupla Tradicional';
+let duplaCombo = null; // linha do combo no banco (preço / preco_original), vem de loadCombos
+let heroPersonalizado = false; // admin preencheu algum texto do topo (Aparência) — aí não mexemos nele
+// Retirada no local: mesmo nome de "bairro" que o bot e o admin já usam.
+const BAIRRO_RETIRADA = 'retirada', RETIRADA_NOME = 'Retirada no local';
+// Endereço da loja — atualizado junto com o bot por whatsapp-bot/scripts/sincronizar-loja.mjs.
+const ENDERECO_LOJA_SITE = 'Av. Amarílio Thiago dos Santos, 1152, sala 03 - Vila Praiana, Lauro de Freitas - BA, CEP 42704-550';
+// Fidelidade ("a cada 5 pedidos, o 6º ganha uma Grande"): status do WhatsApp digitado.
+// Só mostra o progresso e oferece o presente — quem confirma o direito é o servidor.
+let fidelidadeStatus = null; // { tel, valido, selos, meta, tem_brinde, brinde_pendente }
 let WPP_NUMBER = '5571993738823';
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
 // tabela `configuracoes`, chaves borda_preco_salgada/borda_preco_doce.
@@ -974,14 +1004,61 @@ async function loadCombos() {
         ${blocoDePor(c.preco_original, c.preco, 'Separado: ')}
         <div class="combo-bottom">
           <span class="combo-price">R$ ${c.preco.toFixed(2).replace('.',',')}</span>
-          <button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>
+          ${c.nome === DUPLA_NOME
+            ? `<button class="btn-add" onclick="abrirDupla()">🍕 Escolher sabores</button>`
+            : `<button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>`}
         </div>
       </div>
     </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+  duplaCombo = data.find(c => c.nome === DUPLA_NOME) || null;
+  atualizarDestaqueDupla();
   renderComboDots(data.length);
   observarComboFadeIn();
   iniciarComboAutoplay();
 }
+
+// DUPLA TRADICIONAL — topo e destaque com o preço do banco. Sem a Dupla ativa,
+// o topo volta ao texto institucional e o destaque some.
+function atualizarDestaqueDupla() {
+  const destaque = document.getElementById('dupla-destaque');
+  const cta = document.querySelector('.hero-cta');
+  // Topo: oferta da Dupla quando ela está ativa; senão, o texto institucional.
+  // Texto personalizado no admin (Aparência) sempre prevalece.
+  if (!heroPersonalizado) {
+    const slogan = document.getElementById('hero-slogan'), dest = document.getElementById('hero-destaque'), sub = document.getElementById('hero-subtitulo');
+    if (duplaCombo) {
+      slogan.textContent = '2 pizzas Grandes';
+      dest.innerHTML = `por <span class="hero-dupla-preco">${brl(duplaCombo.preco)}</span>`;
+      sub.textContent = 'Dupla Tradicional: você escolhe os sabores. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.';
+    } else {
+      slogan.textContent = 'Pizza artesanal,';
+      dest.textContent = 'explosão de sabor';
+      sub.textContent = 'Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.';
+    }
+  }
+  if (cta) cta.textContent = duplaCombo ? '🍕 Quero a Dupla' : '🍕 Ver Cardápio';
+  if (!duplaCombo) { if (destaque) destaque.style.display = 'none'; return; }
+  document.querySelectorAll('.hero-dupla-preco').forEach(el => { el.textContent = brl(duplaCombo.preco); });
+  const depor = document.getElementById('dupla-destaque-depor');
+  if (depor) depor.innerHTML = blocoDePor(duplaCombo.preco_original, duplaCombo.preco, 'Separado: ');
+  if (destaque) destaque.style.display = '';
+}
+function tradicionaisGrande() {
+  return salgadasCache.filter(p => (p.categoria || 'tradicional') === 'tradicional' && p.preco_grande != null);
+}
+// Botão do topo, do destaque e do card: abre a escolha das 2 pizzas (ou rola até
+// os combos, se o cardápio ainda estiver carregando).
+function abrirDupla(ev) {
+  if (ev) ev.preventDefault();
+  if (!duplaCombo || !tradicionaisGrande().length) {
+    document.getElementById('combos')?.scrollIntoView({ behavior: 'smooth' });
+    return false;
+  }
+  gtag('event', 'select_item', { item_name: DUPLA_NOME, item_category: 'combo' });
+  abrirModalSabor('Grande', null, null, { modo: 'dupla', passo: 1, pizzas: [] });
+  return false;
+}
+const textoPizzaEscolhida = sabores => sabores.length === 2 ? `½ ${sabores[0].nome} + ½ ${sabores[1].nome}` : sabores[0].nome;
 
 // CARROSSEL DE COMBOS — navegação por setas, bolinhas e autoplay
 let comboAutoplayTimer = null;
@@ -1204,6 +1281,7 @@ async function loadBairros() {
   legenda.innerHTML = `<div style="width:100%;color:#4ade80;font-weight:700;font-size:14px;">🎉 Frete grátis por bairro, em pedidos a partir do valor indicado em produtos (sem cupom)</div>`;
   grid.innerHTML = '';
   sel.innerHTML = '<option value="">Selecione o bairro *</option>';
+  sel.appendChild(new Option('🏪 Retirada no local (sem frete)', BAIRRO_RETIRADA));
 
   faixas.forEach((chave, i) => {
     const cor = FRETE_CORES[i % FRETE_CORES.length];
@@ -1223,6 +1301,7 @@ async function loadBairros() {
   // gente pelo WhatsApp pra confirmar a entrega (ver onBairroChange).
   sel.appendChild(new Option('Meu bairro não está na lista', BAIRRO_OUTRO));
   if (idSelecionado === BAIRRO_OUTRO) sel.value = BAIRRO_OUTRO;
+  if (idSelecionado === BAIRRO_RETIRADA) { sel.value = BAIRRO_RETIRADA; onBairroChange(); }
 
   // Preserva o bairro já selecionado (ex: cliente no meio do checkout) se ele
   // continuar ativo depois de um reload disparado pelo watcher de publicação
@@ -1294,6 +1373,7 @@ async function aplicarConfigsVisuais() {
   if (cfg.cor_destaque) root.setProperty('--orange', cfg.cor_destaque);
   if (cfg.cor_gold) root.setProperty('--gold', cfg.cor_gold);
 
+  heroPersonalizado = !!(cfg.hero_slogan || cfg.hero_destaque || cfg.hero_subtitulo); // texto do admin vale mais que o da Dupla
   if (cfg.hero_slogan) document.getElementById('hero-slogan').textContent = cfg.hero_slogan;
   if (cfg.hero_destaque) document.getElementById('hero-destaque').textContent = cfg.hero_destaque;
   if (cfg.hero_subtitulo) document.getElementById('hero-subtitulo').textContent = cfg.hero_subtitulo;
@@ -1348,6 +1428,7 @@ setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 
 updateCount();
 document.getElementById('f-whatsapp').addEventListener('blur', registrarCarrinhoAbandonado);
 document.getElementById('f-whatsapp').addEventListener('input', updateTotals); // cupom depende do telefone (1º pedido, reativação)
+document.getElementById('f-whatsapp').addEventListener('input', agendarFidelidade); // selos da fidelidade
 
 // CART
 function openCart() { document.getElementById('cart-overlay').classList.add('open'); document.getElementById('cart-panel').classList.add('open'); renderCart(); gtag('event', 'view_cart'); }
@@ -1364,10 +1445,14 @@ function addItem(name, price, obs='') {
 // MODAL DE SABOR (pizza salgada — 1 sabor ou meio a meio — e pizza doce —
 // sempre 1 sabor só, sem meio a meio — ambas com opção de borda recheada).
 // tamanho=null identifica pizza doce (doce não tem Grande/Família).
-function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
+// especial: { modo: 'dupla', passo: 1|2, pizzas: [] } ou { modo: 'brinde' } — só
+// Tradicionais Grandes, sem borda e sem preço por sabor (o preço é o da Dupla / grátis).
+function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null) {
   const tipoItem = tamanho ? 'pizza_salgada' : 'pizza_doce';
   let sabores;
-  if (tipoItem === 'pizza_salgada') {
+  if (especial) {
+    sabores = tradicionaisGrande().map(p => ({ id: p.id, nome: p.nome, preco: p.preco_grande }));
+  } else if (tipoItem === 'pizza_salgada') {
     const campoPreco = tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
     sabores = salgadasCache
       .filter(p => p[campoPreco] != null)
@@ -1395,9 +1480,13 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null) {
     gtag('event', 'view_item_detail', {item_name: sabor1.nome, tamanho: tamanho||'', price: sabor1.preco});
   }
 
-  modalState = { tipoItem, tamanho, sabores, modo, sabor1, sabor2, borda, editId: editItem ? editItem.id : null };
+  modalState = { tipoItem, tamanho, sabores, modo, sabor1, sabor2, borda, editId: editItem ? editItem.id : null, especial };
 
-  document.getElementById('modal-titulo').textContent = tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
+  document.getElementById('modal-titulo').textContent = especial?.modo === 'dupla' ? `🍕 Dupla Tradicional — Pizza ${especial.passo} de 2`
+    : especial?.modo === 'brinde' ? '🎁 Sua Grande de presente'
+    : tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
+  document.querySelector('#modal-overlay .modal-sub').textContent = especial ? 'Escolha o sabor (Tradicionais, pode ser meio a meio)' : 'Escolha o sabor';
+  document.getElementById('painel-borda').style.display = especial ? 'none' : '';
   document.getElementById('tab-meio').style.display = permiteMeio ? '' : 'none';
   document.getElementById('modal-aviso-igual').style.display = 'none';
 
@@ -1440,7 +1529,7 @@ function setModoSabor(modo) {
 function renderPainelUnico() {
   document.getElementById('sabor-grid-unico').innerHTML = modalState.sabores.map(s => `
     <button type="button" class="sabor-opt ${modalState.sabor1 && modalState.sabor1.id === s.id ? 'active' : ''}" onclick="selecionarSaborUnico(${s.id})">
-      ${s.nome} <span>${brl(s.precoExibido ?? s.preco)}</span>
+      ${s.nome} <span>${modalState.especial ? (modalState.especial.modo === 'brinde' ? 'grátis' : 'incluso') : brl(s.precoExibido ?? s.preco)}</span>
     </button>`).join('');
 }
 
@@ -1455,8 +1544,9 @@ function renderSelectsMeio() {
   m1.innerHTML = '<option value="">Escolha...</option>';
   m2.innerHTML = '<option value="">Escolha...</option>';
   modalState.sabores.forEach(s => {
-    m1.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
-    m2.appendChild(new Option(`${s.nome} — ${brl(s.preco)}`, s.id));
+    const rotulo = modalState.especial ? s.nome : `${s.nome} — ${brl(s.preco)}`;
+    m1.appendChild(new Option(rotulo, s.id));
+    m2.appendChild(new Option(rotulo, s.id));
   });
   if (modalState.sabor1) m1.value = modalState.sabor1.id;
   if (modalState.sabor2) m2.value = modalState.sabor2.id;
@@ -1480,6 +1570,17 @@ function atualizarResumo() {
   const aviso = document.getElementById('modal-aviso-igual');
   aviso.style.display = 'none';
   const precoBorda = modalState.borda ? modalState.borda.preco : 0;
+  const esp = modalState.especial;
+  btn.textContent = esp?.modo === 'dupla' ? (esp.passo === 1 ? 'Próxima pizza →' : 'Adicionar Dupla') : esp?.modo === 'brinde' ? 'Adicionar presente' : 'Adicionar';
+  if (esp) {
+    const s1 = modalState.sabor1, s2 = modalState.sabor2;
+    const ok = modalState.modo === 'unico' ? !!s1 : !!(s1 && s2 && s1.id !== s2.id);
+    if (modalState.modo === 'meio' && s1 && s2 && s1.id === s2.id) aviso.style.display = 'block';
+    btn.disabled = !ok;
+    resumo.textContent = !ok ? '' : esp.modo === 'brinde' ? 'Grátis 🎁'
+      : esp.passo === 1 ? `Pizza 1 de 2 · a Dupla sai por ${brl(duplaCombo.preco)}` : `Dupla Tradicional: ${brl(duplaCombo.preco)}`;
+    return;
+  }
 
   if (modalState.modo === 'unico') {
     if (!modalState.sabor1) { btn.disabled = true; resumo.textContent = ''; return; }
@@ -1499,6 +1600,7 @@ function closeModal() { document.getElementById('modal-overlay').classList.remov
 
 function confirmModalSabor() {
   if (!modalState) return;
+  if (modalState.especial) { confirmarPizzaEspecial(); return; }
   const ehDoce = modalState.tipoItem === 'pizza_doce';
   const tabela = ehDoce ? 'pizzas_doces' : 'pizzas_salgadas';
   const categoria = ehDoce ? 'pizza_doce' : 'pizza_salgada';
@@ -1540,9 +1642,35 @@ function confirmModalSabor() {
   persistCart(); updateCount(); openCart(); closeModal(); toast('Adicionado! 🍕');
 }
 
+// Dupla (2 passos) e presente da fidelidade: sabores estruturados, sem borda.
+function confirmarPizzaEspecial() {
+  const esp = modalState.especial;
+  const s1 = modalState.sabor1, s2 = modalState.sabor2;
+  const escolhidos = modalState.modo === 'unico' ? [s1] : [s1, s2];
+  if (escolhidos.some(x => !x) || (escolhidos.length === 2 && s1.id === s2.id)) return;
+  if (esp.modo === 'dupla') {
+    const pizzas = [...esp.pizzas, { tamanho: 'Grande', sabores: escolhidos.map(x => ({ id: x.id, nome: x.nome })) }];
+    closeModal();
+    if (pizzas.length < 2) { abrirModalSabor('Grande', null, null, { modo: 'dupla', passo: 2, pizzas }); return; }
+    const nomeExibicao = `${DUPLA_NOME} — ${pizzas.map(p => textoPizzaEscolhida(p.sabores)).join(' / ')}`;
+    cart.push({ id: novoId(), tipo: 'simples', tabela: null, tamanho: null, sabores: [{ nome: DUPLA_NOME, preco: duplaCombo.preco }], borda: null,
+      precoUnitario: duplaCombo.preco, qty: 1, obs: '', combo_pizzas: pizzas, nomeExibicao });
+    gtag('event', 'add_to_cart', { currency: 'BRL', value: duplaCombo.preco, items: [{ item_name: DUPLA_NOME, item_category: 'combo', price: duplaCombo.preco, quantity: 1 }] });
+    fbq('track', 'AddToCart', { value: duplaCombo.preco, currency: 'BRL', content_name: DUPLA_NOME });
+    persistCart(); updateCount(); openCart(); toast('Dupla adicionada! 🍕');
+    return;
+  }
+  // Presente da fidelidade: Grande Tradicional por R$ 0 (o servidor confere o direito).
+  const sabores = escolhidos.map(x => ({ id: x.id, nome: x.nome, preco: x.preco }));
+  cart.push({ id: novoId(), tipo: 'pizza', tabela: 'pizzas_salgadas', tamanho: 'Grande', sabores, borda: null, precoUnitario: 0, qty: 1, obs: '',
+    brinde_fidelidade: true, nomeExibicao: `🎁 Pizza Grande — ${textoPizzaEscolhida(sabores)} (presente fidelidade)` });
+  gtag('event', 'fidelidade_brinde_adicionado');
+  closeModal(); persistCart(); updateCount(); openCart(); renderFidelidade(); toast('Presente adicionado! 🎁');
+}
+
 function editCartItem(id) {
   const item = cart.find(i => i.id === id);
-  if (!item || item.tipo !== 'pizza') return;
+  if (!item || item.tipo !== 'pizza' || item.brinde_fidelidade) return;
   abrirModalSabor(item.tabela === 'pizzas_doces' ? null : item.tamanho, null, item);
 }
 
@@ -1566,7 +1694,7 @@ function updateCount() {
 function renderUpsell() {
   const sec = document.getElementById('upsell-section');
   if (!sec) return;
-  const temPizzaSalgada = cart.some(i => i.tipo === 'pizza');
+  const temPizzaSalgada = cart.some(i => i.tipo === 'pizza' && !i.brinde_fidelidade);
   if (!temPizzaSalgada) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
 
   const nomesNoCarrinho = new Set(cart.map(i => i.nomeExibicao));
@@ -1626,13 +1754,13 @@ function renderCart() {
   body.innerHTML = cart.map((item,i) => `
     <div class="cart-item">
       <div class="cart-item-info">
-        <div class="cart-item-name${item.tipo==='pizza'?' clickable':''}"${item.tipo==='pizza'?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
+        <div class="cart-item-name${item.tipo==='pizza'&&!item.brinde_fidelidade?' clickable':''}"${item.tipo==='pizza'&&!item.brinde_fidelidade?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
         ${item.obs?`<div class="cart-item-obs">${item.obs}</div>`:''}
-        <div class="cart-item-qty">
+        ${item.brinde_fidelidade ? '<div class="cart-item-obs">1 por pedido · não acumula com cupom</div>' : `<div class="cart-item-qty">
           <button class="qty-btn" onclick="chQty(${i},-1)">−</button>
           <span class="qty-num">${item.qty}</span>
           <button class="qty-btn" onclick="chQty(${i},1)">+</button>
-        </div>
+        </div>`}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
         <button class="cart-item-del" onclick="removeCartItem('${item.id}')" aria-label="Remover">🗑️</button>
@@ -1673,13 +1801,18 @@ async function registrarCarrinhoAbandonado() {
 }
 function calcFrete() { updateTotals(); }
 function bairroForaDaLista() { return document.getElementById('f-bairro').value === BAIRRO_OUTRO; }
+function ehRetirada() { return document.getElementById('f-bairro').value === BAIRRO_RETIRADA; }
 function onBairroChange() {
-  const outro = bairroForaDaLista();
+  const outro = bairroForaDaLista(), retirada = ehRetirada();
   document.getElementById('bairro-outro').style.display = outro ? '' : 'none';
+  // Retirada: sem endereço do cliente (campos somem e deixam de ser obrigatórios).
+  document.getElementById('campos-endereco').style.display = retirada ? 'none' : 'contents';
+  document.getElementById('retirada-info').style.display = retirada ? '' : 'none';
+  document.getElementById('retirada-endereco').textContent = ENDERECO_LOJA_SITE;
   document.getElementById('btn-finalizar').textContent = outro ? '💬 Confirmar entrega pelo WhatsApp' : '💬 Enviar pelo WhatsApp';
   calcFrete();
 }
-function getFrete() { const v=document.getElementById('f-bairro').value; return v && v!==BAIRRO_OUTRO?parseFloat(v.split('|')[1]):null; }
+function getFrete() { const v=document.getElementById('f-bairro').value; if (v === BAIRRO_RETIRADA) return 0; return v && v!==BAIRRO_OUTRO?parseFloat(v.split('|')[1]):null; }
 
 // Bairro fora da lista: não registra o pedido (frete e área ainda não
 // confirmados) — manda o pedido pelo WhatsApp pra equipe confirmar a entrega.
@@ -1701,7 +1834,7 @@ function updateTotals() {
   document.getElementById('desconto-val').textContent = `- ${brl(t.desconto)}`;
   document.getElementById('desconto-label').textContent = cupomAplicado && t.desconto > 0 ? ` (${cupomAplicado.codigo})` : '';
 
-  document.getElementById('frete-val').textContent = t.frete === null ? (bairroForaDaLista() ? 'a confirmar' : '—') : t.frete === 0 ? '🎉 Grátis' : brl(t.frete);
+  document.getElementById('frete-val').textContent = ehRetirada() ? 'Retirada (R$ 0,00)' : t.frete === null ? (bairroForaDaLista() ? 'a confirmar' : '—') : t.frete === 0 ? '🎉 Grátis' : brl(t.frete);
   // Linha do frete grátis: antes do bairro, só a regra geral (sem prometer
   // "faltam R$ X", que depende do bairro); depois, a regra do bairro escolhido.
   const falta = document.getElementById('frete-falta');
@@ -1709,6 +1842,7 @@ function updateTotals() {
   const minBairro = minGratisDe(bairro);
   let linhaFrete = '';
   if (!cart.length || bairroForaDaLista()) linhaFrete = '';
+  else if (ehRetirada()) linhaFrete = '🏪 Retirada na loja: sem frete.';
   else if (t.comCupom) linhaFrete = 'Com cupom, o frete é cobrado.';
   else if (!bairro) {
     const mins = bairrosData.map(minGratisDe).filter(v => v != null);
@@ -1730,7 +1864,8 @@ async function finalizarPedido() {
   const nome=document.getElementById('f-nome').value.trim(), end=document.getElementById('f-endereco').value.trim();
   const comp=document.getElementById('f-complemento').value.trim(), bRaw=document.getElementById('f-bairro').value;
   const pag=document.getElementById('f-pagamento').value;
-  if (!nome||!end||!bRaw||!pag) { alert('Preencha todos os campos!'); enviandoPedido = false; return; }
+  const retirada = bRaw === BAIRRO_RETIRADA;
+  if (!nome||(!end&&!retirada)||!bRaw||!pag) { alert('Preencha todos os campos!'); enviandoPedido = false; return; }
   // WhatsApp obrigatório: é por ele que a equipe e a Luiza acham o pedido.
   const wppRaw = document.getElementById('f-whatsapp').value;
   if (!telefoneEhValido(wppRaw)) {
@@ -1744,6 +1879,14 @@ async function finalizarPedido() {
     return;
   }
   if (bRaw === BAIRRO_OUTRO) { enviarPedidoBairroForaDaLista(nome, end, comp, pag); return; }
+  // Presente da fidelidade: não vai sozinho, não acumula com cupom e precisa dos 5 selos
+  // neste WhatsApp (o servidor confere de novo e cobra a pizza se não valer).
+  if (temBrindeNoCarrinho()) {
+    const motivoBrinde = !cart.some(i => !i.brinde_fidelidade) ? 'O presente da fidelidade não pode ser pedido sozinho. Adicione outro item.'
+      : cupomAplicado ? 'O presente da fidelidade não acumula com cupom. Apague o cupom para usar o presente.'
+      : !(fidelidadeStatus?.tem_brinde && fidelidadeStatus.tel === wppRaw.replace(/\D/g, '')) ? 'Esse WhatsApp ainda não tem os 5 selos para o presente.' : null;
+    if (motivoBrinde) { alert(motivoBrinde); enviandoPedido = false; return; }
+  }
   if (cupomAplicado && checkoutServidor?.resultado?.cupom && !checkoutServidor.resultado.cupom.valido && /WhatsApp/.test(checkoutServidor.resultado.cupom.motivo || '')) {
     alert('Informe seu WhatsApp para usar o cupom ' + cupomAplicado.codigo + ' (ou apague o cupom).'); return;
   }
@@ -1756,7 +1899,10 @@ async function finalizarPedido() {
     enviandoPedido = false; // libera o próximo clique em "Enviar" (a trava é só contra clique duplo)
     return;
   }
-  const bId=bRaw.split('|')[0], bNome=bairrosData.find(b=>b.id==bId)?.nome||'';
+  const bId=bRaw.split('|')[0], bNome=retirada ? RETIRADA_NOME : (bairrosData.find(b=>b.id==bId)?.nome||'');
+  const linhaEntrega = retirada
+    ? `🏪 Retirada no local\n📍 Endereço da loja: ${ENDERECO_LOJA_SITE}`
+    : `📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${totaisAtuais().frete===0?'Grátis 🎉':'R$ '+(totaisAtuais().frete||0).toFixed(2).replace('.',',')}`;
   const totais = totaisAtuais(), fr = totais.frete, sub = totais.sub;
   const cupomFinal = cupomValidoAgora() ? cupomAplicado.codigo : null;
   const itens=cart.map(i=>`• ${i.qty}x ${i.nomeExibicao}${i.obs?' ('+i.obs+')':''} — ${brl(precoLinhaCarrinho(i))}${ofertaDoceAtual()?.id === i.id ? ' (oferta pizza doce)' : ''}`).join('\n');
@@ -1779,7 +1925,7 @@ async function finalizarPedido() {
   const rastreioToken = gerarRastreioToken();
   const linkRastreio = `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}`;
 
-  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bNome}\n🚚 Frete: ${fr===0?'Grátis 🎉':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n🚚 Frete: ${fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',',')}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\n📲 Acompanhe seu pedido em tempo real: ${linkRastreio}\n\nAguardo confirmação!`;
+  const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n${linhaEntrega}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n${retirada ? '🏪 Retirada: sem frete' : '🚚 Frete: '+(fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',','))}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\n📲 Acompanhe seu pedido em tempo real: ${linkRastreio}\n\nAguardo confirmação!`;
   // Bloquear se fechado
   const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
   let estaAberto;
@@ -1819,9 +1965,9 @@ async function finalizarPedido() {
     },
     body: JSON.stringify({
       nome,
-      endereco: end + (comp?', '+comp:''),
+      endereco: retirada ? ENDERECO_LOJA_SITE : end + (comp?', '+comp:''),
       bairro: bNome,
-      complemento: comp || null,
+      complemento: retirada ? null : (comp || null),
       pagamento: pag,
       rastreio_token: rastreioToken,
       whatsapp: wpp || null,
@@ -1845,6 +1991,10 @@ async function finalizarPedido() {
   listaEl.innerHTML = '<div class="obg-pedido-title">Resumo do pedido</div>' +
     cart.map(i => `<div class="obg-pedido-item">${i.qty}x ${i.nomeExibicao} — ${brl(precoLinhaCarrinho(i))}</div>`).join('');
   document.getElementById('obg-total-val').textContent = brl(totalFinal);
+  // Retirada: em vez do prazo de entrega, quando fica pronto e onde buscar.
+  document.getElementById('obg-tempo').textContent = retirada ? '~30' : '35–60';
+  document.getElementById('obg-tempo-label').textContent = retirada ? 'Pronto para retirada em cerca de 30 minutos' : 'minutos para entrega';
+  document.getElementById('obg-alerta').textContent = retirada ? `🏪 Retire na loja: ${ENDERECO_LOJA_SITE}` : '⚡ Pode chegar antes! Fique de olho no WhatsApp.';
   document.getElementById('tela-obrigado').classList.add('open');
   closeCart();
   }, 300);
@@ -2067,6 +2217,9 @@ async function loadCupomRestantes() {
       if (banner) banner.style.display = 'none';
       return;
     }
+    // Banner grande saiu da página: o cupom aparece só como aviso discreto no checkout.
+    const aviso = document.getElementById('cupom-aviso');
+    if (aviso) aviso.style.display = '';
     const restantes = cupom.usos_max != null ? cupom.usos_max - usosReais : null;
     if (el) {
       if (restantes !== null) {
@@ -2103,7 +2256,8 @@ let cupomViaURL = false;       // cupom veio de ?cupom= — recusa silenciosa (e
 function itensJsonDoCarrinho(comOferta = false) {
   const oferta = comOferta ? ofertaDoceAtual() : null;
   return cart.flatMap(i => {
-    const base = { tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null };
+    const base = { tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null,
+      ...(i.combo_pizzas ? { combo_pizzas: i.combo_pizzas } : {}), ...(i.brinde_fidelidade ? { brinde_fidelidade: true } : {}) };
     if (!oferta || oferta.id !== i.id) return [base];
     const comDesconto = { ...base, qty: 1, precoUnitario: +(i.precoUnitario - oferta.economia).toFixed(2), oferta_doce: true };
     return i.qty > 1 ? [comDesconto, { ...base, qty: i.qty - 1 }] : [comDesconto];
@@ -2113,7 +2267,7 @@ function itensJsonDoCarrinho(comOferta = false) {
 // OFERTA PIZZA DOCE — 1 doce por pedido a preço fixo, com pizza salgada
 // Grande/Família avulsa no carrinho (combo não conta) e sem cupom válido.
 function ehPizzaDoce(i) { return i.tabela === 'pizzas_doces'; }
-function temSalgadaAvulsa() { return cart.some(i => i.tipo === 'pizza' && ['Grande','Família'].includes(i.tamanho)); }
+function temSalgadaAvulsa() { return cart.some(i => i.tipo === 'pizza' && !i.brinde_fidelidade && ['Grande','Família'].includes(i.tamanho)); }
 function ofertaDoceElegivel() { return ofertaDoceAtiva && temSalgadaAvulsa() && !cupomValidoAgora(); }
 function ofertaDoceAtual() {
   if (!ofertaDoceElegivel()) return null;
@@ -2136,6 +2290,7 @@ function abrirOfertaDoce() {
 }
 function bairroSelecionadoNome() {
   const v = document.getElementById('f-bairro').value;
+  if (v === BAIRRO_RETIRADA) return RETIRADA_NOME;
   if (!v || v === BAIRRO_OUTRO) return null;
   return bairrosData.find(b => String(b.id) === v.split('|')[0])?.nome || null;
 }
@@ -2155,6 +2310,7 @@ function minGratisSelecionado() {
   return minGratisDe(bairrosData.find(b => String(b.id) === v.split('|')[0]));
 }
 function freteDaZona() {
+  if (ehRetirada()) return 0;
   const fr = getFrete();
   if (fr === null) return null;
   return fr > 0 ? fr : fretePadrao; // zona base
@@ -2245,6 +2401,7 @@ async function aplicarCupom() {
   ok.style.display = 'none'; erro.style.display = 'none';
   cupomViaURL = false; checkoutServidor = null;
   if (!codigo) { cupomAplicado = null; erro.textContent = '❌ Digite um código de cupom'; erro.style.display = 'block'; updateTotals(); return; }
+  if (temBrindeNoCarrinho()) { cupomAplicado = null; erro.textContent = '❌ O cupom não acumula com o presente da fidelidade.'; erro.style.display = 'block'; updateTotals(); return; }
   cupomAplicado = { codigo };
   ok.textContent = 'Verificando cupom...'; ok.style.display = 'block';
   await revalidarCupom();
@@ -2273,6 +2430,60 @@ async function aplicarCupomDaURL() {
   if (campoCupom) campoCupom.value = cupomAplicado.codigo;
   gtag('event', 'apply_coupon', {coupon: cupomAplicado.codigo, source: 'url_param'});
   agendarRevalidacaoCupom();
+}
+
+// FIDELIDADE — "a cada 5 pedidos, o 6º ganha uma Grande de presente". Ao digitar o
+// WhatsApp, mostra o progresso (RPC fidelidade_status) e, com 5 selos, oferece a
+// Grande Tradicional grátis. O direito é conferido de novo no servidor
+// (calcular_checkout_v2): sem direito, a pizza é cobrada.
+let fidelidadeTimer = null;
+function temBrindeNoCarrinho() { return cart.some(i => i.brinde_fidelidade); }
+function agendarFidelidade() { clearTimeout(fidelidadeTimer); fidelidadeTimer = setTimeout(atualizarFidelidade, 500); }
+async function atualizarFidelidade() {
+  const raw = document.getElementById('f-whatsapp').value;
+  const tel = raw.replace(/\D/g, '');
+  if (!telefoneEhValido(raw)) { fidelidadeStatus = null; renderFidelidade(); return; }
+  if (!(fidelidadeStatus && fidelidadeStatus.tel === tel)) {
+    try {
+      const r = await fetch(`${SB}/rest/v1/rpc/fidelidade_status`, {
+        method: 'POST',
+        headers: { 'apikey': SK, 'Authorization': 'Bearer ' + SK, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_whatsapp: raw })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const st = await r.json();
+      if (document.getElementById('f-whatsapp').value.replace(/\D/g, '') !== tel) return; // o número mudou durante a consulta
+      fidelidadeStatus = { tel, ...st };
+    } catch (e) { console.error('Erro ao consultar a fidelidade:', e); fidelidadeStatus = null; }
+  }
+  renderFidelidade();
+}
+function renderFidelidade() {
+  const el = document.getElementById('fid-status');
+  const st = fidelidadeStatus;
+  if (!el) return;
+  if (!st || !st.valido) { el.style.display = 'none'; return; }
+  // WhatsApp sem direito ao presente: tira o presente do carrinho.
+  if (!st.tem_brinde && temBrindeNoCarrinho()) {
+    cart = cart.filter(i => !i.brinde_fidelidade); persistCart(); updateCount(); renderCart();
+    toast('O presente saiu do pedido: esse WhatsApp ainda não tem os 5 selos.');
+  }
+  if (st.tem_brinde) {
+    el.innerHTML = temBrindeNoCarrinho()
+      ? '🎁 Sua Grande de presente já está no pedido!'
+      : `🎉 Você completou ${st.meta} selos! Este pedido ganha uma <strong>Pizza Grande Tradicional de presente</strong> (não acumula com cupom).<br><button type="button" onclick="abrirBrindeFidelidade()">🎁 Escolher minha Grande grátis</button>`;
+  } else {
+    const faltam = st.meta - st.selos;
+    el.innerHTML = `🍕 Você tem <strong>${st.selos} de ${st.meta} selos</strong>. ${faltam === 1 ? 'Falta 1 pedido' : `Faltam ${faltam} pedidos`} para ganhar uma Grande de presente.`;
+  }
+  el.style.display = '';
+}
+function abrirBrindeFidelidade() {
+  if (!fidelidadeStatus?.tem_brinde || temBrindeNoCarrinho()) return;
+  if (cupomAplicado) { alert('O presente da fidelidade não acumula com cupom. Apague o cupom para usar o presente.'); return; }
+  if (!cart.some(i => !i.brinde_fidelidade)) { alert('Adicione pelo menos um item ao pedido: o presente não pode ser pedido sozinho.'); return; }
+  if (!tradicionaisGrande().length) return;
+  abrirModalSabor('Grande', null, null, { modo: 'brinde' });
 }
 
 // NAV DE CATEGORIAS — destaque da seção visível
@@ -2338,8 +2549,8 @@ function toast(msg) {
 
   <div class="obg-card">
     <div class="obg-tempo" id="obg-tempo">35–60</div>
-    <div class="obg-tempo-label">minutos para entrega</div>
-    <div class="obg-alerta">⚡ Pode chegar antes! Fique de olho no WhatsApp.</div>
+    <div class="obg-tempo-label" id="obg-tempo-label">minutos para entrega</div>
+    <div class="obg-alerta" id="obg-alerta">⚡ Pode chegar antes! Fique de olho no WhatsApp.</div>
     <div class="obg-pedido" id="obg-pedido-lista"></div>
     <div class="obg-total"><span>TOTAL</span><span id="obg-total-val"></span></div>
   </div>
