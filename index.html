@@ -1123,7 +1123,8 @@ function renderPizzaDoDia() {
   if (!grid || !grid.querySelector('.combo-card')) return; // combos ainda carregando: loadCombos chama de novo
   document.getElementById('pdd-card')?.remove();
   const vigente = pizzaDoDiaVigente();
-  const proxima = vigente ? null : proximaPizzaDoDia();
+  // A próxima promoção só aparece com a loja fechada; aberta, só a de hoje (ou nenhum card).
+  const proxima = vigente || lojaAbertaBahia() ? null : proximaPizzaDoDia();
   const pdd = vigente || proxima?.pdd;
   const normal = pdd ? precoNormalPizzaDoDia(pdd) : null;
   if (pdd && normal != null) {
