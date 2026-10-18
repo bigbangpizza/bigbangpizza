@@ -1853,18 +1853,18 @@ async function openMod(type, id=null) {
       <div class="fg"><label>Preço original Família (de) — opcional</label><input id="fpof" type="number" step="0.01" value="${item.preco_original_familia??''}" placeholder="Opcional"></div>
     </div>
     ${AVISO_PRECO_ORIGINAL}
-    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
+    ${campoFoto('ff', item.foto_url)}
     <div class="fg"><label>Tag (ex: 🔥 Mais Pedido)</label><input id="ftag" value="${item.tag||''}"></div>`;
   } else if(type==='bebidas'){
     body+=`<div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
-    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
+    ${campoFoto('ff', item.foto_url)}
     <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>`;
   } else {
     body+=`<div class="fg"><label>Descrição</label><textarea id="fd">${item.descricao||''}</textarea></div>
     <div class="fg"><label>Preço (R$)</label><input id="fp" type="number" step="0.01" value="${item.preco||''}"></div>
     <div class="fg"><label>Preço original (de) — opcional</label><input id="fpo" type="number" step="0.01" value="${item.preco_original??''}" placeholder="Opcional"></div>
     ${AVISO_PRECO_ORIGINAL}
-    <div class="fg"><label>URL da Foto</label><input id="ff" value="${item.foto_url||''}"></div>
+    ${campoFoto('ff', item.foto_url)}
     <div class="fg"><label>Tag</label><input id="ftag" value="${item.tag||''}"></div>`;
   }
   document.getElementById('mod-body').innerHTML=body;
@@ -4219,6 +4219,53 @@ async function uploadImagem(file, pasta){
   return `${SB}/storage/v1/object/public/site-images/${nomeArquivo}`;
 }
 
+// Campo de foto dos formulários (combos, pizzas, bebidas, Pizza do Dia): URL + miniatura +
+// botão que envia do computador/celular para site-images/cardapio e já preenche a URL.
+function campoFoto(inputId, valor, rotulo = 'Foto'){
+  const v = esc(valor || '');
+  return `<div class="fg"><label>${rotulo}</label>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <img id="${inputId}-thumb" src="${v}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:7px;background:#333;flex-shrink:0;${v ? '' : 'opacity:.15;'}" onerror="this.style.opacity='0.15'">
+      <input id="${inputId}" value="${v}" placeholder="Endereço da foto" oninput="atualizarThumbCampoFoto('${inputId}')" style="flex:1;min-width:0;">
+    </div>
+    <input type="file" accept="image/*" id="${inputId}-arquivo" style="display:none" onchange="enviarFotoCampo('${inputId}', this)">
+    <button type="button" class="be" id="${inputId}-botao" style="margin-top:8px;" onclick="document.getElementById('${inputId}-arquivo').click()">📷 Enviar foto</button>
+  </div>`;
+}
+function atualizarThumbCampoFoto(inputId){
+  const url = document.getElementById(inputId).value.trim();
+  const t = document.getElementById(inputId + '-thumb');
+  if (t) { t.src = url; t.style.opacity = url ? '1' : '0.15'; }
+}
+// Foto de celular costuma ter vários MB: reduz para no máximo 1600px (JPEG) antes de enviar.
+async function reduzirImagem(file, maxLado = 1600){
+  try {
+    const img = await createImageBitmap(file);
+    const escala = Math.min(1, maxLado / Math.max(img.width, img.height));
+    if (escala === 1 && file.size < 900 * 1024) return file;
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch (e) { return file; } // formato que o navegador não abre (ex: HEIC): envia como está
+}
+async function enviarFotoCampo(inputId, arquivoInput){
+  const file = arquivoInput.files[0];
+  if (!file) return;
+  const botao = document.getElementById(inputId + '-botao');
+  botao.disabled = true; botao.textContent = '⏳ Enviando...';
+  try {
+    const url = await uploadImagem(await reduzirImagem(file), 'cardapio');
+    document.getElementById(inputId).value = url;
+    atualizarThumbCampoFoto(inputId);
+    showToastAdmin('✅ Foto enviada! Agora é só salvar.');
+  } catch (e) { showToastAdmin('⚠️ Erro ao enviar a foto. Tente de novo.'); }
+  botao.disabled = false; botao.textContent = '📷 Enviar foto';
+  arquivoInput.value = '';
+}
+
 function posicaoParaPercent(pos){
   const m = (pos||'').match(/(\d+)%/);
   return m ? parseInt(m[1]) : 50;
@@ -5361,7 +5408,7 @@ async function loadPizzaDoDiaAdmin(){
         <div class="fg"><label>Preço normal</label><div id="pdd-normal-${d}" style="padding:10px 0;color:rgba(255,255,255,.6);font-size:13px;">—</div></div>
       </div>
       <div class="fg"><label>Frase de chamada</label><input id="pdd-chamada-${d}" value="${esc(l.chamada||'')}" placeholder="Ex: Quinta é dia de Calabresa Família com preço de amigo."></div>
-      <div class="fg"><label>URL da foto (opcional)</label><input id="pdd-foto-${d}" value="${esc(l.foto_url||'')}"></div>
+      ${campoFoto('pdd-foto-'+d, l.foto_url, 'Foto (opcional)')}
       <button class="btn-new" onclick="salvarPizzaDoDia(${d})">💾 Salvar ${dia}</button>
     </div>`;
   }).join('');
