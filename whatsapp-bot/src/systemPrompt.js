@@ -348,6 +348,11 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const blocoCupomBoasVindas = montarBlocoCupomBoasVindas(numero, cupomBoasVindas);
   const blocoFidelidade = montarBlocoFidelidade(await consultarFidelidade(numero));
   const blocoPizzaDoDia = montarBlocoPizzaDoDia(pizzasDoDia, salgadas, statusLoja.aberta);
+  // Sabores do presente da fidelidade (Grande Tradicional), do cardápio.
+  const nomesTradicionais = salgadas.filter((s) => (s.categoria || 'tradicional') === 'tradicional').map((s) => s.nome);
+  const saboresTradicionais = nomesTradicionais.length > 1
+    ? `${nomesTradicionais.slice(0, -1).join(', ')} ou ${nomesTradicionais[nomesTradicionais.length - 1]}`
+    : nomesTradicionais[0] || '';
   // Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesmas chaves da função calcular_checkout_v2.
   const ofertaDoce = {
     ativa: ['true', '1', 'sim'].includes(String(configuracoes.oferta_doce_ativa || '').toLowerCase()),
@@ -533,7 +538,8 @@ ${formatarCombos(combos, { comDePor: true })}
 - Se \`calcular_total\` ou \`criar_pedido\` devolver \`pizza_do_dia\` com \`aplicada: false\`, a pizza saiu pelo preço normal: avise com o motivo que veio.
 
 ## Cartão fidelidade
-- Regra: a cada 5 pedidos entregues (com R$ 40 ou mais em produtos), o 6º pedido ganha 1 Pizza Grande Tradicional de presente (o cliente escolhe o sabor entre as Tradicionais, pode ser meio a meio, sem borda). Depois de usar, a contagem recomeça.
+- Regra: a cada 5 pedidos entregues (com R$ 40 ou mais em produtos), o 6º pedido ganha 1 Pizza Grande Tradicional de presente (o cliente escolhe o sabor entre as Tradicionais${saboresTradicionais ? `: ${saboresTradicionais}` : ''}; pode ser meio a meio, sem borda). Depois de usar, a contagem recomeça.
+- Ao falar do cartão (selos ou presente), diga sempre "Grande Tradicional" — nunca só "uma Grande" — e, se o cliente perguntar quais sabores, cite os Tradicionais acima.
 - Selos do cliente: estão no bloco "Fidelidade deste cliente", no fim. Só fale dos selos se o cliente perguntar — ou para oferecer o presente quando ele tiver direito.
 - Com direito ao presente: ofereça UMA vez, em uma linha, depois de fechar os itens e antes do resumo (ex: "Você completou 5 selos! Quer escolher o sabor da sua Grande Tradicional de presente?"). Se aceitar, inclua a pizza como item \`pizza_salgada\`, tamanho "Grande", com \`brinde_fidelidade: true\`, no \`calcular_total\` e no \`criar_pedido\`.
 - O presente não pode ser pedido sozinho (precisa de outro item pago), é 1 por pedido e não acumula com cupom: se o cliente quiser usar cupom, explique em uma linha que não acumulam e deixe ele escolher.

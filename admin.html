@@ -2418,11 +2418,26 @@ const STATUS_WPP_MSGS = {
     : `Oi ${nome}! Sua Big Bang Pizza está a caminho!${linhaSelosSaiu(ds)}`
 };
 
-// FIDELIDADE ("a cada 5 pedidos, o 6º ganha uma Grande") — selos por telefone pela
+// FIDELIDADE ("a cada 5 pedidos, o 6º ganha uma Grande Tradicional") — selos por telefone pela
 // RPC fidelidade_status (mesma regra do site e do servidor). Carregados em segundo
 // plano quando o kanban/cozinha montam os cards: a mensagem de "saiu" usa o cache,
 // sem await no clique (senão o navegador bloqueia o wa.me).
 const fidelidadeCache = new Map(); // chave do telefone -> { st, em }
+// Sabores Tradicionais ativos (o presente é uma Grande Tradicional) — lidos do banco junto com os selos.
+const tradicionaisAdmin = { lista: '', em: 0 };
+async function carregarSaboresTradicionais(){
+  if (tradicionaisAdmin.lista && Date.now() - tradicionaisAdmin.em < 600000) return;
+  try {
+    const d = await api('pizzas_salgadas', 'ativo=eq.true&categoria=eq.tradicional&select=nome', 'ordem.asc,id.asc');
+    const n = (Array.isArray(d) ? d : []).map(x => x.nome);
+    tradicionaisAdmin.lista = n.length > 1 ? n.slice(0, -1).join(', ') + ' ou ' + n[n.length - 1] : (n[0] || '');
+    tradicionaisAdmin.em = Date.now();
+  } catch (e) { console.error('sabores tradicionais', e); }
+}
+const presenteFidelidadeAdmin = () => `uma Grande Tradicional de presente${tradicionaisAdmin.lista ? ` (${tradicionaisAdmin.lista})` : ''}`;
+// Link de WhatsApp com mensagem: api.whatsapp.com/send direto. O wa.me redireciona para lá
+// trocando os emojis por "�" (testado em 18/10/2026), então não usar wa.me com ?text=.
+const linkWhatsApp = (numero, texto) => `https://api.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(texto)}`;
 // Mesma normalização da função chave_telefone do banco: DDD + 8 últimos dígitos.
 function chaveTelefoneAdmin(raw){
   let d = String(raw||'').replace(/\D/g,'');
@@ -2431,6 +2446,7 @@ function chaveTelefoneAdmin(raw){
 }
 async function carregarFidelidade(pedidos){
   const tels = [...new Set((pedidos||[]).map(p=>p.whatsapp).filter(Boolean))];
+  carregarSaboresTradicionais();
   await Promise.all(tels.map(async w=>{
     const k = chaveTelefoneAdmin(w);
     if(!k) return;
@@ -2446,12 +2462,12 @@ function linhaSelosSaiu(ds){
   const st = fidelidadeCache.get(chaveTelefoneAdmin(ds?.whatsapp))?.st;
   if(!st || !st.valido) return '';
   if(ds.brinde==='1') return '\n\n🎁 Seu presente da fidelidade está indo junto!';
-  if(st.tem_brinde) return `\n\n🎁 Você tem ${st.meta} de ${st.meta} selos: o próximo pedido ganha uma Grande de presente!`;
+  if(st.tem_brinde) return `\n\n🎁 Você tem ${st.meta} de ${st.meta} selos: o próximo pedido ganha ${presenteFidelidadeAdmin()}!`;
   if(Number(ds.subtotal) >= 40){
     const n = Math.min(st.selos + 1, st.meta);
     return n >= st.meta
-      ? `\n\n🎉 Com este pedido você completa ${st.meta} de ${st.meta} selos: o próximo ganha uma Grande de presente!`
-      : `\n\n🍕 Com este pedido você fica com ${n} de ${st.meta} selos. A cada ${st.meta} pedidos, o 6º ganha uma Grande de presente.`;
+      ? `\n\n🎉 Com este pedido você completa ${st.meta} de ${st.meta} selos: o próximo ganha ${presenteFidelidadeAdmin()}!`
+      : `\n\n🍕 Com este pedido você fica com ${n} de ${st.meta} selos. A cada ${st.meta} pedidos, o 6º ganha ${presenteFidelidadeAdmin()}.`;
   }
   return `\n\n🍕 Você tem ${st.selos} de ${st.meta} selos (pedidos a partir de R$ 40 contam selo).`;
 }
@@ -2474,7 +2490,7 @@ function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw, dataset){
   const numero = normalizarWhatsapp(whatsappRaw);
   if(!numero){ showToastAdmin('⚠️ Pedido sem WhatsApp cadastrado — status atualizado, mensagem não enviada.'); return; }
   const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
-  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(gerarMsg(primeiroNome, dataset || { whatsapp: whatsappRaw }))}`, '_blank');
+  window.open(linkWhatsApp(numero, gerarMsg(primeiroNome, dataset || { whatsapp: whatsappRaw })), '_blank');
 }
 
 /**
@@ -2509,7 +2525,7 @@ function enviarWhatsAppEntregador(dataset){
   // gesto do usuário em alguns navegadores/extensões) — nesse caso window.open
   // retorna null/undefined, e a saída é usar o botão "🛵 Entregador" do card
   // (clique próprio, nunca bloqueado) pra abrir manualmente.
-  const win = window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+  const win = window.open(linkWhatsApp(numero, msg), '_blank');
   if (!win) showToastAdmin('⚠️ O navegador bloqueou a aba do entregador — use o botão "🛵 Entregador" no card do pedido pra abrir manualmente.', 6000);
 }
 
@@ -3607,7 +3623,7 @@ function enviarResumoAlteradoCliente(){
   const pedido = window.__pedidoAlterado;
   const numero = pedido && normalizarWhatsapp(pedido.whatsapp);
   if (!numero) return;
-  const win = window.open(`https://wa.me/${numero}?text=${encodeURIComponent(textoResumoAlteradoCliente(pedido))}`, '_blank');
+  const win = window.open(linkWhatsApp(numero, textoResumoAlteradoCliente(pedido)), '_blank');
   if (!win) showToastAdmin('⚠️ O navegador bloqueou a janela do WhatsApp — libere pop-ups para o admin e clique de novo.', 6000);
 }
 
@@ -5085,7 +5101,7 @@ function enviarReativacao(btnEl){
   const c = reativacaoCupomInfo;
   const linhaMinimo = c.minimo ? ` Válido para pedidos a partir de ${brl(c.minimo)} em produtos (frete à parte, não vale em combos).` : '';
   const msg = `Oi ${primeiroNome}! Sentimos sua falta por aqui 🍕💛 Que tal matar a saudade da Big Bang Pizza? Use o cupom ${c.codigo} e ganhe ${c.percentual}% OFF no seu próximo pedido!${linhaMinimo} Peça em https://bigbangpizza.com.br`;
-  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(linkWhatsApp(numero, msg), '_blank');
 
   // Registra o envio manual — a rotina automática (whatsapp-bot) e este
   // botão compartilham a mesma janela de "não repetir em menos de 30 dias".
@@ -5170,7 +5186,7 @@ async function loadClientes() {
       <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}${(() => {
         if (!p.whatsapp || telefonesExcluidos.has(chaveTelefoneAdmin(p.whatsapp))) return '';
         const f = fidelidadeDoCliente(p.whatsapp);
-        return `<div title="Fidelidade: a cada 5 pedidos entregues (R$ 40+ em produtos), o 6º ganha uma Grande" style="font-size:10.5px;color:#facc15;white-space:nowrap;margin-top:3px;">🍕 ${f.selos}/5 selos</div>`
+        return `<div title="Fidelidade: a cada 5 pedidos entregues (R$ 40+ em produtos), o 6º ganha uma Grande Tradicional" style="font-size:10.5px;color:#facc15;white-space:nowrap;margin-top:3px;">🍕 ${f.selos}/5 selos</div>`
           + (f.temBrinde ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">🎁 tem presente</div>` : '')
           + (f.ultimoUso ? `<div style="font-size:10.5px;color:rgba(255,255,255,0.45);white-space:nowrap;">🎁 usado em ${(parseUTC(f.ultimoUso)||new Date(f.ultimoUso)).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>` : '');
       })()}</td>
@@ -5179,7 +5195,7 @@ async function loadClientes() {
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
       <td data-label="Ação">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
+          ${p.whatsapp ? `<a href="${linkWhatsApp('55' + p.whatsapp.replace(/\D/g,''), `Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
           ${segmento==='em_risco' && p.whatsapp ? `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="enviarReativacao(this)" style="background:${seg.cor};color:white;border:none;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">🎟️ Enviar reativação</button>` : ''}
         </div>
         ${avisoReativacao}

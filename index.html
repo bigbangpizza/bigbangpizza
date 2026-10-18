@@ -750,7 +750,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 <div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
 <div class="cart-panel" id="cart-panel">
   <div class="cart-header"><h2>🛒 Seu Pedido</h2><button class="cart-close" onclick="closeCart()">✕</button></div>
-  <div class="fid-selo">🍕 A cada 5 pedidos, o 6º ganha uma Grande de presente</div>
+  <div class="fid-selo" id="fid-selo">🍕 A cada 5 pedidos, o 6º ganha uma Grande Tradicional de presente</div>
   <div class="cart-scroll">
   <button class="btn-continuar" onclick="closeCart()">← Continuar comprando</button>
   <div class="cart-body" id="cart-body"><div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!<br>Adicione uma pizza.</p></div></div>
@@ -884,6 +884,15 @@ const ENDERECO_LOJA_SITE = 'Av. Amarílio Thiago dos Santos, 1152, sala 03 - Vil
 // Só mostra o progresso e oferece o presente — quem confirma o direito é o servidor.
 let fidelidadeStatus = null; // { tel, valido, selos, meta, tem_brinde, brinde_pendente }
 let WPP_NUMBER = '5571993738823';
+// Link de WhatsApp com mensagem: api.whatsapp.com/send direto. O wa.me redireciona para lá
+// trocando os emojis por "�" (testado em 18/10/2026), então não usar wa.me com ?text=.
+const linkWhatsApp = (numero, texto) => `https://api.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(texto)}`;
+// Sabores Tradicionais do cardápio (o presente da fidelidade é uma Grande Tradicional).
+function saboresTradicionaisTexto() {
+  const n = salgadasCache.filter(p => (p.categoria || 'tradicional') === 'tradicional').map(p => p.nome);
+  return n.length > 1 ? n.slice(0, -1).join(', ') + ' ou ' + n[n.length - 1] : (n[0] || '');
+}
+const presenteFidelidadeTexto = () => { const l = saboresTradicionaisTexto(); return `uma Grande Tradicional de presente${l ? ` (${l})` : ''}`; };
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
 // tabela `configuracoes`, chaves borda_preco_salgada/borda_preco_doce.
 // Valores abaixo são só o fallback até aplicarConfigsVisuais() carregar.
@@ -1416,6 +1425,7 @@ async function loadSalgadas() {
     itens: data.filter(p => (p.categoria || 'tradicional') === c.id).sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.id - b.id),
   }));
   salgadasCache = grupos.flatMap(g => g.itens);
+  document.getElementById('fid-selo').textContent = `🍕 A cada 5 pedidos, o 6º ganha ${presenteFidelidadeTexto()}`;
   setTimeout(renderPizzaDoDia, 0); // preço normal da pizza do dia vem das salgadas
   salgadasCache.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_salgada', price: p.preco_grande}));
   document.getElementById('salgadas-grid').innerHTML = grupos.filter(g => g.itens.length).map(g => `
@@ -1686,7 +1696,7 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null
   modalState = { tipoItem, tamanho, sabores, modo, sabor1, sabor2, borda, editId: editItem ? editItem.id : null, especial };
 
   document.getElementById('modal-titulo').textContent = especial?.modo === 'dupla' ? `🍕 Dupla Tradicional — Pizza ${especial.passo} de 2`
-    : especial?.modo === 'brinde' ? '🎁 Sua Grande de presente'
+    : especial?.modo === 'brinde' ? '🎁 Sua Grande Tradicional de presente'
     : tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
   document.querySelector('#modal-overlay .modal-sub').textContent = especial ? 'Escolha o sabor (Tradicionais, pode ser meio a meio)' : 'Escolha o sabor';
   document.getElementById('painel-borda').style.display = especial ? 'none' : '';
@@ -2027,7 +2037,7 @@ function enviarPedidoBairroForaDaLista(nome, end, comp, pag) {
   const obsVal = document.getElementById('f-obs').value.trim();
   const msg = `Olá! Quero fazer um pedido, mas meu bairro não está na lista do site. Vocês entregam aqui?\n\n👤 Nome: ${nome}\n📍 Endereço: ${end}${comp?', '+comp:''}\n🏘️ Bairro: ${bairroDigitado || '(não informado)'}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}\n\n💰 Subtotal: ${brl(sub)} (frete a confirmar)\n💳 Pagamento: ${pag}`;
   gtag('event', 'bairro_fora_da_lista', {bairro: bairroDigitado});
-  window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(linkWhatsApp(WPP_NUMBER, msg), '_blank');
 }
 function updateTotals() {
   const t = totaisAtuais();
@@ -2161,7 +2171,7 @@ async function finalizarPedido() {
   });
   gtag('event', 'generate_lead', {currency: 'BRL', value: totalFinal});
   fbq('track', 'Purchase', {value: totalFinal, currency: 'BRL'});
-  window.open(`https://wa.me/${WPP_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+  window.open(linkWhatsApp(WPP_NUMBER, msg), '_blank');
 
   // Registrar pedido no Supabase em paralelo, sem bloquear o envio do WhatsApp
   fetch(`${SB}/rest/v1/pedidos`, {
@@ -2681,11 +2691,11 @@ function renderFidelidade() {
   }
   if (st.tem_brinde) {
     el.innerHTML = temBrindeNoCarrinho()
-      ? '🎁 Sua Grande de presente já está no pedido!'
-      : `🎉 Você completou ${st.meta} selos! Este pedido ganha uma <strong>Pizza Grande Tradicional de presente</strong> (não acumula com cupom).<br><button type="button" onclick="abrirBrindeFidelidade()">🎁 Escolher minha Grande grátis</button>`;
+      ? '🎁 Sua Grande Tradicional de presente já está no pedido!'
+      : `🎉 Você completou ${st.meta} selos! Este pedido ganha uma <strong>Pizza Grande Tradicional de presente</strong>${saboresTradicionaisTexto() ? ` (${esc(saboresTradicionaisTexto())})` : ''}. Não acumula com cupom.<br><button type="button" onclick="abrirBrindeFidelidade()">🎁 Escolher minha Grande Tradicional grátis</button>`;
   } else {
     const faltam = st.meta - st.selos;
-    el.innerHTML = `🍕 Você tem <strong>${st.selos} de ${st.meta} selos</strong>. ${faltam === 1 ? 'Falta 1 pedido' : `Faltam ${faltam} pedidos`} para ganhar uma Grande de presente.`;
+    el.innerHTML = `🍕 Você tem <strong>${st.selos} de ${st.meta} selos</strong>. ${faltam === 1 ? 'Falta 1 pedido' : `Faltam ${faltam} pedidos`} para ganhar ${esc(presenteFidelidadeTexto())}.`;
   }
   el.style.display = '';
 }
