@@ -275,6 +275,7 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div class="sb-nav">
       <div class="nav-item active" onclick="show('dashboard')" id="nav-dashboard"><span class="ic">📊</span> Dashboard</div>
       <div class="nav-item" onclick="show('combos')"    id="nav-combos">   <span class="ic">🔥</span> Combos</div>
+      <div class="nav-item" onclick="show('pizzadodia')" id="nav-pizzadodia"><span class="ic">📅</span> Pizza do Dia</div>
       <div class="nav-item" onclick="show('salgadas')"  id="nav-salgadas"> <span class="ic">🍕</span> Salgadas</div>
       <div class="nav-item" onclick="show('doces')"     id="nav-doces">    <span class="ic">🍫</span> Doces</div>
       <div class="nav-item" onclick="show('bebidas')"   id="nav-bebidas">  <span class="ic">🥤</span> Bebidas</div>
@@ -511,6 +512,13 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-contatos" class="hidden">
       <div class="page-title">CONTATOS</div><div class="page-sub">Dúvidas, sugestões e reclamações</div>
       <div class="tw"><div class="tw-head"><h3>Mensagens</h3></div><div id="t-contatos"><div class="loading">Carregando...</div></div></div>
+    </div>
+
+    <!-- PIZZA DO DIA -->
+    <div id="pg-pizzadodia" class="hidden">
+      <div class="page-title">PIZZA DO DIA</div>
+      <div class="page-sub">Uma promoção por dia da semana (horário de Bahia). Vale só no dia, com a loja aberta, só o sabor do dia inteiro e não acumula com cupom. O preço de retirada vale quando o cliente escolhe "Retirada no local".</div>
+      <div id="t-pizzadodia"><div class="loading">Carregando...</div></div>
     </div>
 
     <!-- CUPONS -->
@@ -768,6 +776,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="bottom-sheet-handle"></div>
       <div class="nav-item" onclick="show('cozinha');fecharMaisMenu()"><span class="ic">👨‍🍳</span> Cozinha</div>
       <div class="nav-item" onclick="show('combos');fecharMaisMenu()"><span class="ic">🔥</span> Combos</div>
+      <div class="nav-item" onclick="show('pizzadodia');fecharMaisMenu()"><span class="ic">📅</span> Pizza do Dia</div>
       <div class="nav-item" onclick="show('salgadas');fecharMaisMenu()"><span class="ic">🍕</span> Salgadas</div>
       <div class="nav-item" onclick="show('doces');fecharMaisMenu()"><span class="ic">🍫</span> Doces</div>
       <div class="nav-item" onclick="show('bebidas');fecharMaisMenu()"><span class="ic">🥤</span> Bebidas</div>
@@ -1417,6 +1426,7 @@ function show(page) {
     contatos: loadContatos,
     clientes: loadClientes,
     cupons: loadCupons,
+    pizzadodia: loadPizzaDoDiaAdmin,
     analytics: loadAnalytics,
     aparencia: loadAparencia,
     bot: loadConfigBot,
@@ -5320,6 +5330,66 @@ async function salvarFidelidadeInicio(){
   const ok = await salvarConfigs({ fidelidade_inicio: `${v}:00-03:00` });
   showToastAdmin(ok ? '✅ Início da fidelidade salvo!' : '⚠️ Não foi possível salvar.');
   if (ok) loadClientes();
+}
+
+// ═══════════════════════════════════════════════════════
+// PIZZA DO DIA — uma linha por dia da semana (tabela pizza_do_dia). O site, a
+// Luiza e a função de checkout leem daqui; o preço cobrado é recalculado no servidor.
+// ═══════════════════════════════════════════════════════
+const DIAS_SEMANA_ADMIN = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+let pddSalgadasCache = [];
+async function loadPizzaDoDiaAdmin(){
+  const [linhas, salgadas] = await Promise.all([api('pizza_do_dia', '', 'dia_semana.asc'), api('pizzas_salgadas', 'ativo=eq.true')]);
+  pddSalgadasCache = salgadas;
+  const porDia = Object.fromEntries((linhas||[]).map(l => [l.dia_semana, l]));
+  const opcoesSabor = (atual) => salgadas.map(p => `<option value="${esc(p.nome)}" ${p.nome===atual?'selected':''}>${esc(p.nome)}</option>`).join('');
+  document.getElementById('t-pizzadodia').innerHTML = DIAS_SEMANA_ADMIN.map((dia, d) => {
+    const l = porDia[d] || {};
+    return `<div class="tw" style="padding:14px 16px;margin-bottom:12px;" id="pdd-dia-${d}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+        <strong style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;color:var(--orange);">${dia}</strong>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;"><input type="checkbox" id="pdd-ativo-${d}" ${l.ativo?'checked':''}> Ativa</label>
+      </div>
+      <div class="fr">
+        <div class="fg"><label>Nome da promoção</label><input id="pdd-nome-${d}" value="${esc(l.nome||'')}" placeholder="Ex: Quintabresa"></div>
+        <div class="fg"><label>Pizza</label><select id="pdd-sabor-${d}" onchange="pddMostrarNormal(${d})"><option value="">Escolha...</option>${opcoesSabor(l.sabor)}</select></div>
+        <div class="fg"><label>Tamanho</label><select id="pdd-tam-${d}" onchange="pddMostrarNormal(${d})"><option ${(l.tamanho||'Família')==='Família'?'selected':''}>Família</option><option ${l.tamanho==='Grande'?'selected':''}>Grande</option></select></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label>Preço entrega (R$)</label><input id="pdd-entrega-${d}" type="number" step="0.01" value="${l.preco_entrega??''}"></div>
+        <div class="fg"><label>Preço retirada (R$)</label><input id="pdd-retirada-${d}" type="number" step="0.01" value="${l.preco_retirada??''}"></div>
+        <div class="fg"><label>Preço normal</label><div id="pdd-normal-${d}" style="padding:10px 0;color:rgba(255,255,255,.6);font-size:13px;">—</div></div>
+      </div>
+      <div class="fg"><label>Frase de chamada</label><input id="pdd-chamada-${d}" value="${esc(l.chamada||'')}" placeholder="Ex: Quinta é dia de Calabresa Família com preço de amigo."></div>
+      <div class="fg"><label>URL da foto (opcional)</label><input id="pdd-foto-${d}" value="${esc(l.foto_url||'')}"></div>
+      <button class="btn-new" onclick="salvarPizzaDoDia(${d})">💾 Salvar ${dia}</button>
+    </div>`;
+  }).join('');
+  DIAS_SEMANA_ADMIN.forEach((_, d) => pddMostrarNormal(d));
+}
+function pddMostrarNormal(d){
+  const s = pddSalgadasCache.find(p => p.nome === document.getElementById('pdd-sabor-'+d).value);
+  const tam = document.getElementById('pdd-tam-'+d).value;
+  const preco = s ? (tam === 'Grande' ? s.preco_grande : s.preco_familia) : null;
+  document.getElementById('pdd-normal-'+d).textContent = preco != null ? brl(preco) : (s ? `sem preço ${tam}` : '—');
+}
+async function salvarPizzaDoDia(d){
+  const v = id => document.getElementById(`pdd-${id}-${d}`).value.trim();
+  const dados = { dia_semana: d, nome: v('nome'), sabor: v('sabor'), tamanho: v('tam'), preco_entrega: parseFloat(v('entrega')), preco_retirada: parseFloat(v('retirada')),
+    chamada: v('chamada') || null, foto_url: v('foto') || null, ativo: document.getElementById('pdd-ativo-'+d).checked, atualizado_em: new Date().toISOString() };
+  if (!dados.nome || !dados.sabor) { alert('Preencha o nome da promoção e a pizza.'); return; }
+  if (!(dados.preco_entrega > 0) || !(dados.preco_retirada > 0)) { alert('Preencha os preços de entrega e de retirada.'); return; }
+  const s = pddSalgadasCache.find(p => p.nome === dados.sabor);
+  const normal = s ? (dados.tamanho === 'Grande' ? s.preco_grande : s.preco_familia) : null;
+  if (normal == null) { alert(`${dados.sabor} não tem preço no tamanho ${dados.tamanho}.`); return; }
+  if (dados.preco_entrega >= normal && !confirm(`O preço de entrega (${brl(dados.preco_entrega)}) não é menor que o normal (${brl(normal)}). Salvar mesmo assim?`)) return;
+  const r = await authFetch(`${SB}/rest/v1/pizza_do_dia?on_conflict=dia_semana`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(dados)
+  });
+  if (r.ok) { showToastAdmin(`✅ ${DIAS_SEMANA_ADMIN[d]} salva!`); registrarHistorico(`Pizza do Dia de ${DIAS_SEMANA_ADMIN[d]}: ${esc(dados.nome)} (${dados.ativo ? 'ativa' : 'inativa'})`); loadPizzaDoDiaAdmin(); }
+  else alert('Erro ao salvar! ' + r.status);
 }
 
 async function exportarClientesCSV() {

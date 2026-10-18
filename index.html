@@ -210,6 +210,11 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .fid-status{font-size:13px;line-height:1.45;background:#f6f3ec;border:1px solid var(--cream-dark);border-radius:9px;padding:9px 11px;}
 .fid-status button{margin-top:7px;background:var(--green);color:#fff;border:none;padding:9px 13px;border-radius:8px;font-weight:800;font-size:13px;cursor:pointer;}
 .cupom-aviso{font-size:12px;color:var(--gray);margin-top:6px;}
+/* PIZZA DO DIA (card no carrossel e texto de retirada) */
+.pdd-card .combo-tag{background:var(--orange);}
+.pdd-retirada{font-size:12.5px;color:rgba(255,255,255,0.8);margin:-2px 0 10px;}
+.pdd-aviso{font-size:15px;font-weight:800;color:var(--gold);margin-bottom:8px;}
+.pdd-card .btn-add[disabled]{background:#444;color:rgba(255,255,255,0.7);animation:none;cursor:default;}
 .footer-endereco{font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:8px;line-height:1.5;}
 
 /* PIZZA CARDS */
@@ -514,7 +519,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <span class="badge">⏱️ Entrega Rápida</span>
     <span class="badge">🔥 Quentinho e Delicioso</span>
   </div>
-  <a href="#combos" class="hero-cta" onclick="return abrirDupla(event)">🍕 Quero a Dupla</a>
+  <a href="#combos" class="hero-cta" onclick="return abrirOfertaDoTopo(event)">🍕 Quero a Dupla</a>
 </div>
 
 <!-- DESTAQUE DA DUPLA (preço e "de/por" vêm do combo no banco; some se a Dupla estiver inativa) -->
@@ -781,6 +786,43 @@ let modalState = null;
 const DUPLA_NOME = 'Dupla Tradicional';
 let duplaCombo = null; // linha do combo no banco (preço / preco_original), vem de loadCombos
 let heroPersonalizado = false; // admin preencheu algum texto do topo (Aparência) — aí não mexemos nele
+// PIZZA DO DIA — uma promoção por dia da semana (tabela pizza_do_dia, editada no admin),
+// sempre no horário de Bahia. O site mostra e põe no carrinho; o preço cobrado é
+// recalculado no servidor (calcular_checkout_v2), pelo dia e pela forma de entrega.
+let pizzasDoDia = []; // linhas ativas da tabela
+const NOMES_DIAS_SITE = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+function agoraSite() { return new Date(); }
+function agoraBahia() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short', hour: '2-digit', hourCycle: 'h23' })
+    .formatToParts(agoraSite()).map(x => [x.type, x.value]));
+  return { dow: { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.weekday], hora: Number(p.hour) };
+}
+// Mesma regra do servidor (pizza_do_dia_vigente): modo_loja forçado prevalece sobre o horário.
+function lojaAbertaBahia() {
+  if (modoLojaOverride === 'aberta') return true;
+  if (modoLojaOverride === 'fechada') return false;
+  const { dow, hora } = agoraBahia();
+  return [0, 4, 5, 6].includes(dow) && hora >= 18 && hora < (dow === 5 || dow === 6 ? 24 : 23);
+}
+function pizzaDoDiaDeHoje() { const { dow } = agoraBahia(); return pizzasDoDia.find(p => p.dia_semana === dow) || null; }
+function pizzaDoDiaVigente() { return lojaAbertaBahia() ? pizzaDoDiaDeHoje() : null; }
+// Com a loja fechada: a de hoje (se ainda não abriu) ou a próxima nos dias seguintes.
+function proximaPizzaDoDia() {
+  const { dow, hora } = agoraBahia();
+  const hoje = pizzaDoDiaDeHoje();
+  if (hoje && hora < 18) return { pdd: hoje, emDias: 0 };
+  for (let n = 1; n <= 7; n++) {
+    const pdd = pizzasDoDia.find(p => p.dia_semana === (dow + n) % 7);
+    if (pdd) return { pdd, emDias: n };
+  }
+  return null;
+}
+function precoNormalPizzaDoDia(pdd) {
+  const s = salgadasCache.find(p => p.nome.toLowerCase() === String(pdd.sabor).toLowerCase());
+  return s ? (pdd.tamanho === 'Grande' ? s.preco_grande : s.preco_familia) : null;
+}
+const precoPizzaDoDiaAgora = (pdd) => Number(ehRetirada() ? pdd.preco_retirada : pdd.preco_entrega);
+const nomeItemPizzaDoDia = (pdd) => `Pizza do Dia — ${pdd.nome} (${pdd.tamanho} ${pdd.sabor})`;
 // Retirada no local: mesmo nome de "bairro" que o bot e o admin já usam.
 const BAIRRO_RETIRADA = 'retirada', RETIRADA_NOME = 'Retirada no local';
 // Endereço da loja — atualizado junto com o bot por whatsapp-bot/scripts/sincronizar-loja.mjs.
@@ -856,8 +898,8 @@ function telefoneEhValido(valor) {
   return false;
 }
 
-async function api(table, q='') {
-  const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=ordem.asc,id.asc`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
+async function api(table, q='', order='ordem.asc,id.asc') {
+  const r = await fetch(`${SB}/rest/v1/${table}?${q}&order=${order}`, {headers:{'apikey':SK,'Authorization':'Bearer '+SK}});
   return r.json();
 }
 
@@ -1013,6 +1055,7 @@ async function loadCombos() {
   duplaCombo = data.find(c => c.nome === DUPLA_NOME) || null;
   atualizarDestaqueDupla();
   renderComboDots(data.length);
+  renderPizzaDoDia();
   observarComboFadeIn();
   iniciarComboAutoplay();
 }
@@ -1024,7 +1067,22 @@ function atualizarDestaqueDupla() {
   const cta = document.querySelector('.hero-cta');
   // Topo: oferta da Dupla quando ela está ativa; senão, o texto institucional.
   // Texto personalizado no admin (Aparência) sempre prevalece.
-  if (!heroPersonalizado) {
+  const pddHoje = pizzaDoDiaDeHoje();
+  const normalPdd = pddHoje ? precoNormalPizzaDoDia(pddHoje) : null;
+  if (pddHoje && normalPdd != null) {
+    // Dia de Pizza do Dia: o topo mostra a promoção (texto personalizado no admin ainda vale mais).
+    if (!heroPersonalizado) {
+      document.getElementById('hero-slogan').textContent = pddHoje.nome;
+      document.getElementById('hero-destaque').textContent = `De ${brl(normalPdd)} por ${brl(pddHoje.preco_entrega)}`;
+      document.getElementById('hero-subtitulo').textContent = `— ou ${brl(pddHoje.preco_retirada)} retirando na loja. ${pddHoje.tamanho} ${pddHoje.sabor}${pddHoje.chamada ? '. ' + pddHoje.chamada : ''}`;
+    }
+    if (cta) cta.textContent = `🍕 Quero a ${pddHoje.nome}`;
+    if (pddHoje.foto_url) {
+      const heroImg = document.getElementById('hero-bg-photo');
+      heroImg.onload = () => document.getElementById('hero').classList.add('hero--photo');
+      heroImg.src = otimizarFotoSupabase(pddHoje.foto_url);
+    }
+  } else if (!heroPersonalizado) {
     const slogan = document.getElementById('hero-slogan'), dest = document.getElementById('hero-destaque'), sub = document.getElementById('hero-subtitulo');
     if (duplaCombo) {
       slogan.textContent = '2 pizzas Grandes';
@@ -1036,7 +1094,7 @@ function atualizarDestaqueDupla() {
       sub.textContent = 'Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.';
     }
   }
-  if (cta) cta.textContent = duplaCombo ? '🍕 Quero a Dupla' : '🍕 Ver Cardápio';
+  if (cta && !(pddHoje && normalPdd != null)) cta.textContent = duplaCombo ? '🍕 Quero a Dupla' : '🍕 Ver Cardápio';
   if (!duplaCombo) { if (destaque) destaque.style.display = 'none'; return; }
   document.querySelectorAll('.hero-dupla-preco').forEach(el => { el.textContent = brl(duplaCombo.preco); });
   const depor = document.getElementById('dupla-destaque-depor');
@@ -1046,7 +1104,102 @@ function atualizarDestaqueDupla() {
 function tradicionaisGrande() {
   return salgadasCache.filter(p => (p.categoria || 'tradicional') === 'tradicional' && p.preco_grande != null);
 }
-// Botão do topo, do destaque e do card: abre a escolha das 2 pizzas (ou rola até
+// Botão do topo: Pizza do Dia no dia dela; senão, a Dupla.
+function abrirOfertaDoTopo(ev) {
+  if (ev) ev.preventDefault();
+  if (pizzaDoDiaDeHoje() && precoNormalPizzaDoDia(pizzaDoDiaDeHoje()) != null) { abrirPizzaDoDia(); return false; }
+  return abrirDupla();
+}
+
+// PIZZA DO DIA — card no carrossel (logo depois da Dupla) e carrinho.
+async function loadPizzaDoDia() {
+  try { pizzasDoDia = await api('pizza_do_dia', 'ativo=eq.true&select=*', 'dia_semana.asc'); } catch (e) { pizzasDoDia = []; }
+  if (!Array.isArray(pizzasDoDia)) pizzasDoDia = [];
+  renderPizzaDoDia();
+}
+function renderPizzaDoDia() {
+  atualizarDestaqueDupla();
+  const grid = document.getElementById('combos-grid');
+  if (!grid || !grid.querySelector('.combo-card')) return; // combos ainda carregando: loadCombos chama de novo
+  document.getElementById('pdd-card')?.remove();
+  const vigente = pizzaDoDiaVigente();
+  const proxima = vigente ? null : proximaPizzaDoDia();
+  const pdd = vigente || proxima?.pdd;
+  const normal = pdd ? precoNormalPizzaDoDia(pdd) : null;
+  if (pdd && normal != null) {
+    const quando = !proxima ? '' : proxima.emDias === 0 ? `Hoje é dia de ${pdd.nome}! A partir das 18h.`
+      : proxima.emDias === 1 ? `Amanhã é dia de ${pdd.nome}!` : `${NOMES_DIAS_SITE[pdd.dia_semana].replace(/^./, c => c.toUpperCase())} é dia de ${pdd.nome}!`;
+    const html = `
+    <div class="combo-card pdd-card in-view" id="pdd-card">
+      ${pdd.foto_url ? `<img src="${esc(pdd.foto_url)}" alt="${esc(pdd.nome)}" loading="lazy">` : '<div class="combo-no-img">🔥</div>'}
+      <div class="combo-body">
+        <span class="combo-tag">🔥 PIZZA DO DIA</span>
+        <div class="combo-name">${esc(pdd.nome)}</div>
+        <div class="combo-desc">${esc(pdd.tamanho)} ${esc(pdd.sabor)}${pdd.chamada ? ' · ' + esc(pdd.chamada) : ''}</div>
+        ${quando ? `<div class="pdd-aviso">${esc(quando)}</div>` : ''}
+        ${blocoDePor(normal, pdd.preco_entrega)}
+        <div class="pdd-retirada">ou ${brl(pdd.preco_retirada)} retirando na loja</div>
+        <div class="combo-bottom">
+          <span class="combo-price">${brl(pdd.preco_entrega)}</span>
+          ${vigente ? `<button class="btn-add" onclick="abrirPizzaDoDia()">🍕 Quero a ${esc(pdd.nome)}</button>`
+                    : `<button class="btn-add" disabled>${proxima.emDias === 0 ? 'Hoje às 18h' : NOMES_DIAS_SITE[pdd.dia_semana] + ' às 18h'}</button>`}
+        </div>
+      </div>
+    </div>`;
+    const primeiro = grid.querySelector('.combo-card');
+    // A Dupla é o 1º card; a Pizza do Dia vem logo depois.
+    if (primeiro && primeiro.querySelector('.combo-name')?.textContent === DUPLA_NOME) primeiro.insertAdjacentHTML('afterend', html);
+    else grid.insertAdjacentHTML('afterbegin', html);
+  }
+  renderComboDots(grid.querySelectorAll('.combo-card').length);
+}
+// Põe a pizza do dia no carrinho (preço de entrega ou de retirada, conforme o bairro escolhido).
+function abrirPizzaDoDia() {
+  const pdd = pizzaDoDiaVigente();
+  if (!pdd) {
+    document.getElementById('pdd-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const hoje = pizzaDoDiaDeHoje();
+    toast(hoje ? `A ${hoje.nome} vale hoje com a loja aberta, a partir das 18h.` : 'Hoje não tem Pizza do Dia.');
+    return;
+  }
+  const normal = precoNormalPizzaDoDia(pdd);
+  const sabor = salgadasCache.find(p => p.nome.toLowerCase() === String(pdd.sabor).toLowerCase());
+  if (normal == null || !sabor) return;
+  const existente = cart.find(i => i.pizza_do_dia === pdd.nome && !i.borda);
+  if (existente) existente.qty++;
+  else cart.push({ id: novoId(), tipo: 'pizza', tabela: 'pizzas_salgadas', tamanho: pdd.tamanho, sabores: [{ id: sabor.id, nome: sabor.nome, preco: normal }],
+    borda: null, precoUnitario: precoPizzaDoDiaAgora(pdd), qty: 1, obs: '', pizza_do_dia: pdd.nome, nomeExibicao: nomeItemPizzaDoDia(pdd) });
+  gtag('event', 'add_to_cart', { currency: 'BRL', value: precoPizzaDoDiaAgora(pdd), items: [{ item_name: nomeItemPizzaDoDia(pdd), item_category: 'pizza_do_dia', price: precoPizzaDoDiaAgora(pdd), quantity: 1 }] });
+  fbq('track', 'AddToCart', { value: precoPizzaDoDiaAgora(pdd), currency: 'BRL', content_name: pdd.nome });
+  persistCart(); updateCount(); openCart(); toast(`${pdd.nome} adicionada! 🍕`);
+}
+const temPizzaDoDiaNoCarrinho = () => cart.some(i => i.pizza_do_dia);
+// Troca de entrega ↔ retirada: atualiza o preço da pizza do dia no carrinho.
+function atualizarPrecosPizzaDoDia() {
+  let mudou = false;
+  cart.forEach(i => {
+    if (!i.pizza_do_dia) return;
+    const pdd = pizzasDoDia.find(p => p.nome === i.pizza_do_dia);
+    if (pdd && i.precoUnitario !== precoPizzaDoDiaAgora(pdd)) { i.precoUnitario = precoPizzaDoDiaAgora(pdd); mudou = true; }
+  });
+  if (mudou) { persistCart(); updateCount(); renderCart(); }
+}
+// Fora do dia/horário (ex: carrinho guardado de ontem): volta ao preço normal antes de enviar.
+function desfazerPizzaDoDiaVencida() {
+  const vigente = pizzaDoDiaVigente();
+  const vencidas = cart.filter(i => i.pizza_do_dia && (!vigente || i.pizza_do_dia !== vigente.nome));
+  if (!vencidas.length) return false;
+  vencidas.forEach(i => {
+    const normal = i.sabores?.[0]?.preco ?? i.precoUnitario;
+    delete i.pizza_do_dia;
+    i.precoUnitario = +(normal + (i.borda ? i.borda.preco : 0)).toFixed(2);
+    i.nomeExibicao = `Pizza ${i.tamanho} — ${i.sabores?.[0]?.nome || ''}`;
+  });
+  persistCart(); updateCount(); renderCart();
+  return true;
+}
+
+// Botão do destaque e do card: abre a escolha das 2 pizzas (ou rola até
 // os combos, se o cardápio ainda estiver carregando).
 function abrirDupla(ev) {
   if (ev) ev.preventDefault();
@@ -1215,6 +1368,7 @@ async function loadSalgadas() {
     itens: data.filter(p => (p.categoria || 'tradicional') === c.id).sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.id - b.id),
   }));
   salgadasCache = grupos.flatMap(g => g.itens);
+  setTimeout(renderPizzaDoDia, 0); // preço normal da pizza do dia vem das salgadas
   salgadasCache.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_salgada', price: p.preco_grande}));
   document.getElementById('salgadas-grid').innerHTML = grupos.filter(g => g.itens.length).map(g => `
     <div class="cat-salgada">
@@ -1422,7 +1576,8 @@ async function aplicarConfigsVisuais() {
 const configsCarregadas = aplicarConfigsVisuais().catch(e => console.error('configs', e));
 restoreCart();
 aplicarCupomDaURL();
-loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros();
+loadCombos(); loadSalgadas(); loadDoces(); loadBebidas(); loadBairros(); loadPizzaDoDia();
+setInterval(renderPizzaDoDia, 60000); // abre/fecha a loja e vira o dia sem recarregar a página
 checkBairrosAtualizados(true);
 setInterval(() => checkBairrosAtualizados(false), 30000); // Verifica a cada 30 segundos
 updateCount();
@@ -1670,7 +1825,7 @@ function confirmarPizzaEspecial() {
 
 function editCartItem(id) {
   const item = cart.find(i => i.id === id);
-  if (!item || item.tipo !== 'pizza' || item.brinde_fidelidade) return;
+  if (!item || item.tipo !== 'pizza' || item.brinde_fidelidade || item.pizza_do_dia) return;
   abrirModalSabor(item.tabela === 'pizzas_doces' ? null : item.tamanho, null, item);
 }
 
@@ -1754,7 +1909,7 @@ function renderCart() {
   body.innerHTML = cart.map((item,i) => `
     <div class="cart-item">
       <div class="cart-item-info">
-        <div class="cart-item-name${item.tipo==='pizza'&&!item.brinde_fidelidade?' clickable':''}"${item.tipo==='pizza'&&!item.brinde_fidelidade?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
+        <div class="cart-item-name${item.tipo==='pizza'&&!item.brinde_fidelidade&&!item.pizza_do_dia?' clickable':''}"${item.tipo==='pizza'&&!item.brinde_fidelidade&&!item.pizza_do_dia?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
         ${item.obs?`<div class="cart-item-obs">${item.obs}</div>`:''}
         ${item.brinde_fidelidade ? '<div class="cart-item-obs">1 por pedido · não acumula com cupom</div>' : `<div class="cart-item-qty">
           <button class="qty-btn" onclick="chQty(${i},-1)">−</button>
@@ -1809,6 +1964,7 @@ function onBairroChange() {
   document.getElementById('campos-endereco').style.display = retirada ? 'none' : 'contents';
   document.getElementById('retirada-info').style.display = retirada ? '' : 'none';
   document.getElementById('retirada-endereco').textContent = ENDERECO_LOJA_SITE;
+  atualizarPrecosPizzaDoDia(); // pizza do dia: preço de retirada só na retirada
   document.getElementById('btn-finalizar').textContent = outro ? '💬 Confirmar entrega pelo WhatsApp' : '💬 Enviar pelo WhatsApp';
   calcFrete();
 }
@@ -1879,6 +2035,11 @@ async function finalizarPedido() {
     return;
   }
   if (bRaw === BAIRRO_OUTRO) { enviarPedidoBairroForaDaLista(nome, end, comp, pag); return; }
+  if (desfazerPizzaDoDiaVencida()) {
+    alert('A Pizza do Dia só vale no dia dela, com a loja aberta. A pizza foi para o preço normal: confira o total e envie de novo.');
+    enviandoPedido = false; return;
+  }
+  if (temPizzaDoDiaNoCarrinho() && cupomAplicado) { alert('A Pizza do Dia não acumula com cupom. Apague o cupom para continuar.'); enviandoPedido = false; return; }
   // Presente da fidelidade: não vai sozinho, não acumula com cupom e precisa dos 5 selos
   // neste WhatsApp (o servidor confere de novo e cobra a pizza se não valer).
   if (temBrindeNoCarrinho()) {
@@ -2257,7 +2418,8 @@ function itensJsonDoCarrinho(comOferta = false) {
   const oferta = comOferta ? ofertaDoceAtual() : null;
   return cart.flatMap(i => {
     const base = { tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null,
-      ...(i.combo_pizzas ? { combo_pizzas: i.combo_pizzas } : {}), ...(i.brinde_fidelidade ? { brinde_fidelidade: true } : {}) };
+      ...(i.combo_pizzas ? { combo_pizzas: i.combo_pizzas } : {}), ...(i.brinde_fidelidade ? { brinde_fidelidade: true } : {}),
+      ...(i.pizza_do_dia ? { pizza_do_dia: i.pizza_do_dia } : {}) };
     if (!oferta || oferta.id !== i.id) return [base];
     const comDesconto = { ...base, qty: 1, precoUnitario: +(i.precoUnitario - oferta.economia).toFixed(2), oferta_doce: true };
     return i.qty > 1 ? [comDesconto, { ...base, qty: i.qty - 1 }] : [comDesconto];
@@ -2402,6 +2564,7 @@ async function aplicarCupom() {
   cupomViaURL = false; checkoutServidor = null;
   if (!codigo) { cupomAplicado = null; erro.textContent = '❌ Digite um código de cupom'; erro.style.display = 'block'; updateTotals(); return; }
   if (temBrindeNoCarrinho()) { cupomAplicado = null; erro.textContent = '❌ O cupom não acumula com o presente da fidelidade.'; erro.style.display = 'block'; updateTotals(); return; }
+  if (temPizzaDoDiaNoCarrinho()) { cupomAplicado = null; erro.textContent = '❌ O cupom não acumula com a Pizza do Dia.'; erro.style.display = 'block'; updateTotals(); return; }
   cupomAplicado = { codigo };
   ok.textContent = 'Verificando cupom...'; ok.style.display = 'block';
   await revalidarCupom();

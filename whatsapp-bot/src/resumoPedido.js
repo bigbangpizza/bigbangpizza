@@ -23,6 +23,8 @@ function nomeItem(i, nomesDoces) {
   if (Array.isArray(i.combo_pizzas) && i.combo_pizzas.length) {
     return `${(s[0] && s[0].nome) || 'Combo'} (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores || [])}`).join(' / ')})`;
   }
+  // Pizza do Dia: nome da promoção (gravado pelo servidor) + tamanho e sabor.
+  if (i.pizza_do_dia && typeof i.pizza_do_dia === 'string') return `Pizza do Dia — ${i.pizza_do_dia} (${i.tamanho ? i.tamanho + ' ' : ''}${nome})`;
   if (i.tamanho) return `Pizza ${i.tamanho} ${nome}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''}`;
   const nomeBase = String((s[0] && s[0].nome) || '').toLowerCase();
   const ehDoce = i.oferta_doce || i.tabela === 'pizzas_doces' || (i.tipo === 'pizza' && !i.tamanho) || (nomesDoces && nomesDoces.has(nomeBase));

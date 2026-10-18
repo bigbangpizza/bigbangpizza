@@ -21,7 +21,7 @@ const TABELAS_PRIVADAS = ['configuracoes', 'cupons'];
 
 async function fetchTable(table, query = '') {
   const sep = query ? '&' : '';
-  const orderBy = TABELAS_COM_ORDEM.includes(table) ? 'ordem.asc,id.asc' : 'id.asc';
+  const orderBy = TABELAS_COM_ORDEM.includes(table) ? 'ordem.asc,id.asc' : table === 'pizza_do_dia' ? 'dia_semana.asc' : 'id.asc';
   const url = `${config.supabase.url}/rest/v1/${table}?${query}${sep}order=${orderBy}`;
   const chavePrivada = TABELAS_PRIVADAS.includes(table) ? config.supabase.serviceRoleKey : '';
   if (chavePrivada) {
@@ -56,7 +56,7 @@ async function fetchConfiguracoes() {
 let cache = null; // { data, expiresAt }
 
 async function loadMenuData() {
-  const [salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cuponsPrimeiroPedido] = await Promise.all([
+  const [salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cuponsPrimeiroPedido, pizzasDoDia] = await Promise.all([
     fetchTable('pizzas_salgadas', 'ativo=eq.true'),
     fetchTable('pizzas_doces', 'ativo=eq.true'),
     fetchTable('combos', 'ativo=eq.true'),
@@ -66,10 +66,12 @@ async function loadMenuData() {
     fetchTable('bairros', 'ativo=eq.false'),
     fetchConfiguracoes(),
     fetchTable('cupons', 'ativo=eq.true&somente_primeiro_pedido=eq.true&limit=1'),
+    // Pizza do Dia (uma por dia da semana, editada no admin).
+    fetchTable('pizza_do_dia', 'ativo=eq.true'),
   ]);
   // Cupom de boas-vindas (ex: BIGBANG15) — o bot só oferece se ele estiver ativo.
   const cupomBoasVindas = cuponsPrimeiroPedido?.[0] || null;
-  return { salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cupomBoasVindas };
+  return { salgadas, doces, combos, bebidas, bairros, bairrosInativos, configuracoes, cupomBoasVindas, pizzasDoDia: Array.isArray(pizzasDoDia) ? pizzasDoDia : [] };
 }
 
 /**

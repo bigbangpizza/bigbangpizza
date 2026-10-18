@@ -108,6 +108,12 @@ export const CRIAR_PEDIDO_TOOL = {
                 required: ['sabor1'],
               },
             },
+            pizza_do_dia: {
+              type: 'boolean',
+              description:
+                'true só na Pizza do Dia de hoje (bloco "Pizza do Dia" no fim): tipo "pizza_salgada", o tamanho e o sabor do dia, inteira (sem sabor2). ' +
+                'O sistema confere o dia e cobra o preço de entrega ou de retirada; fora do dia, sai pelo preço normal.',
+            },
             brinde_fidelidade: {
               type: 'boolean',
               description:
@@ -149,12 +155,21 @@ export function buscarPorNome(lista, campoNome, nomeBusca) {
 
 // Item no formato gravado em pedidos.itens_json (sabores das pizzas do combo e a
 // marca do presente da fidelidade vão juntos — o servidor confere o presente).
-export function itemParaJson({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs, combo_pizzas, brinde_fidelidade }) {
+export function itemParaJson({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs, combo_pizzas, brinde_fidelidade, pizza_do_dia }) {
   return {
     tipo, tamanho, sabores, borda, precoUnitario, qty, obs,
     ...(combo_pizzas ? { combo_pizzas } : {}),
     ...(brinde_fidelidade ? { brinde_fidelidade: true } : {}),
+    ...(pizza_do_dia ? { pizza_do_dia } : {}),
   };
+}
+
+// Pizza do Dia de hoje (horário de Bahia), ativa no admin — o servidor confere de novo o
+// dia, a loja aberta e o preço (entrega ou retirada).
+export function pizzaDoDiaDeHoje(menuData, agora = new Date()) {
+  const dia = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short' }).format(agora)];
+  return (menuData.pizzasDoDia || []).find((p) => p.dia_semana === dia && p.ativo !== false) || null;
 }
 
 // Combos em que o cliente escolhe os sabores das pizzas (nome do combo em minúsculas).
@@ -240,6 +255,7 @@ export function processarItens(itensInput, menuData) {
     let tipoItem = 'simples';
     let comboPizzas = null;
     let brinde = false;
+    let pizzaDoDia = null;
 
     if (itemInput.tipo === 'pizza_salgada') {
       tipoItem = 'pizza';
@@ -279,6 +295,21 @@ export function processarItens(itensInput, menuData) {
         sabores = [{ id: encontrado1.id, nome: encontrado1.nome, preco: encontrado1[campoPreco] }];
         precoUnitario = encontrado1[campoPreco];
         nomeExibicao = `Pizza ${tamanho} — ${encontrado1.nome}`;
+      }
+      // Pizza do Dia: só o sabor e o tamanho do dia, inteira (o servidor confere e precifica).
+      if (itemInput.pizza_do_dia) {
+        const pdd = pizzaDoDiaDeHoje(menuData);
+        if (!pdd) {
+          erros.push('Hoje não tem Pizza do Dia. Registre a pizza sem pizza_do_dia (preço normal) se o cliente quiser.');
+          continue;
+        }
+        if (sabores.length !== 1 || sabores[0].nome.toLowerCase() !== String(pdd.sabor).toLowerCase() || tamanho !== pdd.tamanho) {
+          erros.push(`A Pizza do Dia de hoje é a ${pdd.nome}: ${pdd.tamanho} ${pdd.sabor}, inteira (sem meio a meio).`);
+          continue;
+        }
+        pizzaDoDia = pdd.nome;
+        precoUnitario = Number(pdd.preco_entrega);
+        nomeExibicao = `Pizza do Dia — ${pdd.nome} (${pdd.tamanho} ${pdd.sabor})`;
       }
       // Presente da fidelidade: Grande Tradicional por R$ 0 (o servidor confere o direito).
       if (itemInput.brinde_fidelidade) {
@@ -356,6 +387,7 @@ export function processarItens(itensInput, menuData) {
       nomeExibicao,
       ...(comboPizzas ? { combo_pizzas: comboPizzas } : {}),
       ...(brinde ? { brinde_fidelidade: true } : {}),
+      ...(pizzaDoDia ? { pizza_do_dia: pizzaDoDia } : {}),
     });
   }
 
@@ -552,6 +584,7 @@ export function criarExecutorCriarPedido({ numero, nomeContato }) {
       total,
       falta_para_frete_gratis: checkout.falta_para_frete_gratis || null,
       presente_fidelidade: checkout.fidelidade || null,
+      pizza_do_dia: checkout.pizza_do_dia || null,
       bairro: bairroEncontrado.nome,
       endereco: pedido.endereco,
       forma_pagamento: pagamentoTexto,
@@ -647,6 +680,7 @@ export function criarExecutorCalcularTotal({ numero }) {
       desconto: c.desconto,
       cupom: c.cupom ? { codigo: c.cupom.codigo, valido: c.cupom.valido, motivo: c.cupom.motivo } : null,
       presente_fidelidade: c.fidelidade || null,
+      pizza_do_dia: c.pizza_do_dia || null,
       total: c.total,
       // Cupom x oferta da doce (não acumulam): total de cada opção e qual sai mais barata.
       comparacao_cupom_x_oferta_doce: c.comparacao
@@ -670,6 +704,7 @@ function linhasDosItens(itensNormalizados) {
     // Dupla: sabores de cada pizza; presente da fidelidade: marcado.
     const pizzasCombo = Array.isArray(i.combo_pizzas) && i.combo_pizzas.length
       ? ` (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores)}`).join(' / ')})` : '';
+    if (i.pizza_do_dia && typeof i.pizza_do_dia === 'string') return `${i.qty}x Pizza do Dia — ${i.pizza_do_dia} (${tam}${nome}) — ${brl(i.precoUnitario * i.qty)}`;
     return `${i.qty}x ${tam}${nome}${pizzasCombo}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
   });
 }

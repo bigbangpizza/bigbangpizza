@@ -156,6 +156,28 @@ export function formatarCombos(lista, { comDePor = false } = {}) {
   return linhas.join('\n');
 }
 
+// Pizza do Dia: a de hoje (se a loja está aberta) e a próxima, pro cliente que perguntar.
+function montarBlocoPizzaDoDia(pizzasDoDia, salgadas, lojaAberta) {
+  if (!pizzasDoDia?.length) return '';
+  const { diaSemana } = getAgoraBahiaDetalhado();
+  const descreve = (p) => {
+    const s = salgadas.find((x) => x.nome.toLowerCase() === String(p.sabor).toLowerCase());
+    const normal = s ? (p.tamanho === 'Grande' ? s.preco_grande : s.preco_familia) : null;
+    return `${p.nome}: Pizza ${p.tamanho} ${p.sabor}, ${brl(p.preco_entrega)} na entrega ou ${brl(p.preco_retirada)} retirando na loja${normal != null ? ` (normal ${brl(normal)})` : ''}${p.chamada ? `. Chamada: "${p.chamada}"` : ''}`;
+  };
+  const hoje = pizzasDoDia.find((p) => p.dia_semana === diaSemana);
+  let linha;
+  if (hoje && lojaAberta) linha = `VALE AGORA — ${descreve(hoje)}.`;
+  else {
+    let prox = null;
+    for (let n = hoje ? 0 : 1; n <= 7 && !prox; n++) prox = pizzasDoDia.find((p) => p.dia_semana === (diaSemana + n) % 7);
+    linha = prox
+      ? `Não vale agora (${hoje ? 'só com a loja aberta' : 'hoje não tem'}). Próxima: ${NOMES_DIAS[prox.dia_semana]} — ${descreve(prox)}. Só mencione se o cliente perguntar de promoção.`
+      : 'Não vale agora.';
+  }
+  return `\n## Pizza do Dia\n- ${linha}\n`;
+}
+
 // Fidelidade do número que está conversando (RPC fidelidade_status).
 function montarBlocoFidelidade(st) {
   if (!st || !st.valido) return '';
@@ -316,7 +338,7 @@ function montarBlocoCupomBoasVindas(numero, cupom) {
  * de MENU_CACHE_TTL_SECONDS, ver supabaseData.js).
  */
 export async function buildSystemPrompt(numero, ehConversaNova = false) {
-  const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas } = await getMenuData();
+  const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas, pizzasDoDia } = await getMenuData();
   const statusLoja = calcularStatusLoja(configuracoes.modo_loja || 'automatico');
   const agora = getAgoraBahiaDetalhado();
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
@@ -325,6 +347,7 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const blocoClienteConhecido = await montarBlocoClienteConhecido(numero, ehConversaNova);
   const blocoCupomBoasVindas = montarBlocoCupomBoasVindas(numero, cupomBoasVindas);
   const blocoFidelidade = montarBlocoFidelidade(await consultarFidelidade(numero));
+  const blocoPizzaDoDia = montarBlocoPizzaDoDia(pizzasDoDia, salgadas, statusLoja.aberta);
   // Oferta "pizza doce por preço fixo" (Configurações do Bot) — mesmas chaves da função calcular_checkout_v2.
   const ofertaDoce = {
     ativa: ['true', '1', 'sim'].includes(String(configuracoes.oferta_doce_ativa || '').toLowerCase()),
@@ -502,6 +525,13 @@ ${formatarDoces(doces)}
 ${formatarCombos(combos, { comDePor: true })}
 - **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza pode ser meio a meio entre Tradicionais. Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode ser meio a meio entre as Tradicionais."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, \`sabor2\` só se aquela for meio a meio), nunca no \`obs\`. Cupom não vale na Dupla (é combo).
 
+## Pizza do Dia
+- Nas quintas, sextas e sábados pode ter uma Pizza do Dia (promoção com sabor e tamanho fixos). O que vale hoje está no bloco "Pizza do Dia", no fim — nunca ofereça uma pizza do dia que não esteja lá como "vale agora".
+- Cite a pizza do dia UMA vez na conversa, de forma natural, quando o cliente pedir o cardápio, perguntar de promoção ou estiver escolhendo a pizza (ex: "Hoje é dia de Quintabresa: Calabresa Família por R$ 54,90, ou R$ 49,90 retirando na loja."). Não repita nem insista.
+- Preço de entrega x retirada: explique a diferença se o cliente perguntar ou falar de frete — o preço menor vale só retirando na loja.
+- Para registrar: item \`pizza_salgada\`, com o tamanho e o sabor do dia, inteira (sem \`sabor2\`), com \`pizza_do_dia: true\` no \`calcular_total\` e no \`criar_pedido\`. Não acumula com cupom: se o cliente quiser cupom, explique em uma linha que não acumulam e deixe ele escolher. Conta selo da fidelidade normalmente.
+- Se \`calcular_total\` ou \`criar_pedido\` devolver \`pizza_do_dia\` com \`aplicada: false\`, a pizza saiu pelo preço normal: avise com o motivo que veio.
+
 ## Cartão fidelidade
 - Regra: a cada 5 pedidos entregues (com R$ 40 ou mais em produtos), o 6º pedido ganha 1 Pizza Grande Tradicional de presente (o cliente escolhe o sabor entre as Tradicionais, pode ser meio a meio, sem borda). Depois de usar, a contagem recomeça.
 - Selos do cliente: estão no bloco "Fidelidade deste cliente", no fim. Só fale dos selos se o cliente perguntar — ou para oferecer o presente quando ele tiver direito.
@@ -521,7 +551,7 @@ Responda sempre em português do Brasil, seguindo as regras de "Como você escre
 - ${instrucaoApresentacao}
 - Agora é ${agora.nomeDia}, ${agora.data}, ${agora.horaTexto} (horário de Lauro de Freitas/BA).
 - Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}" Resposta se insistir: "${statusLoja.respostaInsistencia}"`}
-${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}${blocoFidelidade}`;
+${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}${blocoFidelidade}${blocoPizzaDoDia}`;
   return [
     { type: 'text', text: textoFixo, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: textoContexto },

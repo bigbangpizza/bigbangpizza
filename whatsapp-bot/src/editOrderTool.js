@@ -66,6 +66,12 @@ export const EDITAR_PEDIDO_TOOL = {
                 required: ['sabor1'],
               },
             },
+            pizza_do_dia: {
+              type: 'boolean',
+              description:
+                'true só na Pizza do Dia de hoje (bloco "Pizza do Dia" no fim): tipo "pizza_salgada", o tamanho e o sabor do dia, inteira (sem sabor2). ' +
+                'O sistema confere o dia e cobra o preço de entrega ou de retirada; fora do dia, sai pelo preço normal.',
+            },
             brinde_fidelidade: {
               type: 'boolean',
               description:
