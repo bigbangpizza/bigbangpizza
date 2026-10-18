@@ -495,6 +495,12 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-clientes" class="hidden">
       <div class="page-title">CLIENTES</div>
       <div class="page-sub">Base de clientes para CRM — coletados via pedidos</div>
+      <div class="tw" style="padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <strong style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;color:var(--orange);">🍕 Fidelidade</strong>
+        <span style="font-size:13px;color:rgba(255,255,255,0.6);">Selos contam pedidos a partir de (horário de Bahia):</span>
+        <input type="datetime-local" id="fid-inicio" style="width:auto;">
+        <button onclick="salvarFidelidadeInicio()" style="background:var(--red);color:white;border:none;padding:8px 14px;border-radius:7px;font-weight:700;cursor:pointer;">Salvar</button>
+      </div>
       <div style="margin-bottom:16px;">
         <button onclick="exportarClientesCSV()" style="background:var(--red);color:white;border:none;padding:9px 18px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;cursor:pointer;letter-spacing:1px;">📊 Exportar CSV</button>
       </div>
@@ -5044,12 +5050,18 @@ async function loadClientes() {
   // valida o presente no pedido é o servidor). Agrupa pela chave do telefone.
   // Fora da fidelidade (mesmas exclusões da função fidelidade_status): pedidos de
   // teste (nome com "teste") e os telefones de configuracoes.fidelidade_telefones_excluidos.
-  const cfgExcluidos = await api('configuracoes', 'chave=eq.fidelidade_telefones_excluidos', 'chave.asc');
-  const telefonesExcluidos = new Set(String(cfgExcluidos?.[0]?.valor || '').split(',').map(chaveTelefoneAdmin).filter(Boolean));
+  const cfgFid = await api('configuracoes', 'chave=in.(fidelidade_telefones_excluidos,fidelidade_inicio)', 'chave.asc');
+  const cfgValor = (k) => cfgFid.find(c => c.chave === k)?.valor || '';
+  const telefonesExcluidos = new Set(String(cfgValor('fidelidade_telefones_excluidos')).split(',').map(chaveTelefoneAdmin).filter(Boolean));
+  // Início do programa (configuracoes.fidelidade_inicio, ISO com fuso): pedidos antes disso não contam selo.
+  const fidInicio = /^\d{4}-\d{2}-\d{2}/.test(cfgValor('fidelidade_inicio')) ? new Date(cfgValor('fidelidade_inicio')) : null;
+  const campoInicio = document.getElementById('fid-inicio');
+  if (campoInicio && document.activeElement !== campoInicio) campoInicio.value = cfgValor('fidelidade_inicio').slice(0, 16);
   const pedidosPorChave = new Map();
   for (const x of data) {
     const k = chaveTelefoneAdmin(x.whatsapp);
     if (!k || telefonesExcluidos.has(k) || /\bteste\b/i.test(x.nome || '')) continue;
+    if (fidInicio && (parseUTC(x.created_at) || new Date(x.created_at)) < fidInicio) continue;
     if (!pedidosPorChave.has(k)) pedidosPorChave.set(k, []);
     pedidosPorChave.get(k).push(x);
   }
@@ -5299,6 +5311,15 @@ async function saveCupom() {
   const ok = editId ? await upd('cupons', editId, data) : await ins('cupons', data);
   if (ok) { closeMod(); loadCupons(); showToastAdmin('✅ Cupom salvo!'); }
   else { alert('Erro ao salvar! Verifique se o código já existe.'); }
+}
+
+// Data de início da fidelidade (seção Fidelidade, página Clientes). O campo é no horário de Bahia.
+async function salvarFidelidadeInicio(){
+  const v = document.getElementById('fid-inicio').value; // "YYYY-MM-DDTHH:MM"
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) { alert('Escolha a data e a hora de início.'); return; }
+  const ok = await salvarConfigs({ fidelidade_inicio: `${v}:00-03:00` });
+  showToastAdmin(ok ? '✅ Início da fidelidade salvo!' : '⚠️ Não foi possível salvar.');
+  if (ok) loadClientes();
 }
 
 async function exportarClientesCSV() {
