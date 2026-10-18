@@ -3128,6 +3128,24 @@ function renderPedidoManualConfirmacao(){
   btn.onclick = ed ? salvarEdicaoPedido : salvarPedidoManual;
 }
 
+// Trava contra clique repetido: enquanto salva (o total é calculado no servidor e leva ~1s),
+// o botão fica desativado e novos cliques são ignorados. Foi assim que nasceram os
+// pedidos #333, #334 e #335 (3 cliques em 2,5s, 3 pedidos iguais).
+let salvandoModalPedido = false;
+async function comTravaDoBotaoPedido(rotulo, fn){
+  if (salvandoModalPedido) return;
+  const btn = document.getElementById('mod-save-btn');
+  const textoOriginal = btn.textContent;
+  salvandoModalPedido = true; btn.disabled = true; btn.textContent = rotulo;
+  try { await fn(); }
+  finally {
+    salvandoModalPedido = false;
+    if (btn.textContent === rotulo) { btn.disabled = false; btn.textContent = textoOriginal; }
+  }
+}
+const salvarPedidoManual = () => comTravaDoBotaoPedido('⏳ LANÇANDO...', lancarPedidoManual);
+const salvarEdicaoPedido = () => comTravaDoBotaoPedido('⏳ SALVANDO...', gravarEdicaoPedido);
+
 function renderItemPedidoManual(item, i, menu){
   if(item.tipo === 'original'){
     const info = calcPrecoItemPedidoManual(item, menu);
@@ -3341,7 +3359,7 @@ async function atualizarResumoPedidoManual(){
   `;
 }
 
-async function salvarPedidoManual(){
+async function lancarPedidoManual(){
   const st = window.__pedidoManualState;
   const menu = window.__pedidoManualMenu;
 
@@ -3365,7 +3383,7 @@ async function salvarPedidoManual(){
   try {
     r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom);
   } catch(e) {
-    console.error('salvarPedidoManual', e);
+    console.error('lancarPedidoManual', e);
     showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return;
   }
   if(st.cupom && !r.cupom?.valido){
@@ -3374,7 +3392,7 @@ async function salvarPedidoManual(){
 
   const itensTexto = st.itens.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
 
-  const ok = await ins('pedidos', {
+  const resp = await authFetch(`${SB}/rest/v1/pedidos`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({
     nome: st.nome.trim(),
     whatsapp: st.whatsapp.trim() || null,
     endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
@@ -3391,10 +3409,14 @@ async function salvarPedidoManual(){
     desconto: Number(r.desconto) || 0,
     frete: Number(r.frete) || 0,
     total: Number(r.total),
-  });
+  }) });
 
-  if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); }
-  else { showToastAdmin('⚠️ Erro ao lançar o pedido.'); }
+  if(resp.ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); return; }
+  // O servidor recusa o mesmo pedido repetido em poucos segundos (gatilho pedidos_bloquear_duplicado).
+  const erro = await resp.text().catch(() => '');
+  const dup = erro.match(/Pedido duplicado[^"]*/);
+  if (dup) { closeMod(); loadPedidos(); showToastAdmin(`⚠️ ${dup[0]} Não lancei de novo.`, 7000); }
+  else showToastAdmin('⚠️ Erro ao lançar o pedido.');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3478,7 +3500,7 @@ function valorHistorico(v){
   return typeof v === 'number' ? brl(v) : String(v);
 }
 
-async function salvarEdicaoPedido(){
+async function gravarEdicaoPedido(){
   const st = window.__pedidoManualState;
   const menu = window.__pedidoManualMenu;
   const ed = st._edicao;
@@ -3509,7 +3531,7 @@ async function salvarEdicaoPedido(){
   let r;
   try {
     r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom, ed.id);
-  } catch (e) { console.error('salvarEdicaoPedido', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
+  } catch (e) { console.error('gravarEdicaoPedido', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
   if (st.cupom && !r.cupom?.valido) {
     if (!confirm(`O cupom ${st.cupom} deixa de valer com esta alteração: ${r.cupom?.motivo || 'regras do cupom'}\n\nSalvar o pedido SEM o cupom (total ${brl(r.total)})?`)) return;
   }
