@@ -1660,6 +1660,7 @@ function addItem(name, price, obs='') {
 // tamanho=null identifica pizza doce (doce não tem Grande/Família).
 // especial: { modo: 'dupla', passo: 1|2, pizzas: [] } ou { modo: 'brinde' } — só
 // Tradicionais Grandes, sem borda e sem preço por sabor (o preço é o da Dupla / grátis).
+// A Dupla não tem meio a meio: cada pizza é inteira, de 1 sabor.
 function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null) {
   const tipoItem = tamanho ? 'pizza_salgada' : 'pizza_doce';
   let sabores;
@@ -1679,7 +1680,7 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null
     sabores = docesCache.map(p => ({ id: p.id, nome: p.nome, preco: p.preco, ...(ofertaVale && p.preco > ofertaDocePreco ? { precoExibido: ofertaDocePreco } : {}) }));
   }
 
-  const permiteMeio = tipoItem === 'pizza_salgada' && sabores.length >= 2;
+  const permiteMeio = tipoItem === 'pizza_salgada' && sabores.length >= 2 && especial?.modo !== 'dupla';
   const modo = editItem ? (editItem.sabores.length === 2 ? 'meio' : 'unico') : 'unico';
   const sabor1 = editItem
     ? sabores.find(s => s.id === editItem.sabores[0].id) || null
@@ -1698,10 +1699,11 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null
   document.getElementById('modal-titulo').textContent = especial?.modo === 'dupla' ? `🍕 Pizza ${especial.passo} de 2 — escolha o sabor`
     : especial?.modo === 'brinde' ? '🎁 Sua Grande Tradicional de presente'
     : tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
-  document.querySelector('#modal-overlay .modal-sub').textContent = especial?.modo === 'dupla' ? 'Dupla Tradicional · Tradicionais, inteira ou meio a meio'
+  document.querySelector('#modal-overlay .modal-sub').textContent = especial?.modo === 'dupla' ? 'Dupla Tradicional · 1 sabor Tradicional por pizza'
     : especial ? 'Escolha o sabor (Tradicionais, pode ser meio a meio)' : 'Escolha o sabor';
   document.getElementById('painel-borda').style.display = especial ? 'none' : '';
   document.getElementById('tab-meio').style.display = permiteMeio ? '' : 'none';
+  document.querySelector('#modal-overlay .modal-tabs').style.display = especial?.modo === 'dupla' ? 'none' : '';
   document.getElementById('modal-aviso-igual').style.display = 'none';
 
   renderPainelUnico();
