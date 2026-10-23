@@ -799,8 +799,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <h3 id="modal-titulo">🍕 Pizza</h3>
     <p class="modal-sub">Escolha o sabor</p>
     <div class="modal-tabs">
-      <button type="button" class="modal-tab active" id="tab-unico" onclick="setModoSabor('unico')">1 Sabor</button>
-      <button type="button" class="modal-tab" id="tab-meio" onclick="setModoSabor('meio'); gtag('event', 'select_meio_a_meio')">🍕 2 Sabores</button>
+      <button type="button" class="modal-tab active" id="tab-unico" onclick="setModoSabor('unico')">Inteira</button>
+      <button type="button" class="modal-tab" id="tab-meio" onclick="setModoSabor('meio'); gtag('event', 'select_meio_a_meio')">🍕 Meio a meio</button>
     </div>
     <div id="painel-unico">
       <div class="sabor-grid" id="sabor-grid-unico"></div>
@@ -808,7 +808,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div id="painel-meio" style="display:none;">
       <div class="modal-label">1ª Metade</div><select id="meio1" onchange="onMeioChange()"></select>
       <div class="modal-label">2ª Metade</div><select id="meio2" onchange="onMeioChange()"></select>
-      <div class="modal-aviso" id="modal-aviso-igual" style="display:none;">⚠️ Sabores iguais — use a aba "1 Sabor"</div>
+      <div class="modal-aviso" id="modal-aviso-igual" style="display:none;">Mesmo sabor nas duas metades: vai como pizza inteira.</div>
     </div>
     <div id="painel-borda">
       <div class="modal-label">Borda recheada</div>
@@ -1695,10 +1695,11 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null
 
   modalState = { tipoItem, tamanho, sabores, modo, sabor1, sabor2, borda, editId: editItem ? editItem.id : null, especial };
 
-  document.getElementById('modal-titulo').textContent = especial?.modo === 'dupla' ? `🍕 Dupla Tradicional — Pizza ${especial.passo} de 2`
+  document.getElementById('modal-titulo').textContent = especial?.modo === 'dupla' ? `🍕 Pizza ${especial.passo} de 2 — escolha o sabor`
     : especial?.modo === 'brinde' ? '🎁 Sua Grande Tradicional de presente'
     : tipoItem === 'pizza_salgada' ? `🍕 Pizza ${tamanho}` : '🍫 Pizza Doce';
-  document.querySelector('#modal-overlay .modal-sub').textContent = especial ? 'Escolha o sabor (Tradicionais, pode ser meio a meio)' : 'Escolha o sabor';
+  document.querySelector('#modal-overlay .modal-sub').textContent = especial?.modo === 'dupla' ? 'Dupla Tradicional · Tradicionais, inteira ou meio a meio'
+    : especial ? 'Escolha o sabor (Tradicionais, pode ser meio a meio)' : 'Escolha o sabor';
   document.getElementById('painel-borda').style.display = especial ? 'none' : '';
   document.getElementById('tab-meio').style.display = permiteMeio ? '' : 'none';
   document.getElementById('modal-aviso-igual').style.display = 'none';
@@ -1787,7 +1788,7 @@ function atualizarResumo() {
   btn.textContent = esp?.modo === 'dupla' ? (esp.passo === 1 ? 'Próxima pizza →' : 'Adicionar Dupla') : esp?.modo === 'brinde' ? 'Adicionar presente' : 'Adicionar';
   if (esp) {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
-    const ok = modalState.modo === 'unico' ? !!s1 : !!(s1 && s2 && s1.id !== s2.id);
+    const ok = modalState.modo === 'unico' ? !!s1 : !!(s1 && s2);
     if (modalState.modo === 'meio' && s1 && s2 && s1.id === s2.id) aviso.style.display = 'block';
     btn.disabled = !ok;
     resumo.textContent = !ok ? '' : esp.modo === 'brinde' ? 'Grátis 🎁'
@@ -1802,7 +1803,7 @@ function atualizarResumo() {
   } else {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
     if (!s1 || !s2) { btn.disabled = true; resumo.textContent = ''; return; }
-    if (s1.id === s2.id) { aviso.style.display = 'block'; btn.disabled = true; resumo.textContent = ''; return; }
+    if (s1.id === s2.id) aviso.style.display = 'block'; // mesmo sabor nas duas metades = pizza inteira
     btn.disabled = false;
     // Meio a meio cobra o preço do sabor mais caro (não a média das metades).
     resumo.textContent = brl(Math.max(s1.preco, s2.preco) + precoBorda);
@@ -1819,14 +1820,15 @@ function confirmModalSabor() {
   const categoria = ehDoce ? 'pizza_doce' : 'pizza_salgada';
   const precoBorda = modalState.borda ? modalState.borda.preco : 0;
   let sabores, precoUnitario, nomeExibicao;
-  if (modalState.modo === 'unico') {
+  // Mesmo sabor nas duas metades vai como pizza inteira.
+  if (modalState.modo === 'unico' || (modalState.sabor1 && modalState.sabor2 && modalState.sabor1.id === modalState.sabor2.id)) {
     if (!modalState.sabor1) return;
     sabores = [modalState.sabor1];
     precoUnitario = +(modalState.sabor1.preco + precoBorda).toFixed(2);
     nomeExibicao = ehDoce ? `Doce ${modalState.sabor1.nome}` : `Pizza ${modalState.tamanho} — ${modalState.sabor1.nome}`;
   } else {
     const s1 = modalState.sabor1, s2 = modalState.sabor2;
-    if (!s1 || !s2 || s1.id === s2.id) return;
+    if (!s1 || !s2) return;
     sabores = [s1, s2];
     precoUnitario = +(Math.max(s1.preco, s2.preco) + precoBorda).toFixed(2);
     nomeExibicao = `Pizza ${modalState.tamanho} — ½ ${s1.nome} + ½ ${s2.nome}`;
@@ -1859,8 +1861,8 @@ function confirmModalSabor() {
 function confirmarPizzaEspecial() {
   const esp = modalState.especial;
   const s1 = modalState.sabor1, s2 = modalState.sabor2;
-  const escolhidos = modalState.modo === 'unico' ? [s1] : [s1, s2];
-  if (escolhidos.some(x => !x) || (escolhidos.length === 2 && s1.id === s2.id)) return;
+  const escolhidos = modalState.modo === 'unico' || (s1 && s2 && s1.id === s2.id) ? [s1] : [s1, s2];
+  if (escolhidos.some(x => !x)) return;
   if (esp.modo === 'dupla') {
     const pizzas = [...esp.pizzas, { tamanho: 'Grande', sabores: escolhidos.map(x => ({ id: x.id, nome: x.nome })) }];
     closeModal();
