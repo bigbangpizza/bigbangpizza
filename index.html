@@ -35,7 +35,7 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="theme-color" content="#CC1100">
 <title>Big Bang Pizza — Delivery em Lauro de Freitas</title>
-<meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h.">
+<meta name="description" content="Peça sua pizza pelo site! Entregamos em Lauro de Freitas e Salvador. Quinta a domingo, das 18h às 23h.">
 
 <!-- Open Graph / compartilhamento (WhatsApp, Instagram, redes sociais) -->
 <meta property="og:title" content="Big Bang Pizza — Explosão de Sabor em Lauro de Freitas">
@@ -72,15 +72,9 @@ src="https://www.facebook.com/tr?id=1592863375768160&ev=PageView&noscript=1"
   "openingHoursSpecification": [
     {
       "@type": "OpeningHoursSpecification",
-      "dayOfWeek": ["Thursday", "Sunday"],
+      "dayOfWeek": ["Thursday", "Friday", "Saturday", "Sunday"],
       "opens": "18:00",
       "closes": "23:00"
-    },
-    {
-      "@type": "OpeningHoursSpecification",
-      "dayOfWeek": ["Friday", "Saturday"],
-      "opens": "18:00",
-      "closes": "00:00"
     }
   ],
   "servesCuisine": "Pizza",
@@ -578,8 +572,8 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <picture><source srcset="logo-hero.webp" type="image/webp"><img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza" width="700" height="700"></picture>
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1><span id="hero-slogan">2 pizzas Grandes</span><br><em id="hero-destaque">por <span class="hero-dupla-preco">R$ 79,90</span></em></h1>
-  <p class="hero-frete">🚚 Frete grátis acima de R$ 65 em Vilas, Pitangueiras e região</p>
-  <p class="hero-sub" id="hero-subtitulo">Dupla Tradicional: você escolhe os sabores. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
+  <p class="hero-frete">Com frete grátis em Vilas, Pitangueiras e região</p>
+  <p class="hero-sub" id="hero-subtitulo">Dupla Tradicional: você escolhe os sabores. Quinta a domingo, 18h às 23h.</p>
   <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
     <span class="badge">🚚 Frete grátis a partir de R$ 65 em Vilas, Pitangueiras e região</span>
@@ -750,7 +744,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <a href="https://instagram.com/bigbangpz" id="footer-instagram" target="_blank">📷 @bigbangpz</a>
   </div>
   <div class="footer-endereco">📍 <span id="footer-endereco">Av. Amarílio Thiago dos Santos, 1152, sala 03, Vila Praiana, Lauro de Freitas - BA</span><br>🏪 Retire na loja sem frete</div>
-  <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Qui e Dom 18h às 23h | Sex e Sáb 18h às 00h</div>
+  <div style="font-size:12px;color:rgba(255,255,255,0.3);" id="footer-horario">Quinta a Domingo, 18h às 23h</div>
   <div class="footer-copy">© 2026 Big Bang Pizza — Todos os direitos reservados</div>
 </footer>
 
@@ -867,12 +861,14 @@ function agoraBahia() {
     .formatToParts(agoraSite()).map(x => [x.type, x.value]));
   return { dow: { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.weekday], hora: Number(p.hour), minuto: Number(p.minute) };
 }
+// Horário: quinta a domingo, 18h às 23h (todos os dias de funcionamento fecham às 23h).
+const HORA_FECHA_LOJA = 23;
 // Mesma regra do servidor (pizza_do_dia_vigente): modo_loja forçado prevalece sobre o horário.
 function lojaAbertaBahia() {
   if (modoLojaOverride === 'aberta') return true;
   if (modoLojaOverride === 'fechada') return false;
   const { dow, hora } = agoraBahia();
-  return [0, 4, 5, 6].includes(dow) && hora >= 18 && hora < (dow === 5 || dow === 6 ? 24 : 23);
+  return [0, 4, 5, 6].includes(dow) && hora >= 18 && hora < HORA_FECHA_LOJA;
 }
 function pizzaDoDiaDeHoje() { const { dow } = agoraBahia(); return pizzasDoDia.find(p => p.dia_semana === dow) || null; }
 function pizzaDoDiaVigente() { return lojaAbertaBahia() ? pizzaDoDiaDeHoje() : null; }
@@ -1014,10 +1010,8 @@ function updateStatus() {
   const day = now.getDay();
   const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
   const diasAbertos = [0,4,5,6];
-  // Hora de fechamento por dia da semana (24 = meia-noite).
-  // Quinta (4) e domingo (0) fecham às 23h; sexta (5) e sábado (6) à meia-noite.
-  const horaFecha = {0: 23, 4: 23, 5: 24, 6: 24};
-  const fechaHoje = horaFecha[day] || 24;
+  // Quinta a domingo, das 18h às 23h (mesma regra do servidor e da Luiza).
+  const fechaHoje = HORA_FECHA_LOJA;
 
   let open;
   if (modoLojaOverride === 'aberta') { open = true; }
@@ -1150,11 +1144,11 @@ function atualizarDestaqueDupla() {
     if (duplaCombo) {
       slogan.textContent = '2 pizzas Grandes';
       dest.innerHTML = `por <span class="hero-dupla-preco">${brl(duplaCombo.preco)}</span>`;
-      sub.textContent = 'Dupla Tradicional: você escolhe os sabores. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.';
+      sub.textContent = 'Dupla Tradicional: você escolhe os sabores. Quinta a domingo, 18h às 23h.';
     } else {
       slogan.textContent = 'Pizza artesanal,';
       dest.textContent = 'explosão de sabor';
-      sub.textContent = 'Direto na sua porta. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.';
+      sub.textContent = 'Direto na sua porta. Quinta a domingo, 18h às 23h.';
     }
   }
   if (cta) cta.textContent = duplaCombo ? '🍕 Quero a Dupla' : '🍕 Ver Cardápio';
@@ -1184,7 +1178,7 @@ function fotoPizzaDoDia(pdd) {
 }
 function minutosAteFechar() {
   const { dow, hora, minuto } = agoraBahia();
-  return (dow === 5 || dow === 6 ? 24 : 23) * 60 - (hora * 60 + minuto);
+  return HORA_FECHA_LOJA * 60 - (hora * 60 + minuto);
 }
 function renderPizzaDoDia() {
   const faixa = document.getElementById('promo-dia');
@@ -2171,10 +2165,10 @@ async function finalizarPedido() {
   let estaAberto;
   if (modoLojaOverride === 'aberta') { estaAberto = true; }
   else if (modoLojaOverride === 'fechada') { estaAberto = false; }
-  else { estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < 24; }
+  else { estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < HORA_FECHA_LOJA; }
   
   if (!estaAberto) {
-    alert('🔴 Estamos fechados no momento!\n\nFuncionamos quinta e domingo das 18h às 23h, sexta e sábado das 18h às 00h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
+    alert('🔴 Estamos fechados no momento!\n\nFuncionamos de quinta a domingo, das 18h às 23h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
     return;
   }
 

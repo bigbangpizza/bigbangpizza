@@ -6,9 +6,8 @@ import { freteDoBairro } from './bairroMatch.js';
 import { ENDERECO_LOJA, LOJA_BAIRRO } from './loja.js';
 
 const DIAS_ABERTOS = [0, 4, 5, 6]; // dom, qui, sex, sáb (mesma regra do site)
-// Hora de fechamento por dia da semana (24 = meia-noite).
-// Quinta e domingo fecham às 23h; sexta e sábado à meia-noite.
-const HORA_FECHA = { 0: 23, 4: 23, 5: 24, 6: 24 };
+// Hora de fechamento por dia da semana: quinta a domingo, todos às 23h.
+const HORA_FECHA = { 0: 23, 4: 23, 5: 23, 6: 23 };
 
 const textoHoraFecha = (dia) => (HORA_FECHA[dia] === 24 ? 'à meia-noite' : `às ${HORA_FECHA[dia]}h`);
 
@@ -39,7 +38,7 @@ const respostaInsistencia = (aPartir) =>
 /**
  * Status da loja agora, no fuso da Bahia. `modo_loja` forçado ("aberta" /
  * "fechada", no admin) prevalece sobre o horário; "automatico" segue o
- * horário de funcionamento (qui e dom 18h–23h, sex e sáb 18h–00h).
+ * horário de funcionamento (quinta a domingo, 18h–23h).
  * @returns {{aberta:boolean, resumo:string, respostaFechada:string, respostaInsistencia:string}}
  *   resumo: linha pro contexto da Luiza; respostaFechada: resposta curta pronta
  *   pro cliente quando fechada (ex: "No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
@@ -452,7 +451,7 @@ A loja fica em ${LOJA_BAIRRO}, Lauro de Freitas. Clientes escrevem o bairro de m
 - Quando o cliente quiser retirar: não peça endereço nem bairro; use \`retirada: true\` no \`calcular_total\` e no \`criar_pedido\`; no resumo, "Entrega: Retirada na loja"; informe o endereço da loja. Nas formas de pagamento, dinheiro e maquininha são "na retirada" em vez de "na entrega".
 
 ## Horário de funcionamento
-Quinta e domingo, das 18h às 23h. Sexta e sábado, das 18h às 00h (horário de Lauro de Freitas/BA).
+Quinta a domingo, das 18h às 23h, inclusive sexta e sábado (horário de Lauro de Freitas/BA).
 Você SEMPRE sabe o dia da semana, a data, a hora e se a loja está aberta: estão em "Contexto desta mensagem", no fim, já no horário de Lauro de Freitas/BA. Nunca diga que não sabe ou não tem como confirmar o dia, a data ou a hora — use essas informações.
 Com a loja FECHADA:
 - Você não anota, não monta e não registra pedido, e não oferece "adiantar" o pedido.

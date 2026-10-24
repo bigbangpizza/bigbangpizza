@@ -9,7 +9,7 @@ import { normalizarWhatsapp, diasEntre, parseComoUTC, classificarSegmentoCliente
 // Só pedidos criados nas últimas N horas entram na busca — cancelar/editar
 // só faz sentido pra pedido recente/em andamento, e isso evita ter que
 // varrer o histórico inteiro de pedidos (de todos os clientes) a cada
-// tentativa. A loja funciona ~6h/dia (quinta-domingo, 18h-00h); 12h dá
+// tentativa. A loja funciona ~5h/dia (quinta-domingo, 18h-23h); 12h dá
 // folga suficiente mesmo pra quem escreve já perto da virada do dia.
 export const JANELA_BUSCA_PEDIDO_HORAS = 12;
 
