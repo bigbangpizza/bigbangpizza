@@ -3410,6 +3410,12 @@ function montarEstadoPedidoManual(extraido, menu){
 }
 
 function calcPrecoItemPedidoManual(item, menu){
+  if(item.brinde){
+    const p1 = menu.salgadas.find(p => p.id === item.produto1Id);
+    if(!p1) return null;
+    const p2 = item.produto2Id ? menu.salgadas.find(p => p.id === item.produto2Id) : null;
+    return { precoUnitario: 0, nomeExibicao: `🎁 Pizza Grande — ${p2 ? `½ ${p1.nome} + ½ ${p2.nome}` : p1.nome} (presente fidelidade)` };
+  }
   if(item.tipo === 'original') return { precoUnitario: Number(item._original.precoUnitario) || 0, nomeExibicao: nomeItemOriginal(item._original) };
   if(!item.tipo || !item.produto1Id) return null;
   const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
@@ -3458,6 +3464,7 @@ function renderPedidoManualConfirmacao(){
       <div class="fg"><label>Nome do cliente</label><input id="pm-nome" value="${esc(st.nome)}" oninput="pmAtualizarCampo('nome',this.value)"></div>
       <div class="fg"><label>WhatsApp</label><input id="pm-whatsapp" value="${esc(st.whatsapp)}" oninput="pmAtualizarCampo('whatsapp',this.value)"></div>
     </div>
+    <div id="pm-fidelidade" style="margin:-4px 0 12px;font-size:13px;"></div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:13px;cursor:pointer;">
       <input type="checkbox" id="pm-retirada" ${st.retirada?'checked':''} onchange="pmToggleRetirada(this.checked)"> Retirada no local (sem entrega)
     </label>
@@ -3495,6 +3502,7 @@ function renderPedidoManualConfirmacao(){
     <div id="pm-resumo" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-input);font-size:14px;"></div>
   `;
   atualizarResumoPedidoManual();
+  atualizarFidelidadePedidoManual();
 
   const btn = document.getElementById('mod-save-btn');
   btn.disabled = false;
@@ -3521,6 +3529,27 @@ const salvarPedidoManual = () => comTravaDoBotaoPedido('⏳ LANÇANDO...', lanca
 const salvarEdicaoPedido = () => comTravaDoBotaoPedido('⏳ SALVANDO...', gravarEdicaoPedido);
 
 function renderItemPedidoManual(item, i, menu){
+  if(item.brinde){
+    // Presente da fidelidade: Grande Tradicional (pode ser meio a meio), sem borda, 1 unidade.
+    // Sai por R$ 0 só se o servidor confirmar o direito (calcular_checkout_v2).
+    const trad = menu.salgadas.filter(p => categoriaSalgada(p.categoria).id === 'tradicional' && p.preco_grande != null);
+    return `<div class="bc2" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:10px;border:1px solid rgba(74,222,128,.45);">
+      <div style="font-weight:700;color:#4ade80;">🎁 Grande Tradicional de presente (fidelidade)</div>
+      <div class="fr">
+        <div class="fg" style="margin-bottom:0;"><label>Sabor 1</label>
+          <select onchange="pmAtualizarItem(${i},'produto1Id',this.value)"><option value="">-- selecione --</option>${opcoesSaborPedidoManual(trad, 'pizza_doce', item.produto1Id)}</select>
+        </div>
+        <div class="fg" style="margin-bottom:0;"><label>Sabor 2 (meio a meio)</label>
+          <select onchange="pmAtualizarItem(${i},'produto2Id',this.value)"><option value="">Nenhum (sabor único)</option>${opcoesSaborPedidoManual(trad, 'pizza_doce', item.produto2Id)}</select>
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:0;"><label>Observação do item</label><input value="${esc(item.obs)}" onchange="pmAtualizarItem(${i},'obs',this.value)"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div id="pm-preco-${i}" style="font-size:13px;font-weight:700;color:${item.produto1Id?'#4ade80':'#ff4444'};">${item.produto1Id ? 'Grátis 🎁' : '⚠️ escolha o sabor'}</div>
+        <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
+      </div>
+    </div>`;
+  }
   if(item.tipo === 'original'){
     const info = calcPrecoItemPedidoManual(item, menu);
     return `<div class="bc2" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:10px;">
@@ -3594,6 +3623,51 @@ function agendarResumoPedidoManual(){ clearTimeout(_pmResumoTimer); _pmResumoTim
 function pmAtualizarCampo(campo, valor){
   window.__pedidoManualState[campo] = valor;
   if(['bairroNome','cupom','whatsapp'].includes(campo)) agendarResumoPedidoManual();
+  if(campo==='whatsapp') agendarFidelidadePedidoManual();
+}
+
+// FIDELIDADE NO PEDIDO MANUAL — selos do WhatsApp digitado (mesma função do site e do
+// servidor, fidelidade_status) e botão do presente quando o cliente tem direito.
+let _pmFidTimer = null, _pmFidSeq = 0;
+function agendarFidelidadePedidoManual(){ clearTimeout(_pmFidTimer); _pmFidTimer = setTimeout(atualizarFidelidadePedidoManual, 500); }
+async function atualizarFidelidadePedidoManual(){
+  const st = window.__pedidoManualState;
+  const el = document.getElementById('pm-fidelidade');
+  if(!st || !el) return;
+  const digitos = (st.whatsapp || '').replace(/\D/g, '');
+  if(digitos.length < 10){
+    el.innerHTML = `<span style="color:#facc15;">⚠️ Sem WhatsApp, este pedido não conta selo.</span>`;
+    return;
+  }
+  const seq = ++_pmFidSeq;
+  el.innerHTML = `<span style="color:var(--text-secondary);">Conferindo selos…</span>`;
+  let f;
+  try {
+    const r = await authFetch(`${SB}/rest/v1/rpc/fidelidade_status`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_whatsapp: st.whatsapp, p_ignorar_pedido: st._edicao ? st._edicao.id : null }) });
+    if(!r.ok) throw new Error('fidelidade_status ' + r.status);
+    f = await r.json();
+  } catch(e) {
+    console.error('atualizarFidelidadePedidoManual', e);
+    if(seq === _pmFidSeq) el.innerHTML = `<span style="color:#ff4444;">⚠️ Não consegui conferir os selos agora.</span>`;
+    return;
+  }
+  if(seq !== _pmFidSeq) return;
+  if(!f.valido){ el.innerHTML = `<span style="color:var(--text-secondary);">Este número não participa da fidelidade.</span>`; return; }
+  const temPresente = st.itens.some(it => it.brinde);
+  el.innerHTML = `<span style="color:#facc15;font-weight:700;">⭐ ${f.selos} de ${f.meta || 5} selos</span>`
+    + (f.brinde_pendente ? ` <span style="color:var(--text-secondary);">· já tem um presente num pedido em andamento</span>` : '')
+    + (f.tem_brinde && !temPresente ? `<div style="margin-top:6px;"><button type="button" class="bc" style="width:100%;" onclick="pmAdicionarPresente()">🎁 Adicionar Grande Tradicional de presente</button></div>` : '')
+    + (f.tem_brinde && temPresente ? ` <span style="color:#4ade80;">· presente adicionado 🎁</span>` : '');
+}
+function pmAdicionarPresente(){
+  const st = window.__pedidoManualState;
+  if(st.itens.some(it => it.brinde)) return;
+  // Troca a linha vazia inicial pelo presente; senão, adiciona no fim.
+  const presente = { ...ITEM_PEDIDO_MANUAL_VAZIO(), tipo: 'pizza_salgada', tamanho: 'Grande', brinde: true };
+  if(st.itens.length === 1 && !st.itens[0].tipo) st.itens[0] = presente; else st.itens.push(presente);
+  pmRerenderItens();
+  atualizarFidelidadePedidoManual();
 }
 
 function pmToggleRetirada(checked){
@@ -3635,6 +3709,7 @@ function pmRemoverItem(i){
   window.__pedidoManualState.itens.splice(i,1);
   if(!window.__pedidoManualState.itens.length) window.__pedidoManualState.itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
   pmRerenderItens();
+  atualizarFidelidadePedidoManual();
 }
 
 // Itens do pedido manual no mesmo formato que o site/bot gravam.
@@ -3654,10 +3729,11 @@ function montarItensJsonPedidoManual(st, menu, precos){
       tabela: it.tipo==='pizza_salgada' ? 'pizzas_salgadas' : null,
       tamanho: it.tipo==='pizza_salgada' ? it.tamanho : null,
       sabores,
-      borda,
+      borda: it.brinde ? null : borda,
       precoUnitario: precos[i].precoUnitario,
-      qty: it.qty,
+      qty: it.brinde ? 1 : it.qty,
       obs: it.obs || null,
+      ...(it.brinde ? { brinde_fidelidade: true } : {}),
     };
   });
 }
@@ -3723,6 +3799,9 @@ async function atualizarResumoPedidoManual(){
       ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)}: −${brl(c.desconto)} (com cupom o frete é cobrado e não há oferta da doce)</div>`
       : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)} não vale: ${esc(c.motivo||'')}</div>`) : ''}
     ${r.comparacao ? `<div style="background:rgba(250,204,21,.12);color:#facc15;border-radius:7px;padding:8px 10px;font-size:13px;margin-bottom:6px;">⚖️ Cupom e oferta da doce não acumulam: com o cupom fica <strong>${brl(r.comparacao.total_com_cupom)}</strong>; com a doce em oferta (sem cupom) fica <strong>${brl(r.comparacao.total_com_oferta)}</strong>. ${r.comparacao.mais_barato==='oferta' ? `A oferta sai ${brl(r.comparacao.diferenca)} mais barata — avise o cliente (pra usar a oferta, apague o cupom).` : r.comparacao.mais_barato==='cupom' ? 'O cupom é a opção mais barata.' : 'As duas dão o mesmo total.'}</div>` : ''}
+    ${r.fidelidade ? (r.fidelidade.brinde_aplicado
+      ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎁 Presente da fidelidade confirmado: a pizza sai grátis.</div>`
+      : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎁 Presente não vale: ${esc(r.fidelidade.motivo||'')} Do jeito que está, a pizza será cobrada.</div>`) : ''}
     ${doceOferta ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🍫 Oferta aplicada: Doce ${esc(doceOferta.sabores?.[0]?.nome||'')} por ${brl(doceOferta.precoUnitario)} (−${brl(r.oferta_doce.economia)})</div>` : ''}
     <div>Subtotal: <strong>${brl(r.subtotal)}</strong></div>
     ${Number(r.desconto) > 0 ? `<div>Desconto: <strong>−${brl(r.desconto)}</strong></div>` : ''}
@@ -3762,6 +3841,9 @@ async function lancarPedidoManual(){
   }
   if(st.cupom && !r.cupom?.valido){
     showToastAdmin(`⚠️ Cupom ${st.cupom} não vale: ${r.cupom?.motivo || ''} Apague o cupom pra lançar sem desconto.`); return;
+  }
+  if(st.itens.some(it => it.brinde) && !r.fidelidade?.brinde_aplicado){
+    showToastAdmin(`⚠️ Presente da fidelidade não vale: ${r.fidelidade?.motivo || ''} Remova o presente pra lançar.`, 7000); return;
   }
 
   const itensTexto = st.itens.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
@@ -3813,7 +3895,7 @@ function itemEstadoDeItemJson(it, menu){
   const base = { borda: bordaId, qty: Math.max(1, Math.trunc(Number(it.qty) || 1)), obs: it.obs || '', _sabor1Texto: s1.nome || '', _sabor2Texto: s2?.nome || '' };
   if (it.tamanho) {
     const p1 = porIdOuNome(menu.salgadas, s1), p2 = s2 ? porIdOuNome(menu.salgadas, s2) : null;
-    return { ...base, tipo: 'pizza_salgada', tamanho: it.tamanho, produto1Id: p1 ? p1.id : null, produto2Id: p2 ? p2.id : null };
+    return { ...base, tipo: 'pizza_salgada', tamanho: it.tamanho, produto1Id: p1 ? p1.id : null, produto2Id: p2 ? p2.id : null, ...(it.brinde_fidelidade ? { brinde: true, borda: '', qty: 1 } : {}) };
   }
   for (const [tipo, lista] of [['pizza_doce', menu.doces], ['combo', menu.combos], ['bebida', menu.bebidas]]) {
     const prod = buscarProdutoPedidoManual(lista, s1.nome);
