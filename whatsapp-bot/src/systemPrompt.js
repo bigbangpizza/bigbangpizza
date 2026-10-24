@@ -528,7 +528,7 @@ ${formatarDoces(doces)}
 
 ## Cardápio — Combos
 ${formatarCombos(combos, { comDePor: true })}
-- **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza pode ser meio a meio entre Tradicionais. Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode ser meio a meio entre as Tradicionais."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, \`sabor2\` só se aquela for meio a meio), nunca no \`obs\`. Cupom não vale na Dupla (é combo).
+- **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza é inteira, de 1 sabor (a Dupla NÃO tem meio a meio — nunca ofereça; se o cliente pedir, explique em uma linha que na Dupla cada pizza é de 1 sabor). Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode repetir o sabor."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, só \`sabor1\`, sem \`sabor2\`), nunca no \`obs\`. Cupom não vale na Dupla (é combo).
 
 ## Pizza do Dia
 - Nas quintas, sextas e sábados pode ter uma Pizza do Dia (promoção com sabor e tamanho fixos). O que vale hoje está no bloco "Pizza do Dia", no fim — nunca ofereça uma pizza do dia que não esteja lá como "vale agora".

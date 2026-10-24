@@ -59,7 +59,7 @@ export const EDITAR_PEDIDO_TOOL = {
               type: 'array',
               description:
                 'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
-                'com o sabor (e sabor2 se aquela pizza for meio a meio). Na Dupla, só sabores Tradicionais.',
+                'com o sabor em sabor1 (sem sabor2: a Dupla não tem meio a meio). Na Dupla, só sabores Tradicionais.',
               items: {
                 type: 'object',
                 properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },

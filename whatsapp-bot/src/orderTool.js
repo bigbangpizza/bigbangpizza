@@ -101,7 +101,7 @@ export const CRIAR_PEDIDO_TOOL = {
               type: 'array',
               description:
                 'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
-                'com o sabor (e sabor2 se aquela pizza for meio a meio). Na Dupla, só sabores Tradicionais.',
+                'com o sabor em sabor1 (sem sabor2: a Dupla não tem meio a meio). Na Dupla, só sabores Tradicionais.',
               items: {
                 type: 'object',
                 properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },
@@ -174,7 +174,7 @@ export function pizzaDoDiaDeHoje(menuData, agora = new Date()) {
 
 // Combos em que o cliente escolhe os sabores das pizzas (nome do combo em minúsculas).
 const COMBOS_COM_PIZZAS_ESCOLHIDAS = {
-  'dupla tradicional': { pizzas: 2, tamanho: 'Grande', categoria: 'tradicional', rotulo: 'Tradicionais' },
+  'dupla tradicional': { pizzas: 2, tamanho: 'Grande', categoria: 'tradicional', rotulo: 'Tradicionais', meioAMeio: false },
 };
 
 // Sabor de pizza salgada de uma categoria (e tamanho) — usado na Dupla e no presente da fidelidade.
@@ -336,12 +336,13 @@ export function processarItens(itensInput, menuData) {
       if (regraCombo) {
         const pizzasInput = Array.isArray(itemInput.pizzas_do_combo) ? itemInput.pizzas_do_combo : [];
         if (pizzasInput.length !== regraCombo.pizzas) {
-          erros.push(`O combo "${encontrado1.nome}" precisa dos sabores das ${regraCombo.pizzas} pizzas em "pizzas_do_combo" (${regraCombo.rotulo}; cada uma pode ser meio a meio). Pergunte ao cliente.`);
+          erros.push(`O combo "${encontrado1.nome}" precisa dos sabores das ${regraCombo.pizzas} pizzas em "pizzas_do_combo" (${regraCombo.rotulo}${regraCombo.meioAMeio === false ? '; cada uma inteira, de 1 sabor' : '; cada uma pode ser meio a meio'}). Pergunte ao cliente.`);
           continue;
         }
         const campoPreco = regraCombo.tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
         const montadas = [];
         for (const pz of pizzasInput) {
+          if (pz.sabor2 && regraCombo.meioAMeio === false) { erros.push(`O combo "${encontrado1.nome}" não tem meio a meio: cada pizza é inteira, de 1 sabor. Pergunte ao cliente o sabor de cada pizza.`); break; }
           const nomes = [pz.sabor1, pz.sabor2].filter(Boolean);
           const achados = nomes.map((n) => saborDaCategoria(menuData, n, regraCombo.categoria, campoPreco));
           const invalido = nomes.find((n, k) => !achados[k]);
