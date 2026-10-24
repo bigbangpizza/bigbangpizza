@@ -5608,7 +5608,8 @@ async function loadClientes() {
     return { selos: Math.min(selos, 5), temBrinde: selos >= 5, ultimoUso };
   };
 
-  const rows = clientes.map(p => {
+  const linhas = clientes.map(p => {
+    const fid = p.whatsapp && !telefonesExcluidos.has(chaveTelefoneAdmin(p.whatsapp)) ? fidelidadeDoCliente(p.whatsapp) : null;
     const dt = parseUTC(p.created_at)||new Date();
     const diasDesdeUltimo = Math.floor((Date.now() - dt.getTime()) / 86400000);
     const pedidosCliente = data.filter(x => chaveCliente(x) === chaveCliente(p));
@@ -5619,7 +5620,7 @@ async function loadClientes() {
     const avisoReativacao = ultimaReativacao
       ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">✅ Reativação enviada em ${new Date(ultimaReativacao).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>`
       : '';
-    return `<tr>
+    const html = `<tr>
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
       <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
       <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
@@ -5641,12 +5642,69 @@ async function loadClientes() {
         ${avisoReativacao}
       </td>
     </tr>`;
-  }).join('');
+    return { p, fid, html };
+  });
+  clientesCarregados = { linhas, totalClientes: clientes.length, totalPedidos: data.length };
+  renderTabelaClientes();
+}
+
+// FILTRO DE FIDELIDADE NA ABA CLIENTES + envio da mensagem de selos, um cliente por vez
+// (cada clique abre o WhatsApp do próximo; o navegador só deixa abrir janela no clique).
+let clientesCarregados = null;
+let filtroFidelidadeClientes = '';
+let filaMsgFidelidade = null; // { lista: [{nome, whatsapp, selos}], i }
+const FILTROS_FIDELIDADE = {
+  presente: { rotulo: 'Tem presente', teste: f => f.temBrinde },
+  falta1:   { rotulo: 'Falta 1 selo', teste: f => !f.temBrinde && f.selos === 4 },
+  falta2:   { rotulo: 'Falta 2 selos', teste: f => !f.temBrinde && f.selos === 3 },
+};
+
+function mensagemSelosFidelidade(nomeCompleto, selos){
+  const nome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  if (selos >= 5) return `Oi, ${nome}! Você já tem 5 de 5 selos na Big Bang 🍕 Seu próximo pedido ganha uma Grande Tradicional de presente!`;
+  const faltam = 5 - selos;
+  return `Oi, ${nome}! Você já tem ${selos} de 5 selos na Big Bang 🍕 ${faltam === 1 ? 'Falta só 1 pedido' : `Faltam só ${faltam} pedidos`} pra sua Grande Tradicional de presente!`;
+}
+
+function mudarFiltroFidelidadeClientes(valor){
+  filtroFidelidadeClientes = valor;
+  filaMsgFidelidade = null;
+  renderTabelaClientes();
+}
+
+function renderTabelaClientes(){
+  const c = clientesCarregados;
+  if (!c) return;
+  const filtro = FILTROS_FIDELIDADE[filtroFidelidadeClientes];
+  const visiveis = filtro ? c.linhas.filter(l => l.fid && filtro.teste(l.fid)) : c.linhas;
+  const rows = visiveis.map(l => l.html).join('');
+  const comWhats = visiveis.filter(l => l.p.whatsapp && normalizarWhatsapp(l.p.whatsapp));
+  const fila = filaMsgFidelidade;
+  const proximo = fila && fila.i < fila.lista.length ? fila.lista[fila.i] : null;
+  const painelEnvio = !filtro ? '' : `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      ${!comWhats.length ? '<span style="font-size:13px;color:rgba(255,255,255,0.4);">Nenhum cliente com WhatsApp neste filtro.</span>'
+        : proximo ? `<button class="bp" style="background:#25D366;" onclick="enviarProximaMsgFidelidade()">📨 Enviar para ${esc(String(proximo.nome||'').split(' ')[0])} (${fila.i + 1} de ${fila.lista.length})</button>
+            <button class="bc" onclick="filaMsgFidelidade=null;renderTabelaClientes()">Parar</button>`
+        : fila ? `<span style="font-size:13px;color:#4ade80;">✅ Mensagens abertas para ${fila.lista.length === 1 ? 'o cliente' : `os ${fila.lista.length} clientes`}.</span>
+            <button class="bc" onclick="filaMsgFidelidade=null;renderTabelaClientes()">OK</button>`
+        : `<button class="bp" style="background:#25D366;" onclick="iniciarMsgFidelidade()">📨 Mandar mensagem pelo WhatsApp (${comWhats.length})</button>
+           <span style="font-size:12px;color:rgba(255,255,255,0.4);">Abre um cliente por vez, com o texto pronto.</span>`}
+    </div>`;
 
   document.getElementById('t-clientes').innerHTML = `
-    <div style="font-size:13px;color:rgba(255,255,255,0.3);margin-bottom:12px;">
-      ${clientes.length} clientes únicos • ${data.length} pedidos total
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <div style="font-size:13px;color:rgba(255,255,255,0.3);">
+        ${filtro ? `${visiveis.length} de ${c.totalClientes} clientes` : `${c.totalClientes} clientes únicos • ${c.totalPedidos} pedidos total`}
+      </div>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;">Fidelidade
+        <select onchange="mudarFiltroFidelidadeClientes(this.value)" style="width:auto;">
+          <option value="">Todos</option>
+          ${Object.entries(FILTROS_FIDELIDADE).map(([k, v]) => `<option value="${k}" ${filtroFidelidadeClientes===k?'selected':''}>${v.rotulo}</option>`).join('')}
+        </select>
+      </label>
     </div>
+    ${painelEnvio}
     <table style="width:100%;border-collapse:collapse;">
       <thead><tr>
         <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Nome</th>
@@ -5658,8 +5716,27 @@ async function loadClientes() {
         <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Segmento</th>
         <th style="padding:10px;text-align:left;font-size:11px;color:rgba(255,255,255,0.3);background:#111;">Ação</th>
       </tr></thead>
-      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">Nenhum cliente ainda</td></tr>'}</tbody>
+      <tbody>${rows||`<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,0.3);padding:20px;">${filtro ? 'Nenhum cliente neste filtro' : 'Nenhum cliente ainda'}</td></tr>`}</tbody>
     </table>`;
+}
+
+function iniciarMsgFidelidade(){
+  const filtro = FILTROS_FIDELIDADE[filtroFidelidadeClientes];
+  if (!filtro || !clientesCarregados) return;
+  const lista = clientesCarregados.linhas
+    .filter(l => l.fid && filtro.teste(l.fid) && normalizarWhatsapp(l.p.whatsapp))
+    .map(l => ({ nome: l.p.nome, whatsapp: l.p.whatsapp, selos: l.fid.temBrinde ? 5 : l.fid.selos }));
+  filaMsgFidelidade = { lista, i: 0 };
+  enviarProximaMsgFidelidade();
+}
+
+function enviarProximaMsgFidelidade(){
+  const fila = filaMsgFidelidade;
+  if (!fila || fila.i >= fila.lista.length) return;
+  const cli = fila.lista[fila.i];
+  window.open(linkWhatsApp(normalizarWhatsapp(cli.whatsapp), mensagemSelosFidelidade(cli.nome, cli.selos)), '_blank');
+  fila.i++;
+  renderTabelaClientes();
 }
 
 // ═══════════════════════════════════════════════════════
