@@ -149,6 +149,21 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .badge{background:rgba(255,255,255,0.1);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.92);padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;}
 .hero-cta{display:inline-block;background:var(--red);color:white;padding:18px 46px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;border-radius:10px;text-decoration:none;position:relative;z-index:2;box-shadow:0 10px 30px rgba(204,17,0,0.45);transition:transform 0.15s,background 0.15s;}
 .hero-cta:hover{background:var(--red-dark);transform:translateY(-2px);}
+.hero-frete{display:none;position:relative;z-index:2;color:#fff;font-size:13px;font-weight:700;line-height:1.35;margin:0 0 12px;text-shadow:0 2px 8px rgba(0,0,0,0.6);}
+/* Computador: topo compacto, pra faixa da Promoção do Dia aparecer já na primeira tela. */
+@media(min-width:641px){
+  .hero{min-height:0;padding:16px 20px 22px;}
+  .hero-badge-logo{width:min(120px,22vw);margin-bottom:2px;}
+  .hero-eyebrow{margin-bottom:4px;}
+  .hero h1{font-size:clamp(36px,4.2vw,52px);}
+  .hero h1 br{display:none;}
+  .hero h1 em::before{content:' ';}
+  .hero-frete{display:block;font-size:15px;margin:8px 0 0;}
+  .hero-sub{margin:6px 0 12px;font-size:15px;}
+  .hero-delivery-time{margin-bottom:14px;padding:6px 16px;font-size:14px;}
+  .hero-badges{display:none;}
+  .hero-cta{padding:12px 38px;font-size:22px;}
+}
 
 /* SECTIONS */
 .sw{max-width:1100px;margin:0 auto;padding:48px 20px;}
@@ -255,7 +270,8 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
   .hero-eyebrow{font-size:10px;letter-spacing:3px;margin-bottom:4px;}
   .hero h1{font-size:clamp(30px,9vw,40px);}
   .hero-sub{display:none;}
-  .hero h1{margin-bottom:10px;}
+  .hero h1{margin-bottom:6px;}
+  .hero-frete{display:block;}
   .hero-delivery-time{font-size:12.5px;padding:5px 14px;margin-bottom:12px;}
   .hero-badges{display:none;}
   .hero-cta{padding:11px 34px;font-size:21px;}
@@ -562,6 +578,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
   <picture><source srcset="logo-hero.webp" type="image/webp"><img class="hero-badge-logo" src="logo-hero.png" alt="Big Bang Pizza" width="700" height="700"></picture>
   <div class="hero-eyebrow">Delivery em Lauro de Freitas</div>
   <h1><span id="hero-slogan">2 pizzas Grandes</span><br><em id="hero-destaque">por <span class="hero-dupla-preco">R$ 79,90</span></em></h1>
+  <p class="hero-frete">🚚 Frete grátis acima de R$ 65 em Vilas, Pitangueiras e região</p>
   <p class="hero-sub" id="hero-subtitulo">Dupla Tradicional: você escolhe os sabores. Qui e dom, 18h às 23h. Sex e sáb, 18h às 00h.</p>
   <div class="hero-delivery-time">🛵 Entrega em 35-60 min</div>
   <div class="hero-badges">
@@ -578,7 +595,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 <!-- DESTAQUE DA DUPLA (preço e "de/por" vêm do combo no banco; some se a Dupla estiver inativa) -->
 <div class="dupla-destaque" id="dupla-destaque" style="display:none;">
   <div class="dd-titulo">🔥 Dupla Tradicional: 2 pizzas Grandes por <span class="hero-dupla-preco">R$ 79,90</span></div>
-  <div class="dd-sub">Você escolhe os sabores entre as Tradicionais (cada uma pode ser meio a meio).</div>
+  <div class="dd-sub">Você escolhe o sabor de cada pizza entre as Tradicionais.</div>
   <div id="dupla-destaque-depor"></div>
   <button type="button" onclick="abrirDupla()">🍕 Escolher os sabores</button>
 </div>
