@@ -12,7 +12,11 @@
 export function parseComoUTC(valor) {
   if (!valor) return null;
   const iso = valor.includes('T') ? valor : valor.replace(' ', 'T');
-  return new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+  // Coluna "timestamp with time zone" já vem com o fuso (ex: "+00:00") — só
+  // as "without time zone" (gravadas em UTC) precisam do "Z". Antes, o "Z"
+  // era colado também nas que já tinham fuso e virava data inválida.
+  const temFuso = /T.+(Z|[+-]\d{2}(:?\d{2})?)$/.test(iso);
+  return new Date(temFuso ? iso : iso + 'Z');
 }
 
 export function diasEntre(dataAntiga, dataRecente) {
@@ -31,6 +35,30 @@ export function normalizarWhatsapp(raw) {
   if (digits.length >= 12 && digits.startsWith('55')) return digits;
   if (digits.length === 10 || digits.length === 11) return '55' + digits;
   return digits;
+}
+
+/**
+ * Chave pra comparar telefones em qualquer formato: com ou sem 55, com ou sem
+ * o 9 do celular, com máscara ou não. Fica DDD + 8 últimos dígitos (ex:
+ * "+55 (71) 99999-8888", "557199998888" e "71999998888" → "7199998888").
+ * Sem DDD, ficam só os 8 últimos dígitos — ver mesmoTelefone().
+ */
+export function chaveTelefone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if ((d.length === 12 || d.length === 13) && d.startsWith('55')) d = d.slice(2);
+  if (d.length === 11 && d[2] === '9') d = d.slice(0, 2) + d.slice(3);
+  if (d.length === 10) return d;
+  if (d.length === 8 || d.length === 9) return d.slice(-8);
+  return d.length >= 8 ? d.slice(-8) : null;
+}
+
+/** Mesmo telefone em qualquer formato (compara só os 8 últimos se um lado não tem DDD). */
+export function mesmoTelefone(a, b) {
+  const ka = chaveTelefone(a);
+  const kb = chaveTelefone(b);
+  if (!ka || !kb) return false;
+  if (ka.length === 10 && kb.length === 10) return ka === kb;
+  return ka.slice(-8) === kb.slice(-8);
 }
 
 // Mesmo critério de segmentação usado em admin.html (classificarSegmentoCliente,

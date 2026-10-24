@@ -35,6 +35,7 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
         description: '"presencial" = dinheiro ou cartão na maquininha, na entrega; "pix" = Pix; "cartao_link" = link de pagamento (Ton), só se o texto falar em link. Se o texto disser só "cartão", sem dizer se é maquininha ou link, deixe vazio "" (a equipe confirma). String vazia se o texto não deixar claro.',
       },
       observacao_geral: { type: 'string', description: 'Observação geral do pedido (ex: sem cebola, campainha quebrada), se houver.' },
+      cupom: { type: 'string', description: 'Código do cupom de desconto, só se o texto citar um (ex: BIGBANG15, VOLTEI10), em maiúsculas e sem espaços. String vazia se não houver. Não coloque o cupom na observação.' },
       itens: {
         type: 'array',
         description: 'Cada item que o texto parece descrever, mesmo que não tenha certeza absoluta — a revisão humana corrige depois.',
