@@ -42,13 +42,20 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
         items: {
           type: 'object',
           properties: {
-            tipo: { type: 'string', enum: ['pizza_salgada', 'pizza_doce', 'combo', 'bebida', ''] },
+            tipo: { type: 'string', enum: ['pizza_salgada', 'pizza_doce', 'combo', 'bebida', 'pizza_do_dia', ''], description: '"pizza_do_dia" quando o texto citar uma promoção da lista "Pizza do Dia" (ex: Quintabresa, Sexta do Lombinho, Sabadão Cremoso), com o nome da promoção em sabor1.' },
             tamanho: { type: 'string', enum: ['Grande', 'Família', ''], description: 'Só relevante para pizza_salgada.' },
             sabor1: { type: 'string', description: 'Nome do produto/sabor, o mais parecido possível com o nome exato do cardápio abaixo. String vazia se não identificar.' },
             sabor2: { type: 'string', description: 'Segundo sabor, só se for pizza salgada meio a meio. Vazio se for sabor único.' },
             borda: { type: 'string', enum: ['catupiry', 'cheddar', 'chocolate', ''], description: 'Vazio se não tiver borda ou não mencionado.' },
             quantidade: { type: 'integer', minimum: 1, description: 'Padrão 1 se não especificado.' },
             obs: { type: 'string', description: 'Observação específica deste item, se houver.' },
+            pizzas_do_combo: {
+              type: 'array',
+              description: 'Só na Dupla Tradicional: o sabor de cada uma das 2 pizzas (Tradicionais, inteiras), na ordem. Deixe sabor1 vazio se o texto não disser.',
+              items: { type: 'object', properties: { sabor1: { type: 'string' } } },
+            },
+            doce: { type: 'string', description: 'Só em combo que tem pizza doce: o sabor da doce, se o texto disser. Vazio se não disser.' },
+            bebida: { type: 'string', description: 'Só em combo que tem bebida: a bebida escolhida (nome do cardápio), se o texto disser. Vazio se não disser.' },
           },
           required: ['tipo', 'sabor1', 'quantidade'],
         },
@@ -58,7 +65,9 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
   },
 };
 
-function montarSystemPrompt({ salgadas, doces, combos, bebidas, bairros }) {
+const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+
+function montarSystemPrompt({ salgadas, doces, combos, bebidas, bairros, pizzasDoDia = [] }) {
   return `Você ajuda a estruturar pedidos de pizza a partir de texto livre, para a Big Bang Pizza (pizzaria delivery em Lauro de Freitas, Bahia). O texto vem de um atendente humano (Gabriel) que já atendeu o cliente diretamente pelo WhatsApp, fora do bot automático, e agora está colando a conversa (ou um resumo) para lançar o pedido no sistema.
 
 Sua única tarefa é chamar a ferramenta \`extrair_pedido_manual\` extraindo o que conseguir identificar no texto. Regra mais importante: NUNCA invente, deduza ou complete informação que não está explicitamente no texto — um humano vai revisar e corrigir cada campo antes de qualquer coisa ser salva, então é sempre melhor deixar um campo vazio do que chutar.
@@ -76,6 +85,11 @@ ${formatarCombos(combos)}
 
 ### Bebidas
 ${formatarBebidas(bebidas)}
+
+### Pizza do Dia (promoções; use tipo "pizza_do_dia" e o NOME da promoção em sabor1)
+${pizzasDoDia.filter((p) => p.ativo !== false).map((p) => `- ${p.nome}: ${p.tamanho} ${p.sabor} (${DIAS_SEMANA[p.dia_semana]})`).join('\n') || '- (nenhuma)'}
+
+Combos: "Dupla" = Dupla Tradicional (2 Grandes Tradicionais inteiras: sabores em pizzas_do_combo). Nos combos com pizza doce e/ou refrigerante, ponha o sabor da doce em "doce" e a bebida em "bebida" (só se o texto disser). "Coca" sem dizer se é Zero ou Tradicional: deixe "Coca-Cola 1L" (a equipe escolhe).
 
 ## Bairros atendidos
 ${formatarBairros(bairros)}

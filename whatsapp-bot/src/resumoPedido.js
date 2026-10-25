@@ -19,9 +19,13 @@ const textoSabores = (s) => (s.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}
 function nomeItem(i, nomesDoces) {
   const s = i.sabores || [];
   const nome = textoSabores(s);
-  // Combo com pizzas escolhidas pelo cliente (ex: Dupla Tradicional): sabores de cada pizza.
-  if (Array.isArray(i.combo_pizzas) && i.combo_pizzas.length) {
-    return `${(s[0] && s[0].nome) || 'Combo'} (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores || [])}`).join(' / ')})`;
+  // Combo com escolhas do cliente: sabores de cada pizza (ex: Dupla Tradicional) e,
+  // nos combos com doce/bebida, o sabor da doce e a bebida escolhidos.
+  const pizzasCombo = Array.isArray(i.combo_pizzas) && i.combo_pizzas.length
+    ? i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores || [])}`).join(' / ') : '';
+  const extrasCombo = [i.combo_doce && i.combo_doce.nome ? `Doce ${i.combo_doce.nome}` : '', i.combo_bebida && i.combo_bebida.nome ? i.combo_bebida.nome : ''].filter(Boolean).join(' + ');
+  if (pizzasCombo || extrasCombo) {
+    return `${(s[0] && s[0].nome) || 'Combo'} (${[pizzasCombo, extrasCombo].filter(Boolean).join(' + ')})`;
   }
   // Pizza do Dia: nome da promoção (gravado pelo servidor) + tamanho e sabor.
   if (i.pizza_do_dia && typeof i.pizza_do_dia === 'string') return `Pizza do Dia — ${i.pizza_do_dia} (${i.tamanho ? i.tamanho + ' ' : ''}${nome})`;

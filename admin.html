@@ -3237,7 +3237,42 @@ const PAGAMENTO_TEXTO_MANUAL = {
   cartao_link: 'Cartão via link Ton (aguardando envio do link)',
 };
 const BORDA_NOME_MANUAL = { catupiry: 'Catupiry', cheddar: 'Cheddar', chocolate: 'Chocolate' };
-const ITEM_PEDIDO_MANUAL_VAZIO = () => ({ tipo:'', tamanho:'', produto1Id:null, produto2Id:null, borda:'', qty:1, obs:'', _sabor1Texto:'', _sabor2Texto:'' });
+const ITEM_PEDIDO_MANUAL_VAZIO = () => ({ tipo:'', tamanho:'', produto1Id:null, produto2Id:null, borda:'', qty:1, obs:'', _sabor1Texto:'', _sabor2Texto:'', comboPizzas:[], comboDoceId:null, comboBebidaId:null, pddDia:null });
+
+// COMBOS E PIZZA DO DIA NO PEDIDO MANUAL — mesmas escolhas do site (Dupla: 2 Grandes
+// Tradicionais inteiras) e, nos combos com doce/bebida, o sabor da doce e a bebida,
+// gravados estruturados no itens_json (combo_pizzas, combo_doce, combo_bebida).
+function regraComboManual(combo){
+  if(!combo) return {};
+  if(String(combo.nome).toLowerCase() === 'dupla tradicional') return { pizzas: 2, tamanho: 'Grande' };
+  const d = combo.descricao || '';
+  return { doce: /doce/i.test(d), bebida: /coca|refri|bebida|guaran/i.test(d) };
+}
+const tradicionaisGrandeManual = menu => menu.salgadas.filter(p => categoriaSalgada(p.categoria).id === 'tradicional' && p.preco_grande != null && p.ativo !== false);
+const bebidasComboManual = menu => { const l = menu.bebidas.filter(b => /1\s*l\b/i.test(b.nome)); return l.length ? l : menu.bebidas; };
+const pddDoItemManual = (item, menu) => (menu.pizzasDoDia || []).find(p => p.dia_semana === item.pddDia) || null;
+const nomePizzaDoDiaManual = pdd => `Pizza do Dia — ${pdd.nome} (${pdd.tamanho} ${pdd.sabor})`;
+function saborDaPizzaDoDiaManual(pdd, menu){ return menu.salgadas.find(p => normalizarTextoPedidoManual(p.nome) === normalizarTextoPedidoManual(pdd.sabor)) || null; }
+// Pizza do Dia citada pelo nome (ex: "quintabresa") — usado na extração com IA.
+function pizzaDoDiaPorNomeManual(menu, texto){
+  const alvo = normalizarTextoPedidoManual(texto);
+  if(!alvo) return null;
+  return (menu.pizzasDoDia || []).find(p => { const n = normalizarTextoPedidoManual(p.nome); return n === alvo || alvo.includes(n) || n.includes(alvo); }) || null;
+}
+// Item da IA que é Pizza do Dia: hoje vira o item da promoção; em outro dia, pizza normal com aviso.
+function itemPizzaDoDiaManual(pdd, menu, qty, obs){
+  const sabor = saborDaPizzaDoDiaManual(pdd, menu);
+  const base = { ...ITEM_PEDIDO_MANUAL_VAZIO(), qty, obs: obs || '' };
+  if(menu.pddHoje && menu.pddHoje.dia_semana === pdd.dia_semana)
+    return { ...base, tipo: 'pizza_do_dia', pddDia: pdd.dia_semana, tamanho: pdd.tamanho, produto1Id: sabor ? sabor.id : null };
+  const dias = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+  return { ...base, tipo: 'pizza_salgada', tamanho: pdd.tamanho, produto1Id: sabor ? sabor.id : null,
+    _aviso: `${pdd.nome} é a Pizza do Dia de ${dias[pdd.dia_semana]}. Hoje ${menu.pddHoje ? `vale a ${menu.pddHoje.nome}` : 'não tem Pizza do Dia'}, então entrou como ${pdd.tamanho} ${pdd.sabor} com preço normal.` };
+}
+function opcoesSimplesManual(lista, selecionado){
+  return lista.map(p => `<option value="${p.id}" ${selecionado===p.id?'selected':''}>${esc(p.nome)}</option>`).join('');
+}
+const destaqueFaltando = falta => falta ? 'style="border:2px solid #facc15;"' : '';
 
 function abrirPedidoManual(){
   window.__pedidoManualState = null;
@@ -3296,7 +3331,7 @@ async function processarPedidoManualIA(){
 // só pra esse pedido (as opções mostram os inativos apenas se já escolhidos).
 async function carregarMenuPedidoManual(incluirInativos = false, bairroDoPedido = null){
   const filtro = incluirInativos ? '' : 'ativo=eq.true';
-  const [salgadas, doces, combos, bebidas, bairrosAtivos, cfg, bairroExtra] = await Promise.all([
+  const [salgadas, doces, combos, bebidas, bairrosAtivos, cfg, bairroExtra, pizzasDoDia] = await Promise.all([
     api('pizzas_salgadas', filtro),
     api('pizzas_doces', filtro),
     api('combos', filtro),
@@ -3304,10 +3339,14 @@ async function carregarMenuPedidoManual(incluirInativos = false, bairroDoPedido 
     api('bairros', 'ativo=eq.true'),
     carregarConfigs(),
     bairroDoPedido ? api('bairros', `nome=eq.${encodeURIComponent(bairroDoPedido)}`) : Promise.resolve([]),
+    api('pizza_do_dia', '', 'dia_semana.asc'),
   ]);
   const bairros = [...bairrosAtivos, ...bairroExtra.filter(b => !bairrosAtivos.some(a => a.id === b.id))];
+  // Pizza do Dia: só a de hoje (dia da semana na Bahia) entra como opção nova.
+  const dowBahia = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bahia', weekday: 'short' }).format(new Date())];
   return {
-    salgadas, doces, combos, bebidas, bairros,
+    salgadas, doces, combos, bebidas, bairros, pizzasDoDia,
+    pddHoje: pizzasDoDia.find(p => p.ativo && p.dia_semana === dowBahia) || null,
     bordaSalgada: parseFloat(cfg.borda_preco_salgada) || 12,
     bordaDoce: parseFloat(cfg.borda_preco_doce) || 12,
     // Mesmo padrão da função calcular_checkout_v2 (Configurações do Bot).
@@ -3376,6 +3415,11 @@ function montarEstadoPedidoManual(extraido, menu){
   const pagamentoValido = ['presencial','pix','cartao_link'].includes(extraido.forma_pagamento) ? extraido.forma_pagamento : '';
 
   const itens = (extraido.itens||[]).map(it => {
+    const qtyIA = Math.max(1, Math.trunc(Number(it.quantidade)||1));
+    // Pizza do Dia citada pelo nome da promoção (ex: "Quintabresa"), mesmo que a IA tenha marcado outro tipo.
+    const pddCitada = (it.tipo === 'pizza_do_dia' || it.tipo === 'pizza_salgada' || !it.tipo) ? pizzaDoDiaPorNomeManual(menu, it.sabor1) : null;
+    if(pddCitada) return itemPizzaDoDiaManual(pddCitada, menu, qtyIA, it.obs);
+    if(it.tipo === 'pizza_do_dia') return { ...ITEM_PEDIDO_MANUAL_VAZIO(), qty: qtyIA, obs: it.obs || '', _sabor1Texto: it.sabor1 || '' };
     const tipo = ['pizza_salgada','pizza_doce','combo','bebida'].includes(it.tipo) ? it.tipo : '';
     const catalogo = catalogoPedidoManualPorTipo(menu, tipo);
     const p1 = it.sabor1 ? buscarProdutoPedidoManual(catalogo, it.sabor1) : null;
@@ -3391,6 +3435,8 @@ function montarEstadoPedidoManual(extraido, menu){
       obs: it.obs || '',
       _sabor1Texto: it.sabor1 || '',
       _sabor2Texto: it.sabor2 || '',
+      ...(tipo === 'combo' ? comboDaExtracaoManual(p1, it, menu) : { comboPizzas: [], comboDoceId: null, comboBebidaId: null }),
+      pddDia: null,
     };
   });
   if(!itens.length) itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
@@ -3409,7 +3455,37 @@ function montarEstadoPedidoManual(extraido, menu){
   };
 }
 
+// Escolhas do combo lidas pela IA; o que não bater com o cardápio fica vazio (destacado na tela).
+function comboDaExtracaoManual(combo, it, menu){
+  const regra = regraComboManual(combo);
+  const trad = tradicionaisGrandeManual(menu);
+  const pizzasIA = Array.isArray(it.pizzas_do_combo) ? it.pizzas_do_combo : [];
+  const comboPizzas = regra.pizzas ? Array.from({ length: regra.pizzas }, (_, k) => { const s = pizzasIA[k]?.sabor1; const p = s ? buscarProdutoPedidoManual(trad, s) : null; return p ? p.id : null; }) : [];
+  const doce = regra.doce && it.doce ? buscarProdutoPedidoManual(menu.doces, it.doce) : null;
+  const bebida = regra.bebida && it.bebida ? buscarProdutoPedidoManual(bebidasComboManual(menu), it.bebida) : null;
+  return { comboPizzas, comboDoceId: doce ? doce.id : null, comboBebidaId: bebida ? bebida.id : null,
+    _comboTextos: { pizzas: pizzasIA.map(x => x?.sabor1 || ''), doce: it.doce || '', bebida: it.bebida || '' } };
+}
+
 function calcPrecoItemPedidoManual(item, menu){
+  if(item.tipo === 'pizza_do_dia'){
+    const pdd = pddDoItemManual(item, menu);
+    if(!pdd || !item.produto1Id) return null;
+    const retirada = !!window.__pedidoManualState?.retirada;
+    return { precoUnitario: Number(retirada ? pdd.preco_retirada : pdd.preco_entrega), nomeExibicao: nomePizzaDoDiaManual(pdd) };
+  }
+  if(item.tipo === 'combo' && item.produto1Id){
+    const combo = menu.combos.find(c => c.id === item.produto1Id);
+    if(!combo) return null;
+    const regra = regraComboManual(combo);
+    const pizzas = (item.comboPizzas || []).map(id => menu.salgadas.find(p => p.id === id));
+    if(regra.pizzas && (pizzas.length !== regra.pizzas || pizzas.some(p => !p))) return null;
+    const doce = regra.doce ? menu.doces.find(d => d.id === item.comboDoceId) : null;
+    const bebida = regra.bebida ? menu.bebidas.find(b => b.id === item.comboBebidaId) : null;
+    if((regra.doce && !doce) || (regra.bebida && !bebida)) return null;
+    const partes = [pizzas.map(p => p.nome).join(' / '), [doce ? `Doce ${doce.nome}` : '', bebida ? bebida.nome : ''].filter(Boolean).join(' + ')].filter(Boolean);
+    return { precoUnitario: Number(combo.preco), nomeExibicao: `${combo.nome}${partes.length ? ' — ' + partes.join(' + ') : ''}` };
+  }
   if(item.brinde){
     const p1 = menu.salgadas.find(p => p.id === item.produto1Id);
     if(!p1) return null;
@@ -3562,6 +3638,22 @@ function renderItemPedidoManual(item, i, menu){
       </div>
     </div>`;
   }
+  if(item.tipo === 'pizza_do_dia'){
+    const pdd = pddDoItemManual(item, menu);
+    const precoInfo = calcPrecoItemPedidoManual(item, menu);
+    return `<div class="bc2" style="flex-direction:column;align-items:stretch;gap:8px;margin-bottom:10px;border:1px solid rgba(250,204,21,.45);">
+      <div style="font-weight:700;color:#facc15;">🔥 ${pdd ? esc(nomePizzaDoDiaManual(pdd)) : 'Pizza do Dia'}</div>
+      ${pdd ? `<div style="font-size:12px;color:var(--text-secondary);">Entrega ${brl(pdd.preco_entrega)} · Retirada ${brl(pdd.preco_retirada)} · inteira, sem borda</div>` : '<div style="font-size:12px;color:#ff4444;">Hoje não tem Pizza do Dia.</div>'}
+      <div class="fr">
+        <div class="fg" style="margin-bottom:0;"><label>Quantidade</label><input type="number" min="1" value="${item.qty}" onchange="pmAtualizarItem(${i},'qty',this.value)"></div>
+        <div class="fg" style="margin-bottom:0;"><label>Observação do item</label><input value="${esc(item.obs)}" onchange="pmAtualizarItem(${i},'obs',this.value)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div id="pm-preco-${i}" style="font-size:13px;font-weight:700;">${precoInfo ? brl(precoInfo.precoUnitario*item.qty) : '⚠️ item incompleto'}</div>
+        <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
+      </div>
+    </div>`;
+  }
   const catalogo = catalogoPedidoManualPorTipo(menu, item.tipo);
   const opcoesBorda = item.tipo==='pizza_salgada' ? [{id:'',nome:'Sem borda'},{id:'catupiry',nome:'Catupiry'},{id:'cheddar',nome:'Cheddar'}]
     : item.tipo==='pizza_doce' ? [{id:'',nome:'Sem borda'},{id:'chocolate',nome:'Chocolate'}]
@@ -3579,6 +3671,7 @@ function renderItemPedidoManual(item, i, menu){
           <option value="pizza_doce" ${item.tipo==='pizza_doce'?'selected':''}>Pizza doce</option>
           <option value="combo" ${item.tipo==='combo'?'selected':''}>Combo</option>
           <option value="bebida" ${item.tipo==='bebida'?'selected':''}>Bebida</option>
+          ${menu.pddHoje ? `<option value="pizza_do_dia">🔥 Pizza do Dia — ${esc(menu.pddHoje.nome)}</option>` : ''}
         </select>
       </div>
       <div class="fg" style="margin-bottom:0;"><label>Quantidade</label><input type="number" min="1" value="${item.qty}" onchange="pmAtualizarItem(${i},'qty',this.value)"></div>
@@ -3590,6 +3683,8 @@ function renderItemPedidoManual(item, i, menu){
       </select>
       ${avisoSabor1}
     </div>` : ''}
+    ${item._aviso ? `<div style="font-size:11px;color:#facc15;">⚠️ ${esc(item._aviso)}</div>` : ''}
+    ${item.tipo==='combo' && item.produto1Id ? renderEscolhasComboManual(item, i, menu) : ''}
     ${item.tipo==='pizza_salgada' ? `<div class="fr">
       <div class="fg" style="margin-bottom:0;"><label>Tamanho</label>
         <select onchange="pmAtualizarItem(${i},'tamanho',this.value)">
@@ -3615,6 +3710,26 @@ function renderItemPedidoManual(item, i, menu){
       <button type="button" class="bd" onclick="pmRemoverItem(${i})">🗑️ Remover</button>
     </div>
   </div>`;
+}
+
+function renderEscolhasComboManual(item, i, menu){
+  const combo = menu.combos.find(c => c.id === item.produto1Id);
+  const regra = regraComboManual(combo);
+  const txt = item._comboTextos || {};
+  const leu = t => t ? `<div style="font-size:11px;color:#facc15;">⚠️ IA leu "${esc(t)}" — escolha abaixo.</div>` : '';
+  const pizzas = regra.pizzas ? Array.from({ length: regra.pizzas }, (_, k) => {
+    const sel = (item.comboPizzas || [])[k] ?? null;
+    return `<div class="fg" style="margin-bottom:0;"><label>Pizza ${k + 1} (Grande Tradicional, inteira)</label>
+      <select ${destaqueFaltando(!sel)} onchange="pmAtualizarItem(${i},'comboPizza:${k}',this.value)"><option value="">-- escolha o sabor --</option>${opcoesSimplesManual(tradicionaisGrandeManual(menu), sel)}</select>
+      ${!sel ? leu((txt.pizzas || [])[k]) : ''}</div>`;
+  }).join('') : '';
+  const doce = regra.doce ? `<div class="fg" style="margin-bottom:0;"><label>Sabor da pizza doce</label>
+      <select ${destaqueFaltando(!item.comboDoceId)} onchange="pmAtualizarItem(${i},'comboDoceId',this.value)"><option value="">-- escolha a doce --</option>${opcoesSimplesManual(menu.doces.filter(d => d.ativo !== false), item.comboDoceId)}</select>
+      ${!item.comboDoceId ? leu(txt.doce) : ''}</div>` : '';
+  const bebida = regra.bebida ? `<div class="fg" style="margin-bottom:0;"><label>Bebida</label>
+      <select ${destaqueFaltando(!item.comboBebidaId)} onchange="pmAtualizarItem(${i},'comboBebidaId',this.value)"><option value="">-- escolha a bebida --</option>${opcoesSimplesManual(bebidasComboManual(menu).filter(b => b.ativo !== false), item.comboBebidaId)}</select>
+      ${!item.comboBebidaId ? leu(txt.bebida) : ''}</div>` : '';
+  return pizzas + doce + bebida;
 }
 
 let _pmResumoTimer = null;
@@ -3674,7 +3789,7 @@ function pmToggleRetirada(checked){
   window.__pedidoManualState.retirada = checked;
   const el = document.getElementById('pm-entrega-fields');
   if(el) el.style.display = checked ? 'none' : '';
-  atualizarResumoPedidoManual();
+  pmRerenderItens(); // Pizza do Dia tem preço de retirada
 }
 
 function pmRerenderItens(){
@@ -3685,14 +3800,25 @@ function pmRerenderItens(){
 function pmAtualizarItem(i, campo, valor){
   const item = window.__pedidoManualState.itens[i];
   if(campo==='tipo'){
-    item.tipo = valor;
-    item.produto1Id = null;
-    item.produto2Id = null;
-    item.borda = '';
+    Object.assign(item, ITEM_PEDIDO_MANUAL_VAZIO(), { qty: item.qty, obs: item.obs, tipo: valor });
     item.tamanho = valor==='pizza_salgada' ? 'Grande' : '';
+    if(valor==='pizza_do_dia'){
+      const menu = window.__pedidoManualMenu, pdd = menu.pddHoje;
+      const sabor = pdd ? saborDaPizzaDoDiaManual(pdd, menu) : null;
+      Object.assign(item, { pddDia: pdd ? pdd.dia_semana : null, tamanho: pdd ? pdd.tamanho : '', produto1Id: sabor ? sabor.id : null });
+    }
   } else if(campo==='qty'){
     item.qty = Math.max(1, Math.trunc(Number(valor)||1));
   } else if(campo==='produto1Id' || campo==='produto2Id'){
+    item[campo] = valor ? Number(valor) : null;
+    if(campo==='produto1Id' && item.tipo==='combo'){
+      const regra = regraComboManual(window.__pedidoManualMenu.combos.find(c => c.id === item.produto1Id));
+      item.comboPizzas = regra.pizzas ? Array(regra.pizzas).fill(null) : [];
+      item.comboDoceId = null; item.comboBebidaId = null; item._comboTextos = null;
+    }
+  } else if(campo.startsWith('comboPizza:')){
+    item.comboPizzas[Number(campo.split(':')[1])] = valor ? Number(valor) : null;
+  } else if(campo==='comboDoceId' || campo==='comboBebidaId'){
     item[campo] = valor ? Number(valor) : null;
   } else {
     item[campo] = valor;
@@ -3716,6 +3842,22 @@ function pmRemoverItem(i){
 function montarItensJsonPedidoManual(st, menu, precos){
   return st.itens.map((it,i) => {
     if (it.tipo === 'original') return { ...it._original, qty: it.qty };
+    if (it.tipo === 'pizza_do_dia') {
+      const pdd = pddDoItemManual(it, menu), sabor = menu.salgadas.find(p => p.id === it.produto1Id);
+      const normal = sabor ? sabor[pdd.tamanho === 'Grande' ? 'preco_grande' : 'preco_familia'] : null;
+      return { tipo: 'pizza', tabela: 'pizzas_salgadas', tamanho: pdd.tamanho, sabores: [{ id: sabor.id, nome: sabor.nome, preco: normal }],
+        borda: null, precoUnitario: precos[i].precoUnitario, qty: it.qty, obs: it.obs || null, pizza_do_dia: pdd.nome };
+    }
+    if (it.tipo === 'combo') {
+      const combo = menu.combos.find(c => c.id === it.produto1Id);
+      const doce = menu.doces.find(d => d.id === it.comboDoceId), bebida = menu.bebidas.find(b => b.id === it.comboBebidaId);
+      const pizzas = (it.comboPizzas || []).map(id => menu.salgadas.find(p => p.id === id)).filter(Boolean);
+      return { tipo: 'simples', tabela: null, tamanho: null, sabores: [{ nome: combo.nome, preco: Number(combo.preco) }], borda: null,
+        precoUnitario: precos[i].precoUnitario, qty: it.qty, obs: it.obs || null,
+        ...(pizzas.length ? { combo_pizzas: pizzas.map(p => ({ tamanho: regraComboManual(combo).tamanho || 'Grande', sabores: [{ id: p.id, nome: p.nome }] })) } : {}),
+        ...(doce ? { combo_doce: { id: doce.id, nome: doce.nome } } : {}),
+        ...(bebida ? { combo_bebida: { id: bebida.id, nome: bebida.nome } } : {}) };
+    }
     const catalogo = catalogoPedidoManualPorTipo(menu, it.tipo);
     const p1 = catalogo.find(p => p.id===it.produto1Id);
     const p2 = it.produto2Id ? catalogo.find(p => p.id===it.produto2Id) : null;
@@ -3799,6 +3941,7 @@ async function atualizarResumoPedidoManual(){
       ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)}: −${brl(c.desconto)} (com cupom o frete é cobrado e não há oferta da doce)</div>`
       : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎟️ Cupom ${esc(c.codigo)} não vale: ${esc(c.motivo||'')}</div>`) : ''}
     ${r.comparacao ? `<div style="background:rgba(250,204,21,.12);color:#facc15;border-radius:7px;padding:8px 10px;font-size:13px;margin-bottom:6px;">⚖️ Cupom e oferta da doce não acumulam: com o cupom fica <strong>${brl(r.comparacao.total_com_cupom)}</strong>; com a doce em oferta (sem cupom) fica <strong>${brl(r.comparacao.total_com_oferta)}</strong>. ${r.comparacao.mais_barato==='oferta' ? `A oferta sai ${brl(r.comparacao.diferenca)} mais barata — avise o cliente (pra usar a oferta, apague o cupom).` : r.comparacao.mais_barato==='cupom' ? 'O cupom é a opção mais barata.' : 'As duas dão o mesmo total.'}</div>` : ''}
+    ${r.pizza_do_dia && !r.pizza_do_dia.aplicada ? `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🔥 ${esc(r.pizza_do_dia.motivo||'')}</div>` : ''}
     ${r.fidelidade ? (r.fidelidade.brinde_aplicado
       ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🎁 Presente da fidelidade confirmado: a pizza sai grátis.</div>`
       : `<div style="color:#ff4444;font-size:13px;margin-bottom:6px;">🎁 Presente não vale: ${esc(r.fidelidade.motivo||'')} Do jeito que está, a pizza será cobrada.</div>`) : ''}
@@ -3892,13 +4035,22 @@ function itemEstadoDeItemJson(it, menu){
   const s1 = it.sabores?.[0] || {}, s2 = it.sabores?.[1] || null;
   const porIdOuNome = (lista, s) => (s.id != null && lista.find(p => p.id === s.id)) || buscarProdutoPedidoManual(lista, s.nome);
   const bordaId = it.borda ? (BORDA_NOME_MANUAL[it.borda.id] ? it.borda.id : Object.keys(BORDA_NOME_MANUAL).find(k => normalizarTextoPedidoManual(BORDA_NOME_MANUAL[k]) === normalizarTextoPedidoManual(it.borda.nome))) || '' : '';
-  const base = { borda: bordaId, qty: Math.max(1, Math.trunc(Number(it.qty) || 1)), obs: it.obs || '', _sabor1Texto: s1.nome || '', _sabor2Texto: s2?.nome || '' };
+  const base = { ...ITEM_PEDIDO_MANUAL_VAZIO(), borda: bordaId, qty: Math.max(1, Math.trunc(Number(it.qty) || 1)), obs: it.obs || '', _sabor1Texto: s1.nome || '', _sabor2Texto: s2?.nome || '' };
+  const pddGravada = typeof it.pizza_do_dia === 'string' ? (menu.pizzasDoDia || []).find(p => p.nome === it.pizza_do_dia) : null;
+  if (pddGravada) {
+    const p1 = porIdOuNome(menu.salgadas, s1);
+    return { ...base, borda: '', tipo: 'pizza_do_dia', pddDia: pddGravada.dia_semana, tamanho: pddGravada.tamanho, produto1Id: p1 ? p1.id : null };
+  }
   if (it.tamanho) {
     const p1 = porIdOuNome(menu.salgadas, s1), p2 = s2 ? porIdOuNome(menu.salgadas, s2) : null;
     return { ...base, tipo: 'pizza_salgada', tamanho: it.tamanho, produto1Id: p1 ? p1.id : null, produto2Id: p2 ? p2.id : null, ...(it.brinde_fidelidade ? { brinde: true, borda: '', qty: 1 } : {}) };
   }
   for (const [tipo, lista] of [['pizza_doce', menu.doces], ['combo', menu.combos], ['bebida', menu.bebidas]]) {
     const prod = buscarProdutoPedidoManual(lista, s1.nome);
+    if (prod && tipo === 'combo') return { ...base, tipo, tamanho: '', produto1Id: prod.id, produto2Id: null,
+      comboPizzas: (it.combo_pizzas || []).map(pz => { const p = porIdOuNome(menu.salgadas, pz.sabores?.[0] || {}); return p ? p.id : null; }),
+      comboDoceId: it.combo_doce ? (porIdOuNome(menu.doces, it.combo_doce) || {}).id ?? null : null,
+      comboBebidaId: it.combo_bebida ? (porIdOuNome(menu.bebidas, it.combo_bebida) || {}).id ?? null : null };
     if (prod) return { ...base, tipo, tamanho: '', produto1Id: prod.id, produto2Id: null };
   }
   // Produto que não existe mais no cardápio: o item fica como foi lançado
@@ -5016,6 +5168,11 @@ function contarPizzasPorSabor(pedidosLista, nomesDoces, nomesCombos){
         // combo com pizzas escolhidas pelo cliente (ex: Dupla Tradicional): cada
         // pizza conta pelos sabores dela (meio a meio = 1 por metade, como a avulsa).
         item.combo_pizzas.forEach(pz=>(pz.sabores||[]).forEach(s=>{ if(s?.nome) cont[s.nome]=(cont[s.nome]||0)+qty; }));
+      } else if(nomesCombos.has(nomeItem) && item.combo_doce?.nome){
+        // combo lançado com o sabor da doce escolhido: a doce conta pelo sabor; a salgada
+        // (fixa na receita do combo) conta só no total de unidades.
+        cont[item.combo_doce.nome]=(cont[item.combo_doce.nome]||0)+qty;
+        semSaborDefinido += qty;
       } else if(nomesCombos.has(nomeItem)){
         // combo: 1 pizza salgada (fixa na receita do combo) + 1 pizza doce
         // (escolhida pelo cliente na conversa) = 2 unidades físicas — mas
