@@ -4403,7 +4403,7 @@ async function baixarEstoquePedido(pedidoId){
   const dados=await api('pedidos',`id=eq.${pedidoId}`);
   if(!dados||!dados[0]) return;
   const itens=dados[0].itens||'';
-  const estoque=await api('estoque','ativo=eq.true');
+  const estoque=await api('estoque','ativo=eq.true&tipo=eq.bebida'); // insumos (kg) são ajustados à mão
   for(const item of estoque){
     let count=0;
     itens.split(' | ').forEach(parte=>{
@@ -4431,7 +4431,7 @@ async function loadEstoque(){
     : '<div style="background:rgba(74,222,128,.1);border:1px solid #4ade80;border-radius:8px;padding:10px 14px;font-size:13px;color:#4ade80;">✅ Estoque adequado</div>';
   if(!data.length){ document.getElementById('t-estoque').innerHTML='<div class="loading">Nenhum produto.</div>'; return; }
   const rows=data.map(item=>`<tr>
-    <td data-label="Produto"><strong>${item.nome}</strong></td><td data-label="Qtd">${item.quantidade} ${item.unidade||''}</td>
+    <td data-label="Produto"><strong>${item.nome}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${item.tipo==='insumo'?'Insumo':'Bebida'}</span></td><td data-label="Qtd">${item.quantidade} ${item.unidade||''}</td>
     <td data-label="Mínimo">${item.estoque_minimo} ${item.unidade||''}</td>
     <td data-label="Status"><span class="${item.quantidade<=item.estoque_minimo?'boff':'bon'}">${item.quantidade<=item.estoque_minimo?'⚠️ Baixo':'✅ OK'}</span></td>
     <td data-label="Ações"><div class="acts">
@@ -4449,16 +4449,19 @@ function openModEstoque(){
   document.getElementById('mod-body').innerHTML=`
     <div class="fg"><label>Nome</label><input id="est-nome" placeholder="Ex: Coca-Cola 2L"></div>
     <div class="fr">
-      <div class="fg"><label>Quantidade</label><input id="est-qtd" type="number" value="0" min="0"></div>
+      <div class="fg"><label>Quantidade</label><input id="est-qtd" type="number" value="0" min="0" step="any"></div>
       <div class="fg"><label>Unidade</label><input id="est-unid" placeholder="unid, kg, L"></div>
     </div>
-    <div class="fg"><label>Estoque Mínimo (alerta)</label><input id="est-min" type="number" value="5" min="0"></div>`;
+    <div class="fr">
+      <div class="fg"><label>Tipo</label><select id="est-tipo"><option value="bebida">Bebida (baixa automática no pedido)</option><option value="insumo">Insumo (ajuste manual)</option></select></div>
+      <div class="fg"><label>Estoque Mínimo (alerta)</label><input id="est-min" type="number" value="5" min="0" step="any"></div>
+    </div>`;
   document.getElementById('modal').classList.add('open');
 }
 async function saveEstoque(){
   const nome=document.getElementById('est-nome').value.trim();
   if(!nome){ alert('Digite o nome!'); return; }
-  const ok=await ins('estoque',{nome,quantidade:parseInt(document.getElementById('est-qtd').value||0),unidade:document.getElementById('est-unid').value.trim()||'unid',estoque_minimo:parseInt(document.getElementById('est-min').value||5),ativo:true});
+  const ok=await ins('estoque',{nome,quantidade:parseFloat(document.getElementById('est-qtd').value||0),unidade:document.getElementById('est-unid').value.trim()||'unid',estoque_minimo:parseFloat(document.getElementById('est-min').value||5),tipo:document.getElementById('est-tipo').value,ativo:true});
   if(ok){ closeMod(); loadEstoque(); showToastAdmin('✅ Produto adicionado!'); } else{ alert('Erro!'); }
 }
 
