@@ -300,6 +300,8 @@ header{background:#0a0a0a;padding:12px 20px;display:flex;align-items:center;just
 .bebida-card{background:white;border-radius:var(--radius-card);border:1px solid var(--cream-dark);display:flex;align-items:center;gap:12px;padding:14px;box-shadow:var(--shadow-card);transition:box-shadow .2s,transform .2s;}
 .bebida-card:hover{box-shadow:var(--shadow-card-hover);transform:translateY(-2px);}
 .bebida-card img{width:56px;height:56px;object-fit:cover;border-radius:8px;flex-shrink:0;}
+.foto-zoom{display:block;overflow:hidden;}
+.bebida-card .foto-zoom{flex-shrink:0;border-radius:8px;}
 .bebida-emoji{font-size:36px;}
 .bebida-info{flex:1;}
 .bebida-name{font-weight:700;font-size:14px;}
@@ -1106,12 +1108,20 @@ setTimeout(() => {
 }, 2500);
 
 // LOAD DATA
+// Foto do cardápio com posição e zoom definidos no admin; a moldura corta o excesso
+function fotoProduto(p) {
+  const pos = p.foto_posicao || 'center';
+  const z = Number(p.foto_zoom) || 1;
+  const zoom = z !== 1 ? `;transform:scale(${z});transform-origin:${pos}` : '';
+  return `<span class="foto-zoom"><img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${pos}${zoom}"></span>`;
+}
+
 async function loadCombos() {
   const data = await api('combos', 'ativo=eq.true');
   data.forEach(c => gtag('event', 'view_item', {item_name: c.nome, item_category: 'combo', price: c.preco}));
   document.getElementById('combos-grid').innerHTML = data.length ? data.map(c => `
     <div class="combo-card">
-      ${c.foto_url ? `<img src="${c.foto_url}" alt="${c.nome}" loading="lazy" style="object-position:${c.foto_posicao||'center'}">` : '<div class="combo-no-img">🍕</div>'}
+      ${c.foto_url ? fotoProduto(c) : '<div class="combo-no-img">🍕</div>'}
       <div class="combo-body">
         <span class="combo-tag">${c.tag || 'PROMOÇÃO'}</span>
         <div class="combo-name">${c.nome}</div>
@@ -1411,7 +1421,7 @@ function renderPizzaCard(p) {
   const temFamilia = p.preco_familia != null;
   return `
     <div class="pizza-card">
-      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍕</div>'}
+      ${p.foto_url ? fotoProduto(p) : '<div class="pizza-no-img">🍕</div>'}
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
@@ -1455,7 +1465,7 @@ async function loadDoces() {
   data.forEach(p => gtag('event', 'view_item', {item_name: p.nome, item_category: 'pizza_doce', price: p.preco}));
   document.getElementById('doces-grid').innerHTML = data.map(p => `
     <div class="pizza-card">
-      ${p.foto_url ? `<img src="${p.foto_url}" alt="${p.nome}" loading="lazy" style="object-position:${p.foto_posicao||'center'}">` : '<div class="pizza-no-img">🍫</div>'}
+      ${p.foto_url ? fotoProduto(p) : '<div class="pizza-no-img">🍫</div>'}
       <div class="pizza-body">
         <div class="pizza-name">${p.nome}</div>
         <div class="pizza-desc">${p.descricao||''}</div>
@@ -1475,7 +1485,7 @@ async function loadBebidas() {
   data.forEach(b => gtag('event', 'view_item', {item_name: b.nome, item_category: 'bebida', price: b.preco}));
   document.getElementById('bebidas-grid').innerHTML = data.map(b => `
     <div class="bebida-card">
-      ${b.foto_url ? `<img src="${b.foto_url}" alt="${b.nome}" loading="lazy" style="object-position:${b.foto_posicao||'center'}">` : '<div class="bebida-emoji">🥤</div>'}
+      ${b.foto_url ? fotoProduto(b) : '<div class="bebida-emoji">🥤</div>'}
       <div class="bebida-info"><div class="bebida-name">${b.nome}</div><div class="bebida-price">R$ ${b.preco.toFixed(2).replace('.',',')}</div></div>
       <button class="btn-add" onclick="addItem('${b.nome}',${b.preco})">+</button>
     </div>`).join('');
