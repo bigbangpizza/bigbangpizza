@@ -2,7 +2,7 @@ import { selectComoAdmin, atualizarComoAdmin, atualizarComoAdminSeStatus } from 
 import { enviarTexto } from './evolutionApi.js';
 import { normalizarWhatsapp } from './dataUtils.js';
 import { formatarTelefoneExibicao } from './pedidoStatusUtil.js';
-import { registrarAcaoEquipe } from './equipe.js';
+import { registrarAcaoEquipe, primeiroNome } from './equipe.js';
 
 // Ações que a equipe pode pedir pra Luiza (modo equipe). O modelo só PREPARA
 // (preparar_acao): o resumo e o "confirma? (sim/não)" saem do código, e a
@@ -86,6 +86,18 @@ export async function executarAcaoPendente(numero, { aoEnviarMensagem } = {}) {
   pendentes.delete(numero);
   if (!acao) return 'Não tenho nenhuma ação esperando confirmação (ela vale 10 min).';
   const { tipo, pedido, membro } = acao;
+  // "Sim" pra "Quer que eu avise o cliente?" (depois de um cancelamento): só prepara a
+  // mensagem padrão — ela ainda precisa do próprio "confirma? (sim/não)".
+  if (tipo === 'oferta_aviso') {
+    const texto = `Olá${primeiroNome(pedido.nome) ? `, ${primeiroNome(pedido.nome)}` : ''}! Aqui é da Big Bang Pizza. Seu pedido #${pedido.id} foi cancelado. Qualquer dúvida, é só responder por aqui.`;
+    pendentes.set(numero, { tipo: 'mensagem_cliente', pedido, texto, destino: acao.destino, membro, criadaEm: Date.now() });
+    return `Vou mandar pelo número da loja para ${pedido.nome} (${formatarTelefoneExibicao(acao.destino)}), exatamente:
+
+"${texto}"
+
+Confirma? (sim/não)
+(Se quiser outro texto, é só me dizer qual.)`;
+  }
   let resultado;
   let resposta;
   try {
@@ -102,6 +114,13 @@ export async function executarAcaoPendente(numero, { aoEnviarMensagem } = {}) {
       } else {
         resultado = 'ok';
         resposta = `Feito ✅ Pedido #${pedido.id} cancelado.`;
+        const destino = normalizarWhatsapp(pedido.whatsapp);
+        if (destino) {
+          pendentes.set(numero, { tipo: 'oferta_aviso', pedido, destino, membro, criadaEm: Date.now() });
+          resposta += '\n\nQuer que eu avise o cliente?';
+        } else {
+          resposta += '\n(O pedido não tem telefone gravado, então não dá pra avisar o cliente por aqui.)';
+        }
       }
     } else if (tipo === 'mensagem_cliente') {
       await enviarTexto(acao.destino, acao.texto);

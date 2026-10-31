@@ -91,7 +91,7 @@ async function responderComando(texto, membro, agora) {
 
 export async function montarPromptEquipe(membro, agora = new Date()) {
   const { configuracoes } = await getMenuData();
-  const status = calcularStatusLoja(configuracoes.modo_loja || 'automatico', agora);
+  const status = calcularStatusLoja(configuracoes.modo_loja || 'automatico', agora, configuracoes.modo_loja_ate);
   const hora = getAgoraBahiaDetalhado(agora);
   const anotacoes = await anotacoesAtivas();
   return `Você é a Luiza, assistente da Big Bang Pizza, falando com ${membro.nome}, da EQUIPE da loja (não é cliente). Chame a pessoa de ${primeiroNome(membro.nome)}.
@@ -110,6 +110,7 @@ export async function montarPromptEquipe(membro, agora = new Date()) {
 ## Ações (só com confirmação)
 - A equipe pode pedir: marcar um pedido como pago, cancelar um pedido, ou mandar uma mensagem pro cliente de um pedido. Para isso chame preparar_acao. O sistema mostra o resumo e pergunta "confirma? (sim/não)"; a ação só acontece depois do "sim". Nunca diga que já fez.
 - Mensagem pro cliente: use em \`texto\` exatamente o que a pessoa pediu pra dizer (se ela ditou a ideia, escreva a mensagem e ela vai aprovar no resumo).
+- NUNCA escreva você mesma um resumo de ação nem pergunte "Confirma?": o resumo e a pergunta só existem quando você chama preparar_acao. Se a pessoa pediu uma ação (inclusive respondendo "sim, diz que..." a "Quer que eu avise o cliente?"), chame preparar_acao direto.
 - Qualquer outra alteração (preço, cardápio, cupom, frete, horário, editar pedido): diga que é pelo admin.
 
 ## Anotações
@@ -141,12 +142,15 @@ export async function processarTurnoEquipe({ numero, membro, userContent, histor
   let prefixo = '';
   if (acaoPendente(numero)) {
     if (RE_SIM.test(texto)) return registrar(await executarAcaoPendente(numero, { aoEnviarMensagem: aoEnviarMensagemCliente }));
+    const ehOfertaDeAviso = acaoPendente(numero).tipo === 'oferta_aviso';
     if (RE_NAO.test(texto)) {
       descartarAcao(numero);
-      return registrar('Ok, não fiz nada.');
+      return registrar(ehOfertaDeAviso ? 'Ok, não aviso o cliente.' : 'Ok, não fiz nada.');
     }
     descartarAcao(numero);
-    prefixo = '(A ação que estava esperando confirmação foi descartada.)\n\n';
+    // Depois de "Quer que eu avise o cliente?", outra resposta (ex: "sim, diz que...")
+    // segue pro modelo, que prepara a mensagem com o texto pedido.
+    if (!ehOfertaDeAviso) prefixo = '(A ação que estava esperando confirmação foi descartada.)\n\n';
   }
 
   try {

@@ -321,7 +321,10 @@ input:checked+.sl::before{transform:translateX(20px);}
           <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Horário automático: Quinta a Domingo, 18h–23h</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button onclick="setModoLoja('aberta')"    id="btn-abrir"  class="bt" style="padding:10px 20px;font-size:13px;font-weight:700;">🟢 Forçar Aberta</button>
+          <span style="display:inline-flex;align-items:center;gap:6px;">
+            <button onclick="setModoLoja('aberta')"    id="btn-abrir"  class="bt" style="padding:10px 20px;font-size:13px;font-weight:700;">🟢 Forçar Aberta</button>
+            <label style="font-size:12px;color:var(--text-secondary);">até <input type="time" id="loja-aberta-ate" value="23:00" style="padding:6px;width:auto;"></label>
+          </span>
           <button onclick="setModoLoja('fechada')"   id="btn-fechar" class="bt" style="padding:10px 20px;font-size:13px;font-weight:700;">🔴 Forçar Fechada</button>
           <button onclick="setModoLoja('automatico')" id="btn-auto"  class="be" style="padding:10px 20px;font-size:13px;font-weight:700;">⚙️ Automático</button>
         </div>
@@ -1481,16 +1484,36 @@ function show(page) {
 // CONTROLE DE LOJA
 // ═══════════════════════════════════════════════════════
 async function loadModoLoja() {
-  const data = await api('configuracoes', 'chave=eq.modo_loja');
-  updateLojaUI(data[0]?.valor || 'automatico');
+  const data = await api('configuracoes', 'chave=in.(modo_loja,modo_loja_ate)');
+  const cfg = Object.fromEntries(data.map(c => [c.chave, c.valor]));
+  updateLojaUI(cfg.modo_loja || 'automatico', cfg.modo_loja_ate || '');
 }
 
-function updateLojaUI(modo) {
+// Hora (HH:MM) no horário da Bahia de um ISO.
+function horaBahia(iso) {
+  return new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Bahia', hour: '2-digit', minute: '2-digit' });
+}
+
+// "Aberta" forçada vale só até o horário escolhido (padrão 23h). Se a hora já passou
+// hoje (ex: 01:00 escolhido às 22h), vale pra madrugada seguinte. A Bahia é UTC-3 fixo.
+function abertaAteISO(hhmm) {
+  const agora = new Date();
+  const hoje = agora.toLocaleDateString('en-CA', { timeZone: 'America/Bahia' }); // AAAA-MM-DD
+  let ate = new Date(`${hoje}T${hhmm}:00-03:00`);
+  if (ate <= agora) ate = new Date(ate.getTime() + 86400000);
+  return ate.toISOString();
+}
+
+function updateLojaUI(modo, ate = '') {
   const texto = document.getElementById('loja-status-texto');
   const card  = document.getElementById('loja-status-card');
   ['btn-abrir','btn-fechar','btn-auto'].forEach(id => document.getElementById(id).className = 'bt');
-  if (modo === 'aberta') {
-    texto.innerHTML = '🟢 <span style="color:#4ade80;">LOJA FORÇADA ABERTA</span>';
+  const abertaVigente = modo === 'aberta' && /^\d{4}-\d{2}-\d{2}T/.test(ate) && new Date(ate) > new Date();
+  if (modo === 'aberta' && !abertaVigente) {
+    texto.innerHTML = `⚙️ <span style="color:rgba(255,255,255,.6);">Abertura manual vencida${ate ? ' ('+horaBahia(ate)+')' : ''} — seguindo o horário automático</span>`;
+    card.style.borderLeft = '4px solid rgba(255,255,255,.1)'; document.getElementById('btn-auto').className = 'be';
+  } else if (modo === 'aberta') {
+    texto.innerHTML = `🟢 <span style="color:#4ade80;">LOJA FORÇADA ABERTA até ${horaBahia(ate)}</span>`;
     card.style.borderLeft = '4px solid #4ade80'; document.getElementById('btn-abrir').className = 'be';
   } else if (modo === 'fechada') {
     texto.innerHTML = '🔴 <span style="color:#ff4444;">LOJA FORÇADA FECHADA</span>';
@@ -1502,11 +1525,17 @@ function updateLojaUI(modo) {
 }
 
 async function setModoLoja(modo) {
+  const hhmm = document.getElementById('loja-aberta-ate').value || '23:00';
+  const ate = modo === 'aberta' ? abertaAteISO(hhmm) : '';
+  // O "até" vai primeiro: assim o "aberta" nunca fica gravado sem validade.
+  await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja_ate`, {
+    method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ valor: ate })
+  });
   await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja`, {
     method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ valor: modo })
   });
-  updateLojaUI(modo);
-  showToastAdmin(modo === 'aberta' ? '🟢 Loja ABERTA!' : modo === 'fechada' ? '🔴 Loja FECHADA!' : '⚙️ Modo automático!');
+  updateLojaUI(modo, ate);
+  showToastAdmin(modo === 'aberta' ? `🟢 Loja ABERTA até ${horaBahia(ate)}!` : modo === 'fechada' ? '🔴 Loja FECHADA!' : '⚙️ Modo automático!');
   registrarHistorico(`Modo da loja alterado para ${modo === 'aberta' ? 'Forçada Aberta' : modo === 'fechada' ? 'Forçada Fechada' : 'Automático'}`);
 }
 

@@ -344,7 +344,7 @@ function totais(lista) {
 export async function executarSituacaoLoja(_input = {}, { agora = new Date() } = {}) {
   const [{ configuracoes }, pedidos, cfgBot] = await Promise.all([getMenuData(), todosOsPedidos(), obterConfigBotAdmin().catch(() => ({ pedidoAtrasoMinutos: 40 }))]);
   const modo = configuracoes.modo_loja || 'automatico';
-  const status = calcularStatusLoja(modo, agora);
+  const status = calcularStatusLoja(modo, agora, configuracoes.modo_loja_ate);
 
   const emAberto = pedidos.filter((p) => STATUS_EM_ABERTO.includes(p.status));
   const porStatus = {};

@@ -44,12 +44,14 @@ const respostaInsistencia = (aPartir) =>
  *   resumo: linha pro contexto da Luiza; respostaFechada: resposta curta pronta
  *   pro cliente quando fechada (ex: "No momento estamos fechados, mas hoje abrimos às 18h. Vai ser um prazer te atender!").
  */
-export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date()) {
+export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date(), abertaAte = '') {
   const { diaSemana, hora } = getAgoraBahiaDetalhado(agora);
   const diaAberto = DIAS_ABERTOS.includes(diaSemana);
-  if (modoLoja === 'aberta') {
-    const fecha = diaAberto && hora >= 18 ? `, fecha ${textoHoraFecha(diaSemana)}` : '';
-    return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe)${fecha}`, respostaFechada: '', respostaInsistencia: '' };
+  // "Aberta" forçada vale só até configuracoes.modo_loja_ate (o admin grava; padrão 23h do dia).
+  // Sem data válida, ou já passada, volta ao horário automático — mesma regra de loja_aberta_agora() no banco.
+  if (modoLoja === 'aberta' && /^\d{4}-\d{2}-\d{2}T/.test(abertaAte || '') && agora < new Date(abertaAte)) {
+    const ate = getAgoraBahiaDetalhado(new Date(abertaAte)).horaTexto;
+    return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe até ${ate})`, respostaFechada: '', respostaInsistencia: '' };
   }
   if (modoLoja === 'fechada') {
     const prox = textoProximaAbertura(diaSemana);
@@ -82,7 +84,7 @@ export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date()) 
  */
 export async function statusDaLoja() {
   const { configuracoes } = await getMenuData();
-  return calcularStatusLoja(configuracoes.modo_loja || 'automatico');
+  return calcularStatusLoja(configuracoes.modo_loja || 'automatico', new Date(), configuracoes.modo_loja_ate);
 }
 
 export async function lojaEstaAberta() {
@@ -350,7 +352,7 @@ ${anotacoes.map((a) => `- ${a.texto}`).join('\n')}
 
 export async function buildSystemPrompt(numero, ehConversaNova = false) {
   const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas, pizzasDoDia } = await getMenuData();
-  const statusLoja = calcularStatusLoja(configuracoes.modo_loja || 'automatico');
+  const statusLoja = calcularStatusLoja(configuracoes.modo_loja || 'automatico', new Date(), configuracoes.modo_loja_ate);
   const agora = getAgoraBahiaDetalhado();
   const pixChave = configuracoes.pix_chave || '(chave Pix não configurada — avise que vai confirmar em instantes)';
   const pixTitular = configuracoes.pix_titular || '';

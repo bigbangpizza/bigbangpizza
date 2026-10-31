@@ -867,7 +867,7 @@ function agoraBahia() {
 const HORA_FECHA_LOJA = 23;
 // Mesma regra do servidor (pizza_do_dia_vigente): modo_loja forçado prevalece sobre o horário.
 function lojaAbertaBahia() {
-  if (modoLojaOverride === 'aberta') return true;
+  if (abertaManualVigente()) return true;
   if (modoLojaOverride === 'fechada') return false;
   const { dow, hora } = agoraBahia();
   return [0, 4, 5, 6].includes(dow) && hora >= 18 && hora < HORA_FECHA_LOJA;
@@ -991,15 +991,22 @@ function esc(s) {
 
 // STATUS + COUNTDOWN
 let modoLojaOverride = null;
+// "Aberta" forçada no admin vale só até modo_loja_ate (padrão 23h); depois volta ao automático.
+let modoLojaAte = '';
+function abertaManualVigente() {
+  return modoLojaOverride === 'aberta' && /^\d{4}-\d{2}-\d{2}T/.test(modoLojaAte) && Date.now() < new Date(modoLojaAte).getTime();
+}
 
 async function checkModoLoja() {
   try {
-    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja&select=valor`, {
+    const r = await fetch(`${SB}/rest/v1/configuracoes?chave=in.(modo_loja,modo_loja_ate)&select=chave,valor`, {
       headers: {'apikey': SK, 'Authorization': 'Bearer ' + SK}
     });
     if (r.ok) {
       const data = await r.json();
-      modoLojaOverride = (data && data[0] && data[0].valor) ? data[0].valor : 'automatico';
+      const cfg = Object.fromEntries((data || []).map(c => [c.chave, c.valor]));
+      modoLojaOverride = cfg.modo_loja || 'automatico';
+      modoLojaAte = cfg.modo_loja_ate || '';
     }
   } catch(e) { modoLojaOverride = 'automatico'; }
   updateStatus();
@@ -1008,22 +1015,21 @@ checkModoLoja();
 setInterval(checkModoLoja, 30000); // Verifica a cada 30 segundos // Verifica a cada minuto
 
 function updateStatus() {
-  const now = new Date();
-  const day = now.getDay();
-  const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
+  // Sempre no horário da Bahia, nunca no relógio/fuso do celular do cliente.
+  const { dow: day, hora: h, minuto: m } = agoraBahia();
+  const s = new Date().getSeconds();
   const diasAbertos = [0,4,5,6];
   // Quinta a domingo, das 18h às 23h (mesma regra do servidor e da Luiza).
   const fechaHoje = HORA_FECHA_LOJA;
 
-  let open;
-  if (modoLojaOverride === 'aberta') { open = true; }
-  else if (modoLojaOverride === 'fechada') { open = false; }
-  else { open = diasAbertos.includes(day) && h >= 18 && h < fechaHoje; }
+  const open = lojaAbertaBahia();
   const b = document.getElementById('status-banner');
 
   if (open) {
-    // Calcula quanto tempo falta para fechar
-    const totalSecs = (fechaHoje - 1 - h) * 3600 + (59 - m) * 60 + (59 - s);
+    // Calcula quanto tempo falta para fechar (aberta no admin: até o horário escolhido lá)
+    const totalSecs = abertaManualVigente()
+      ? Math.floor((new Date(modoLojaAte).getTime() - Date.now()) / 1000)
+      : (fechaHoje - 1 - h) * 3600 + (59 - m) * 60 + (59 - s);
     b.className = 'open';
     if (totalSecs <= 0) {
       // Só acontece com a loja aberta manualmente fora do horário — sem contagem
@@ -2170,14 +2176,8 @@ async function finalizarPedido() {
   const linkRastreio = `https://bigbangpizza.com.br/rastreio.html?token=${rastreioToken}`;
 
   const msg=`Olá! Quero fazer um pedido 🍕\n\n👤 Nome: ${nome}\n${linhaEntrega}\n\n🛒 Pedido:\n${itens}${obsVal?'\n\n📝 Observação: '+obsVal:''}${linhaDesconto}\n\n💰 Subtotal: R$ ${sub.toFixed(2).replace('.',',')}${desconto>0?'\n✂️ Desconto: - R$ '+desconto.toFixed(2).replace('.',','):''}\n${retirada ? '🏪 Retirada: sem frete' : '🚚 Frete: '+(fr===0?'Grátis':'R$ '+(fr||0).toFixed(2).replace('.',','))}\n━━━━━━━━━━━━━━\n💳 TOTAL: R$ ${totalFinal.toFixed(2).replace('.',',')}\n💰 Pagamento: ${pag}\n\n📲 Acompanhe seu pedido em tempo real: ${linkRastreio}\n\nAguardo confirmação!`;
-  // Bloquear se fechado
-  const agora = new Date(), diaAtual = agora.getDay(), horaAtual = agora.getHours();
-  let estaAberto;
-  if (modoLojaOverride === 'aberta') { estaAberto = true; }
-  else if (modoLojaOverride === 'fechada') { estaAberto = false; }
-  else { estaAberto = [0,4,5,6].includes(diaAtual) && horaAtual >= 18 && horaAtual < HORA_FECHA_LOJA; }
-  
-  if (!estaAberto) {
+  // Bloquear se fechado — horário da Bahia (o banco também recusa pedido com a loja fechada)
+  if (!lojaAbertaBahia()) {
     alert('🔴 Estamos fechados no momento!\n\nFuncionamos de quinta a domingo, das 18h às 23h.\n\nVolte quando abrirmos para finalizar seu pedido! 🍕');
     return;
   }
