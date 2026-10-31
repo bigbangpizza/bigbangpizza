@@ -84,7 +84,8 @@ async function persistirHistorico(numero, mensagens) {
   await salvarHistoricoRedis(numero, mensagens);
 }
 
-app.get('/health', (req, res) => res.json({ ok: true }));
+// commit: qual versão está no ar (o Railway preenche RAILWAY_GIT_COMMIT_SHA no deploy pelo GitHub).
+app.get('/health', (req, res) => res.json({ ok: true, commit: (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || undefined }));
 
 app.post('/webhook', (req, res) => {
   if (config.webhookSecret && req.query.secret !== config.webhookSecret) {
