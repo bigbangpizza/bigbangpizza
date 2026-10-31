@@ -682,6 +682,28 @@ input:checked+.sl::before{transform:translateX(20px);}
         <button class="btn-new" onclick="salvarBotAlertas()">💾 Salvar Alertas</button>
       </div>
 
+      <!-- EQUIPE (modo equipe da Luiza) -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">👥 Equipe (modo equipe da Luiza)</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Mensagens desses números no WhatsApp da loja são tratadas como da equipe: a Luiza consulta pedidos, conversas e a situação da loja, e só faz ações (pago, cancelar, mandar mensagem) depois de um "sim". Esses números não entram em Clientes, reativação nem carrinho abandonado. O reconhecimento é só pelo número — não adianta alguém dizer que é da equipe.</p>
+        <div id="bot-equipe-lista" style="margin-bottom:12px;"></div>
+        <div class="fr">
+          <div class="fg"><label>Nome</label><input type="text" id="bot-equipe-nome" placeholder="ex: Caroline"></div>
+          <div class="fg"><label>WhatsApp (com DDD)</label><input type="text" id="bot-equipe-telefone" placeholder="71 99999-9999"></div>
+        </div>
+        <button class="btn-new" onclick="adicionarMembroEquipe()">➕ Adicionar à equipe</button>
+      </div>
+
+      <!-- ANOTAÇÕES DA EQUIPE -->
+      <div class="tw" style="padding:20px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">📝 Anotações da Luiza</h3>
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">Avisos que a Luiza usa pra responder os clientes (ex: "hoje não temos Coca Zero"). A equipe também cria pelo WhatsApp com "Luiza, anota: ...". Preço, cupom, frete e horário continuam valendo só pelo que está no admin.</p>
+        <div id="bot-anotacoes-lista" style="margin-bottom:12px;"></div>
+        <div class="fg"><label>Nova anotação</label><textarea id="bot-anotacao-texto" placeholder="ex: A Sertaneja leva carne do sol, queijo coalho e cebola"></textarea></div>
+        <div class="fg"><label>Vale até (opcional — vazio = até alguém apagar)</label><input type="datetime-local" id="bot-anotacao-validade"></div>
+        <button class="btn-new" onclick="adicionarAnotacao()">💾 Salvar anotação</button>
+      </div>
+
       <!-- SEÇÃO 3: REATIVAÇÃO AUTOMÁTICA -->
       <div class="tw" style="padding:20px;">
         <h3 style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;margin-bottom:16px;">🔁 Reativação automática de clientes</h3>
@@ -2353,6 +2375,7 @@ function renderPedidoCard(p){
       <div style="text-align:right;">
         <div style="font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--orange);">${brl(p.total||0)}</div>
         <div style="font-size:12px;color:var(--text-secondary);">${esc(p.pagamento||'')}</div>
+        ${p.pago ? `<div style="font-size:11px;color:#4ade80;font-weight:700;" title="${esc(p.pago_por ? 'Marcado por '+p.pago_por : '')}">💰 Pago</div>` : ''}
       </div>
     </div>
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
@@ -4663,6 +4686,8 @@ async function loadConfigBot(){
 
   document.getElementById('bot-alerta-whatsapp').value = cfg.alerta_whatsapp_numero || '';
   document.getElementById('bot-pedido-atraso-minutos').value = cfg.pedido_atraso_minutos || 40;
+  loadEquipeBot();
+  loadAnotacoesBot();
 
   const diasValidos = cfg.reativacao_dias_semana ? cfg.reativacao_dias_semana.split(',').map(Number).filter(n => n>=0 && n<=6 && Number.isInteger(n)) : [];
   botDiasSelecionados = new Set(diasValidos.length ? diasValidos : [0,1,2,3,4,5,6]);
@@ -4736,6 +4761,64 @@ async function salvarBotPix(){
     pix_titular: document.getElementById('bot-pix-titular').value.trim(),
   });
   showToastAdmin(ok ? '✅ Dados do Pix salvos!' : '⚠️ Erro ao salvar.');
+}
+
+// --- EQUIPE e ANOTAÇÕES (modo equipe da Luiza) ---
+async function loadEquipeBot(){
+  const membros = await api('equipe', 'ativo=is.true', 'nome.asc');
+  document.getElementById('bot-equipe-lista').innerHTML = membros.length
+    ? membros.map(m => `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <span><strong>${esc(m.nome)}</strong> <span style="color:var(--text-secondary);font-size:12px;">${esc(m.telefone)}</span></span>
+        <button class="bd" onclick="removerMembroEquipe(${m.id})">🗑️</button></div>`).join('')
+    : '<div style="color:var(--text-secondary);font-size:13px;">Ninguém cadastrado.</div>';
+}
+async function adicionarMembroEquipe(){
+  const nome = document.getElementById('bot-equipe-nome').value.trim();
+  const telefone = document.getElementById('bot-equipe-telefone').value.trim();
+  if(!nome){ alert('Digite o nome!'); return; }
+  // Mesma chave de telefone do sistema (DDD + 8 últimos dígitos): exige o DDD.
+  if(!chaveTelefoneAdmin(telefone)){ alert('WhatsApp inválido — inclua o DDD.'); return; }
+  const ok = await ins('equipe', { nome, telefone });
+  if(ok){ document.getElementById('bot-equipe-nome').value=''; document.getElementById('bot-equipe-telefone').value=''; loadEquipeBot(); }
+  showToastAdmin(ok ? '✅ Adicionado à equipe!' : '⚠️ Erro ao salvar.');
+}
+async function removerMembroEquipe(id){
+  if(!confirm('Tirar essa pessoa da equipe? A Luiza passa a tratar o número como cliente.')) return;
+  const ok = await upd('equipe', id, { ativo: false });
+  if(ok) loadEquipeBot();
+  showToastAdmin(ok ? '✅ Removido da equipe.' : '⚠️ Erro ao salvar.');
+}
+async function loadAnotacoesBot(){
+  const agora = new Date().toISOString();
+  const lista = await api('informacoes_loja', `ativo=is.true&or=(expira_em.is.null,expira_em.gt.${agora})`, 'criado_em.asc');
+  const quando = (iso) => new Date(iso).toLocaleString('pt-BR', { timeZone:'America/Bahia', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('bot-anotacoes-lista').innerHTML = lista.length
+    ? lista.map(a => `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div style="flex:1;"><textarea id="bot-anotacao-${a.id}" style="width:100%;min-height:44px;">${esc(a.texto)}</textarea>
+          <div style="color:var(--text-secondary);font-size:11px;margin-top:2px;">${esc(a.autor_nome||'admin')} · ${quando(a.criado_em)}${a.expira_em ? ' · vale até '+quando(new Date(new Date(a.expira_em).getTime()-60000)) : ''}</div></div>
+        <div class="acts"><button class="be" onclick="salvarAnotacaoEditada(${a.id})">💾</button><button class="bd" onclick="removerAnotacao(${a.id})">🗑️</button></div></div>`).join('')
+    : '<div style="color:var(--text-secondary);font-size:13px;">Nenhuma anotação ativa.</div>';
+}
+async function adicionarAnotacao(){
+  const texto = document.getElementById('bot-anotacao-texto').value.trim();
+  const validade = document.getElementById('bot-anotacao-validade').value;
+  if(!texto){ alert('Escreva a anotação!'); return; }
+  // datetime-local vem no fuso do navegador (a equipe está na Bahia).
+  const ok = await ins('informacoes_loja', { texto, autor_nome: 'admin', expira_em: validade ? new Date(validade).toISOString() : null });
+  if(ok){ document.getElementById('bot-anotacao-texto').value=''; document.getElementById('bot-anotacao-validade').value=''; loadAnotacoesBot(); }
+  showToastAdmin(ok ? '✅ Anotação salva!' : '⚠️ Erro ao salvar.');
+}
+async function salvarAnotacaoEditada(id){
+  const texto = document.getElementById(`bot-anotacao-${id}`).value.trim();
+  if(!texto){ alert('A anotação não pode ficar vazia — use 🗑️ pra apagar.'); return; }
+  const ok = await upd('informacoes_loja', id, { texto });
+  showToastAdmin(ok ? '✅ Anotação atualizada!' : '⚠️ Erro ao salvar.');
+}
+async function removerAnotacao(id){
+  if(!confirm('Apagar essa anotação?')) return;
+  const ok = await upd('informacoes_loja', id, { ativo: false });
+  if(ok) loadAnotacoesBot();
+  showToastAdmin(ok ? '✅ Anotação apagada.' : '⚠️ Erro ao salvar.');
 }
 
 async function salvarBotAlertas(){
@@ -5720,10 +5803,14 @@ function enviarReativacao(btnEl){
 
 async function loadClientes() {
   carregarReativacaoCupomInfo();
-  const [data, reativacoes] = await Promise.all([
+  const [todosPedidos, reativacoes, equipe] = await Promise.all([
     api('pedidos','','created_at.desc'),
     api('reativacoes_enviadas','','enviado_em.desc'),
+    api('equipe','ativo=is.true'),
   ]);
+  // Equipe (Configurações do Bot > Equipe) não é cliente: fica fora da lista.
+  const telefonesEquipe = new Set(equipe.map(m => chaveTelefoneAdmin(m.telefone)).filter(Boolean));
+  const data = todosPedidos.filter(p => !telefonesEquipe.has(chaveTelefoneAdmin(p.whatsapp)));
 
   // Última reativação (qualquer origem — manual ou automática do
   // whatsapp-bot) por número, pra não sugerir mandar de novo sem necessidade

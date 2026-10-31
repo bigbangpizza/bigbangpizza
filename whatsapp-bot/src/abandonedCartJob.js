@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { temServiceRoleConfigurada, selectComoAdmin, atualizarComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
 import { obterUltimoContato } from './historicoRedis.js';
+import { chavesTelefoneEquipe } from './equipe.js';
 import { parseComoUTC, minutosEntre, normalizarWhatsapp, chaveTelefone, mesmoTelefone } from './dataUtils.js';
 
 // Carrinho abandonado com mais de 24h vira "expirado" e para de aparecer
@@ -77,6 +78,7 @@ export async function verificarCarrinhosAbandonados(deps = {}) {
     enviar = enviarTexto,
     ultimoContato = obterUltimoContato,
     buscarPedidos = buscarPedidosRecentes,
+    telefonesEquipe = chavesTelefoneEquipe,
     agora = new Date(),
   } = deps;
 
@@ -98,9 +100,15 @@ export async function verificarCarrinhosAbandonados(deps = {}) {
     return { erro: true };
   }
 
+  const equipe = await telefonesEquipe().catch(() => new Set());
   const contagem = {};
   for (const carrinho of carrinhos) {
     try {
+      // Número da equipe nunca recebe "você não finalizou".
+      if (equipe.has(chaveTelefone(carrinho.telefone))) {
+        contagem.equipe = (contagem.equipe || 0) + 1;
+        continue;
+      }
       // Só consulta o Redis de quem estaria pra receber mensagem.
       const preDecisao = decidirCarrinho(carrinho, pedidos, null, agora);
       const decisao = preDecisao === 'enviar'

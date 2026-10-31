@@ -1,7 +1,8 @@
 import { temServiceRoleConfigurada, selectComoAdmin, inserirComoAdmin } from './supabaseAdmin.js';
 import { enviarTexto } from './evolutionApi.js';
-import { parseComoUTC, diasEntre, normalizarWhatsapp, getAgoraNoBrasil } from './dataUtils.js';
+import { parseComoUTC, diasEntre, normalizarWhatsapp, getAgoraNoBrasil, chaveTelefone } from './dataUtils.js';
 import { obterConfigBotAdmin } from './botConfig.js';
+import { chavesTelefoneEquipe } from './equipe.js';
 
 // Cliente "entra em risco" 15 dias sem pedido (mesmo critério do admin.html:
 // classificarSegmentoCliente). A janela vai até 21 dias — não é só o dia
@@ -109,6 +110,10 @@ export async function rodarReativacaoDiaria() {
     console.error('[reactivationJob] falha ao buscar candidatos — abortando rotina desta vez:', err);
     return { erro: true };
   }
+
+  // Equipe não é cliente: nunca recebe reativação.
+  const equipe = await chavesTelefoneEquipe().catch(() => new Set());
+  candidatos = candidatos.filter((c) => !equipe.has(chaveTelefone(c.whatsapp)));
 
   let enviados = 0;
   let pulados = 0;

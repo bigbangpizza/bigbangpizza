@@ -5,7 +5,7 @@ import { buildSystemPrompt, lojaEstaAberta, statusDaLoja } from './systemPrompt.
 import { getMenuData } from './supabaseData.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
-import { baixarMediaBase64 } from './evolutionApi.js';
+import { baixarMediaBase64, enviarTexto } from './evolutionApi.js';
 import { enviarRespostaHumanizada } from './respostaHumanizada.js';
 import {
   CRIAR_PEDIDO_TOOL,
@@ -43,6 +43,10 @@ import { BUSCAR_PEDIDOS_RECENTES_TOOL, criarExecutorBuscarPedidosRecentes } from
 import { avisarFalhaNoAtendimento } from './falhaAtendimento.js';
 import { ENVIAR_LOCALIZACAO_TOOL, criarExecutorEnviarLocalizacao, localizacaoJaEnviadaNoHistorico, enviarLocalizacaoLoja } from './localizacaoTool.js';
 import { validarLoginEquipe } from './adminAuth.js';
+import { membroDaEquipe } from './equipe.js';
+import { processarTurnoEquipe } from './modoEquipe.js';
+import { variacoesNumeroWhatsapp } from './equipeTools.js';
+import { processarAlertasAcumulados } from './alertasEquipe.js';
 
 const app = express();
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
@@ -145,10 +149,11 @@ function filaDe(numero) {
   return fila;
 }
 
-function enfileirarMensagem(numero, nomeContato, blocos) {
+function enfileirarMensagem(numero, nomeContato, blocos, membro = null) {
   const fila = filaDe(numero);
   fila.buffer.push(...blocos);
   if (nomeContato) fila.nomeContato = nomeContato;
+  fila.membro = membro;
   if (fila.timer) clearTimeout(fila.timer);
   const janela = ultimaFalaPediuEndereco(numero) ? JANELA_DEBOUNCE_ENDERECO_MS : JANELA_DEBOUNCE_MS;
   fila.timer = setTimeout(() => processarFila(numero), janela);
@@ -166,10 +171,17 @@ async function processarFila(numero) {
   fila.processando = true;
   const blocos = fila.buffer.splice(0, fila.buffer.length);
   const nomeContato = fila.nomeContato;
+  const membro = fila.membro;
   try {
-    await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos));
+    if (membro) await comTravaHistorico(chaveHistoricoEquipe(numero), () => processarLoteEquipe(numero, membro, blocos));
+    else await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos));
   } catch (err) {
     console.error(`[webhook] numero=${numero} erro ao processar lote de mensagens:`, err);
+    // Equipe: só avisa a própria pessoa — nunca vira alerta de "cliente sem resposta".
+    if (membro) {
+      await enviarTexto(numero, 'Não consegui responder agora (erro técnico). Tenta de novo em instantes.').catch(() => {});
+      return;
+    }
     // Nunca deixa o cliente sem resposta: mensagem fixa + alerta pra equipe.
     await avisarFalhaNoAtendimento(numero, nomeContato, err).catch((e) => console.error('[falhaAtendimento]', e));
   } finally {
@@ -252,12 +264,15 @@ async function processarWebhook(body) {
     return;
   }
 
-  registrarContato(numero);
+  // Equipe: reconhecida SÓ pelo número de origem (remoteJid), nunca pelo texto.
+  // Não entra no registro de contato (carrinho abandonado) nem no fluxo de cliente.
+  const membro = await membroDaEquipe(numero);
+  if (!membro) registrarContato(numero);
 
   const nomeContato = data.pushName || '';
   const mensagem = data.message || {};
 
-  await processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, data.key?.id);
+  await processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, data.key?.id, membro);
 }
 
 // ── Serialização da extração por número (evita reordenar mensagens do cliente) ──
@@ -278,7 +293,7 @@ async function processarWebhook(body) {
 // chegada sem travar mensagens de OUTROS clientes entre si.
 const filaExtracaoPorNumero = new Map(); // numero -> Promise (última extração encadeada)
 
-async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, messageId) {
+async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, messageId, membro = null) {
   const anterior = filaExtracaoPorNumero.get(numero) || Promise.resolve();
   const atual = anterior
     .catch(() => {}) // uma falha na mensagem anterior não deve travar as próximas desse número
@@ -293,8 +308,8 @@ async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, 
       // (pedido #273). A mensagem e a resposta entram no histórico — a
       // Luiza precisa saber do pedido quando o cliente falar dele depois.
       const textoPlano = mensagem.conversation || mensagem.extendedTextMessage?.text || '';
-      const tokenSite = extrairTokenRastreioDoSite(textoPlano);
-      if (tokenSite || pareceTextoDePedidoDoSite(textoPlano)) {
+      const tokenSite = membro ? null : extrairTokenRastreioDoSite(textoPlano);
+      if (!membro && (tokenSite || pareceTextoDePedidoDoSite(textoPlano))) {
         const resultado = await comTravaHistorico(numero, () => responderPedidoDoSite(numero, textoPlano, tokenSite));
         if (resultado.respondido) return;
         const aviso = resultado.pedidoJaConfirmado ? avisoPedidoDoSiteJaConfirmado(resultado.pedidoJaConfirmado) : AVISO_TEXTO_PEDIDO_SITE_NAO_LOCALIZADO;
@@ -316,7 +331,7 @@ async function processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, 
 
       if (!userContent) return; // tipo de mensagem não suportado (figurinha, localização, contato, etc.)
 
-      enfileirarMensagem(numero, nomeContato, userContent);
+      enfileirarMensagem(numero, nomeContato, userContent, membro);
     });
 
   filaExtracaoPorNumero.set(numero, atual);
@@ -516,6 +531,49 @@ async function processarLote(numero, nomeContato, userContent) {
   }
 }
 
+// ── Modo equipe ──────────────────────────────────────────────────────────
+// Histórico separado do de cliente (o mesmo número nunca mistura as duas conversas).
+const chaveHistoricoEquipe = (numero) => `equipe:${numero}`;
+
+async function processarLoteEquipe(numero, membro, userContent) {
+  const chave = chaveHistoricoEquipe(numero);
+  const historico = await carregarHistorico(chave);
+  const resposta = await processarTurnoEquipe({
+    numero,
+    membro,
+    userContent,
+    historico,
+    aoEnviarMensagemCliente: registrarMensagemDaEquipeNaConversa,
+    // Conversa de um cliente (só leitura): Redis, ou a cópia em memória se o Redis falhar.
+    lerHistoricoCliente: async (n) => (await obterHistoricoRedis(n)) || historicoLocal.get(n) || null,
+  });
+  aplicarLimiteHistorico(historico);
+  await persistirHistorico(chave, historico);
+  console.log(`[modoEquipe] ${membro.nome} (${numero}) respondida`);
+  await enviarTexto(numero, resposta);
+}
+
+/**
+ * Mensagem que a equipe mandou (aprovada) pro cliente pelo número da loja: entra
+ * na conversa dele com a Luiza, pra ela saber do que se trata se o cliente responder.
+ */
+async function registrarMensagemDaEquipeNaConversa(destino, texto) {
+  const candidatos = [...new Set([destino, ...variacoesNumeroWhatsapp(destino)])];
+  let numero = destino;
+  for (const n of candidatos) {
+    if ((await obterHistoricoRedis(n))?.length || historicoLocal.get(n)?.length) { numero = n; break; }
+  }
+  await comTravaHistorico(numero, async () => {
+    const historico = await carregarHistorico(numero);
+    const linha = `[Mensagem enviada pela equipe da loja] ${texto}`;
+    const ultima = historico[historico.length - 1];
+    if (ultima?.role === 'assistant') ultima.content = [...(Array.isArray(ultima.content) ? ultima.content : [textBlock(String(ultima.content))]), textBlock(linha)];
+    else historico.push({ role: 'assistant', content: [textBlock(linha)] });
+    aplicarLimiteHistorico(historico);
+    await persistirHistorico(numero, historico);
+  });
+}
+
 /** Converte a mensagem recebida da Evolution API em content blocks pra Claude. */
 async function extrairConteudoMensagem(mensagem, messageId) {
   const texto = mensagem.conversation || mensagem.extendedTextMessage?.text;
@@ -581,6 +639,13 @@ if (temServiceRoleConfigurada()) {
     });
   });
   console.log(`🕒 Verificação de pedidos atrasados agendada a cada 10 min (limiar padrão: ${config.pedidoAtrasoMinutos} min, ajustável no admin).`);
+
+  // Alertas da equipe acumulados com a loja fechada (resumo único; o resto na abertura).
+  cron.schedule('*/5 * * * *', () => {
+    processarAlertasAcumulados().catch((err) => {
+      console.error('[alertasEquipe] erro inesperado na rodada de alertas acumulados:', err);
+    });
+  });
 
   // Avaliação ruim — verifica a cada 5 min se alguma avaliação com nota ≤ 3
   // chegou e ainda não foi avisada ao Gabriel.

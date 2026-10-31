@@ -1,5 +1,5 @@
 import { temServiceRoleConfigurada, selectComoAdmin, atualizarComoAdmin } from './supabaseAdmin.js';
-import { enviarTexto } from './evolutionApi.js';
+import { enviarAlertaEquipe } from './alertasEquipe.js';
 import { parseComoUTC, minutosEntre } from './dataUtils.js';
 import { obterConfigBotAdmin } from './botConfig.js';
 
@@ -68,7 +68,8 @@ export async function verificarPedidosAtrasados() {
         `⚠️ Pedido atrasado: ${pedido.nome}, ${itensResumo}, aguardando há ${minutosParado} min. ` +
         `Status atual: ${statusLabel}.`;
 
-      await enviarTexto(alertaWhatsappNumero, msg);
+      // 1 alerta por pedido (a cada 30 min no máximo); loja fechada → entra no resumo.
+      await enviarAlertaEquipe({ assunto: `pedido:${pedido.id}`, texto: msg }, { destino: alertaWhatsappNumero });
       await atualizarComoAdmin('pedidos', pedido.id, { alerta_atraso_enviado: true });
       alertados++;
     } catch (err) {

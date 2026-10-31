@@ -17,6 +17,7 @@ import { config } from './config.js';
 const PREFIXO_CHAVE = 'bbpizza:conversa:';
 const PREFIXO_PAUSA = 'bbpizza:pausa:';
 const PREFIXO_CONTATO = 'bbpizza:ultimocontato:';
+const PREFIXO_VALOR = 'bbpizza:valor:';
 
 // TTL renovado a cada leitura/escrita — 24h de inatividade é folga de sobra
 // pra sobreviver a um restart no meio de uma conversa, sem guardar histórico
@@ -157,11 +158,38 @@ export function criarHistoricoStore(ClienteRedis, url) {
     }
   }
 
+  /**
+   * Valor JSON avulso (ex: alertas acumulados com a loja fechada, ver
+   * alertasEquipe.js), com TTL. Mesmo fallback gracioso: undefined = não deu
+   * pra saber (Redis ausente ou falhou); null = não existe.
+   */
+  async function obterValor(nome) {
+    if (!cliente) return undefined;
+    try {
+      const bruto = await cliente.get(`${PREFIXO_VALOR}${nome}`);
+      return bruto ? JSON.parse(bruto) : null;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao ler ${nome}:`, err.message);
+      return undefined;
+    }
+  }
+
+  async function salvarValor(nome, valor, ttlSegundos) {
+    if (!cliente) return false;
+    try {
+      await cliente.set(`${PREFIXO_VALOR}${nome}`, JSON.stringify(valor), 'EX', ttlSegundos);
+      return true;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao salvar ${nome}:`, err.message);
+      return false;
+    }
+  }
+
   function redisConfigurado() {
     return Boolean(cliente);
   }
 
-  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, salvarUltimoContato, obterUltimoContato, redisConfigurado };
+  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, salvarUltimoContato, obterUltimoContato, obterValor, salvarValor, redisConfigurado };
 }
 
 const store = criarHistoricoStore(Redis, config.redis.url);
@@ -172,4 +200,6 @@ export const salvarPausa = store.salvarPausa;
 export const obterPausa = store.obterPausa;
 export const salvarUltimoContato = store.salvarUltimoContato;
 export const obterUltimoContato = store.obterUltimoContato;
+export const obterValor = store.obterValor;
+export const salvarValor = store.salvarValor;
 export const redisConfigurado = store.redisConfigurado;

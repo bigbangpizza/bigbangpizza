@@ -1,7 +1,5 @@
-import { config } from './config.js';
-import { getMenuData } from './supabaseData.js';
-import { enviarTexto } from './evolutionApi.js';
 import { formatarTelefoneExibicao } from './pedidoStatusUtil.js';
+import { enviarAlertaEquipe } from './alertasEquipe.js';
 
 /**
  * Definição da tool `chamar_atendente` — a Luiza chama quando o cliente
@@ -31,11 +29,6 @@ export const CHAMAR_ATENDENTE_TOOL = {
   },
 };
 
-// Um alerta por cliente a cada 30 min — se o cliente repetir "quero falar
-// com alguém" várias vezes seguidas, a equipe não recebe uma rajada de avisos.
-const INTERVALO_ALERTA_MS = 30 * 60 * 1000;
-const ultimoAlertaPorNumero = new Map(); // numero -> timestamp
-
 /**
  * Cria o executor da tool `chamar_atendente`, amarrado ao número verificado
  * da conversa (mesmo padrão de orderTool.js — o telefone vem do webhook,
@@ -43,19 +36,6 @@ const ultimoAlertaPorNumero = new Map(); // numero -> timestamp
  */
 export function criarExecutorChamarAtendente({ numero, nomeContato }) {
   return async function executarChamarAtendente(input = {}) {
-    const agora = Date.now();
-    const ultimo = ultimoAlertaPorNumero.get(numero);
-    if (ultimo && agora - ultimo < INTERVALO_ALERTA_MS) {
-      return { sucesso: true, ja_avisado: true };
-    }
-
-    const { configuracoes } = await getMenuData();
-    const alertaWhatsappNumero = configuracoes.alerta_whatsapp_numero || config.gabrielWhatsappNumber;
-    if (!alertaWhatsappNumero) {
-      console.warn(`[humanHandoffTool] Nenhum número de alerta configurado — não foi possível avisar que ${numero} quer falar com uma pessoa.`);
-      return { erro: 'Não consegui avisar a equipe agora.' };
-    }
-
     const msg =
       `🙋 Cliente precisa de atendimento da equipe\n\n` +
       `Cliente: ${nomeContato || 'sem nome'}\n` +
@@ -63,13 +43,15 @@ export function criarExecutorChamarAtendente({ numero, nomeContato }) {
       (input.motivo ? `Assunto: ${input.motivo}\n` : '') +
       `\nResponda direto no WhatsApp da loja — o bot pausa sozinho quando alguém da equipe responde.`;
 
+    // Um alerta por cliente a cada 30 min, e com a loja fechada vira resumo (ver alertasEquipe.js).
+    let resultado;
     try {
-      await enviarTexto(alertaWhatsappNumero, msg);
+      resultado = await enviarAlertaEquipe({ assunto: `cliente:${numero}`, texto: msg });
     } catch (err) {
       console.error('[humanHandoffTool] falha ao enviar alerta de atendimento humano:', err);
       return { erro: 'Não consegui avisar a equipe agora.' };
     }
-    ultimoAlertaPorNumero.set(numero, agora);
-    return { sucesso: true };
+    if (resultado === 'sem_numero') return { erro: 'Não consegui avisar a equipe agora.' };
+    return resultado === 'repetido' ? { sucesso: true, ja_avisado: true } : { sucesso: true };
   };
 }
