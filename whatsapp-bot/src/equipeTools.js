@@ -5,6 +5,7 @@ import { obterConfigBotAdmin } from './botConfig.js';
 import { parseComoUTC, minutosEntre, chaveTelefone, normalizarWhatsapp } from './dataUtils.js';
 import { formatarTelefoneExibicao } from './pedidoStatusUtil.js';
 import { prepararAcao } from './equipeAcoes.js';
+import { montarFichaPedido, fichaEmTexto } from './fichaTecnica.js';
 
 // Ferramentas do modo equipe (ver modoEquipe.js). Todas só leem o banco na
 // hora — a única que "faz" algo é preparar_acao, e mesmo ela só deixa a ação
@@ -450,7 +451,76 @@ export function criarExecutoresEquipe({ numero, membro, agora, lerHistoricoClien
     situacao_loja: (input) => executarSituacaoLoja(input, { agora: agora?.() }),
     consultar_cliente: (input) => executarConsultarCliente(input),
     preparar_acao: (input) => prepararAcao({ numero, membro, ...input }),
+    ficha_pedido: (input) => executarFichaPedido(input, { numero }),
   };
 }
 
-export const FERRAMENTAS_EQUIPE = [BUSCAR_PEDIDOS_EQUIPE_TOOL, RESUMO_CONVERSA_TOOL, SITUACAO_LOJA_TOOL, CONSULTAR_CLIENTE_TOOL, PREPARAR_ACAO_TOOL];
+
+
+// ── ficha_pedido ─────────────────────────────────────────────────────────
+// Ficha técnica (ingredientes e gramas) do pedido, o mesmo cálculo do painel
+// Cozinha (fichaTecnica.js). O texto vai pra equipe exatamente como sai daqui:
+// o modoEquipe.js manda a ficha no lugar da resposta do modelo.
+
+const fichaDoTurno = new Map(); // numero -> texto
+
+export function tirarFichaDoTurno(numero) {
+  const f = fichaDoTurno.get(numero);
+  fichaDoTurno.delete(numero);
+  return f || null;
+}
+
+export const FICHA_PEDIDO_TOOL = {
+  name: 'ficha_pedido',
+  description:
+    'Ficha técnica de um pedido: cada pizza com ingredientes e gramas (das receitas cadastradas) e o total por ingrediente. ' +
+    'Use quando a equipe pedir "ficha do #380" ou "ficha do pedido do João". O sistema envia a ficha pronta — não reescreva nem resuma.',
+  input_schema: {
+    type: 'object',
+    properties: { pedido_id: { type: 'integer' }, nome: { type: 'string', description: 'Nome do cliente (usa o pedido mais recente dele).' } },
+    required: [],
+  },
+};
+
+async function dadosDaFicha() {
+  const [receitas, ingredientes, menu] = await Promise.all([
+    selectComoAdmin('receitas', 'select=produto_nome,tamanho,ingrediente_id,quantidade_g&ativo=is.true'),
+    selectComoAdmin('ingredientes', 'select=id,nome'),
+    getMenuData(),
+  ]);
+  const nomeIng = new Map(ingredientes.map((i) => [i.id, i.nome]));
+  return {
+    receitas: receitas.filter((r) => nomeIng.has(r.ingrediente_id)).map((r) => ({ ...r, ingrediente: nomeIng.get(r.ingrediente_id) })),
+    salgadas: menu.salgadas.map((p) => p.nome),
+    doces: menu.doces.map((p) => p.nome),
+    bebidas: menu.bebidas.map((p) => p.nome),
+    combos: (menu.combos || []).map((c) => ({ nome: c.nome, descricao: c.descricao })),
+  };
+}
+
+export async function executarFichaPedido(input = {}, { numero }) {
+  let id = input.pedido_id;
+  let outros = [];
+  if (!id && input.nome) {
+    const { achados, sugestoes } = filtrarPorNome(await todosOsPedidos(), input.nome);
+    if (!achados.length) {
+      return { buscou: input, encontrados: 0, sugestoes: sugestoes.slice(0, 5).map(resumoCurto), observacao: 'Mostre o que buscou e as sugestões, e pergunte de qual pedido é a ficha.' };
+    }
+    id = achados[0].id; // mais recente
+    outros = achados.slice(1, 4).map(resumoCurto);
+  }
+  if (!id) return { erro: 'Diga o número do pedido ou o nome do cliente.' };
+
+  const [p] = await selectComoAdmin('pedidos', `select=id,nome,itens_json,created_at&id=eq.${Number(id)}`);
+  if (!p) return { buscou: input, erro: `Não existe pedido #${id}.` };
+  const texto = fichaEmTexto(montarFichaPedido(p.itens_json, await dadosDaFicha()));
+  fichaDoTurno.set(numero, `📋 Ficha do pedido #${p.id} — ${p.nome} (${dataHoraBahia(p.created_at)})\n\n${texto}`);
+  return {
+    ficha_enviada: true,
+    pedido_id: p.id,
+    ...(outros.length ? { outros_pedidos_com_esse_nome: outros } : {}),
+    observacao: 'A ficha já vai ser enviada pelo sistema. Não repita o conteúdo.',
+  };
+}
+
+export const FERRAMENTAS_EQUIPE = [BUSCAR_PEDIDOS_EQUIPE_TOOL, RESUMO_CONVERSA_TOOL, SITUACAO_LOJA_TOOL, CONSULTAR_CLIENTE_TOOL, PREPARAR_ACAO_TOOL, FICHA_PEDIDO_TOOL];

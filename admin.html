@@ -174,6 +174,21 @@ input:checked+.sl::before{transform:translateX(20px);}
 .cozinha-tempo{font-size:18px;font-weight:700;margin-top:8px;}
 .cozinha-avancar{width:100%;margin-top:14px;padding:16px;background:var(--red);color:#fff;border:none;border-radius:10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;cursor:pointer;}
 .cozinha-vazio{text-align:center;padding:80px 20px;color:rgba(255,255,255,0.3);font-size:18px;}
+/* FICHA TÉCNICA (painel Cozinha) — letra grande pra ler na bancada */
+.cozinha-ficha-btns{display:flex;gap:8px;margin-top:12px;}
+.cozinha-ficha-btn{flex:1;padding:12px;background:#262626;color:#fff;border:1px solid #444;border-radius:10px;font-size:17px;font-weight:700;cursor:pointer;}
+.ficha{margin-top:12px;background:#0d0d0d;border:1px solid #333;border-radius:10px;padding:14px;}
+.ficha-pizza{padding:10px 0;border-bottom:1px solid #262626;}
+.ficha-pizza:last-child{border-bottom:none;}
+.ficha-titulo{font-size:20px;font-weight:800;color:#fff;}
+.ficha-etiqueta{font-size:15px;font-weight:700;color:#facc15;margin-top:2px;}
+.ficha-parte{font-size:19px;line-height:1.5;margin-top:4px;color:#e5e5e5;}
+.ficha-parte b,.ficha-total b{color:var(--orange);}
+.ficha-aviso{font-size:18px;font-weight:800;color:#ff4d4d;margin-top:4px;}
+.ficha-combo{font-size:21px;font-weight:800;color:var(--orange);margin-top:8px;}
+.ficha-filho{padding-left:12px;border-left:3px solid #333;margin:6px 0;}
+.ficha-bebida{font-size:18px;color:#aaa;margin-top:6px;}
+.ficha-total{margin-top:12px;padding-top:10px;border-top:2px solid #444;font-size:19px;line-height:1.5;}
 
 /* BOTTOM NAV MOBILE */
 .bottom-nav{display:none;}
@@ -864,6 +879,7 @@ input:checked+.sl::before{transform:translateX(20px);}
 </div>
 
 <script src="resumo-pedido.js"></script>
+<script src="ficha-tecnica.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 // CONSTANTES
@@ -4373,10 +4389,85 @@ document.addEventListener('keydown', (e) => {
 // ═══════════════════════════════════════════════════════
 // MODO COZINHA — tela cheia, só o essencial, auto-refresh 15s
 // ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// FICHA TÉCNICA — ingredientes e gramas de cada pizza do pedido, montada das
+// receitas da aba CMV (cálculo em ficha-tecnica.js, o mesmo da Luiza).
+// ═══════════════════════════════════════════════════════
+let _dadosFicha = null; // { dados, ate }
+async function carregarDadosFicha(){
+  if(_dadosFicha && _dadosFicha.ate > Date.now()) return _dadosFicha.dados;
+  const [receitas, ingredientes, salgadas, doces, bebidas, combos] = await Promise.all([
+    api('receitas','ativo=eq.true'), api('ingredientes',''),
+    api('pizzas_salgadas',''), api('pizzas_doces',''), api('bebidas',''), api('combos',''),
+  ]);
+  const nomeIng = new Map(ingredientes.map(i => [i.id, i.nome]));
+  const dados = {
+    receitas: receitas.filter(r => nomeIng.has(r.ingrediente_id)).map(r => ({ ...r, ingrediente: nomeIng.get(r.ingrediente_id) })),
+    salgadas: salgadas.map(p => p.nome), doces: doces.map(p => p.nome), bebidas: bebidas.map(p => p.nome),
+    combos: combos.map(c => ({ nome: c.nome, descricao: c.descricao })),
+  };
+  _dadosFicha = { dados, ate: Date.now() + 60000 };
+  return dados;
+}
+function fichaHtml(ficha){
+  const g = FichaTecnica.gramas;
+  const linha = (ls) => ls.map(l => `${esc(l.nome)} <b>${g(l.g)}</b>`).join(' · ');
+  const pizza = (b) => {
+    const q = b.qty > 1 ? `${b.qty}x ` : '';
+    if(b.tipo === 'bebida') return `<div class="ficha-bebida">🥤 ${q}${esc(b.titulo)}</div>`;
+    if(b.tipo === 'aviso') return `<div class="ficha-aviso">⚠️ ${q}${esc(b.titulo)}</div>`;
+    return `<div class="ficha-pizza"><div class="ficha-titulo">${q}${esc(b.titulo)}</div>
+      ${b.etiqueta ? `<div class="ficha-etiqueta">${esc(b.etiqueta)}</div>` : ''}${b.borda ? `<div class="ficha-etiqueta">Borda: ${esc(b.borda)}</div>` : ''}
+      ${(b.partes||[]).map(p => p.semReceita
+        ? `<div class="ficha-aviso">${p.rotulo ? esc(p.rotulo)+': ' : ''}⚠️ Receita não cadastrada</div>`
+        : `<div class="ficha-parte">${p.rotulo ? `<span style="color:#aaa;">${esc(p.rotulo)}:</span> ` : ''}${linha(p.linhas)}</div>`).join('')}
+      ${b.obs ? `<div class="ficha-etiqueta">Obs: ${esc(b.obs)}</div>` : ''}</div>`;
+  };
+  return ficha.blocos.map(b => b.tipo === 'combo'
+    ? `<div class="ficha-combo">${b.qty > 1 ? b.qty+'x ' : ''}${esc(b.titulo)}</div>${b.obs ? `<div class="ficha-etiqueta">Obs: ${esc(b.obs)}</div>` : ''}<div class="ficha-filho">${b.filhos.map(pizza).join('')}</div>`
+    : pizza(b)).join('')
+    + (ficha.totais.length ? `<div class="ficha-total"><span style="color:#fff;font-weight:800;">Total do pedido:</span> ${linha(ficha.totais)}</div>` : '');
+}
+// Ficha aberta/fechada à mão sobrevive ao recarregar do painel (a cada 15s); sem
+// escolha, abre sozinha nos pedidos em "Preparando".
+const _fichaAberta = new Map(); // id -> bool
+function alternarFicha(id, btn){
+  const el = document.getElementById(`ficha-${id}`);
+  const abrir = el.style.display === 'none';
+  el.style.display = abrir ? '' : 'none';
+  _fichaAberta.set(id, abrir);
+  btn.textContent = abrir ? '📋 Fechar ficha' : '📋 Ficha';
+}
+// Mesma impressão da comanda (80mm, janela noopener — ver imprimirPedido).
+async function imprimirFicha(id){
+  const [dados, pedidos] = await Promise.all([carregarDadosFicha(), api('pedidos', `id=eq.${id}`)]);
+  const p = pedidos[0]; if(!p) return;
+  const texto = FichaTecnica.fichaEmTexto(FichaTecnica.montarFichaPedido(p.itens_json, dados), { negrito: t => `[[B]]${t}[[/B]]` });
+  const corpo = esc(semAcentoImpressao(texto.replace(/½/g,'1/2').replace(/↳ /g,'> ').replace(/·/g,'-').replace(/⚠️/g,'!!').replace(/🎁 /g,'').replace(/🥤 /g,'')))
+    .replace(/\[\[B\]\]/g,'<strong>').replace(/\[\[\/B\]\]/g,'</strong>');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Ficha #${p.id}</title>
+<style>@page{ size:80mm auto; margin:0; } body{ width:80mm; margin:0; padding:2mm; font-family:Consolas,'Lucida Console','DejaVu Sans Mono',monospace; font-size:15px; font-weight:700; line-height:1.45; color:#000; background:#fff; }
+pre{ margin:0; white-space:pre-wrap; word-break:break-word; font:inherit; } strong{ font-weight:900; font-size:1.15em; }
+.btn-imprimir{ display:block; width:100%; margin-top:3mm; padding:10px; background:#CC1100; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:bold; cursor:pointer; } @media print{ .btn-imprimir{ display:none !important; } }</style>
+</head><body><pre>${cupomCentralizar('FICHA TECNICA')}
+Pedido: #${p.id} - ${esc(semAcentoImpressao(p.nome||''))}
+${CUPOM_LINHA}
+${corpo}
+${CUPOM_LINHA}</pre>
+<button class="btn-imprimir" onclick="window.print()">🖨️ IMPRIMIR</button>
+<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });<\/script></body></html>`;
+  const blobUrl = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+  window.open(blobUrl,'_blank','noopener,width=420,height=680');
+  setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
+}
+
 async function loadCozinha(){
   const grid = document.getElementById('cozinha-grid');
   if(!grid) return;
-  const data = await api('pedidos', 'status=in.(aguardando,aceito_preparando,aceito,preparando)', 'created_at.asc');
+  const [data, dadosFicha] = await Promise.all([
+    api('pedidos', 'status=in.(aguardando,aceito_preparando,aceito,preparando)', 'created_at.asc'),
+    carregarDadosFicha().catch(() => null),
+  ]);
   if(!data.length){ grid.innerHTML = '<div class="cozinha-vazio">🎉 Nenhum pedido em preparo no momento.</div>'; return; }
   carregarFidelidade(data); // em segundo plano (mensagem de "saiu")
   grid.innerHTML = data.map(p=>{
@@ -4392,9 +4483,22 @@ async function loadCozinha(){
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
       <div class="cozinha-tempo">${texto}</div>
+      ${fichaDoCard(p, bucket, dadosFicha)}
       <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}','${bucket}',this.closest('.cozinha-card'))">${avanco.label}</button>
     </div>`;
   }).join('');
+}
+function fichaDoCard(p, bucket, dados){
+  if(!dados || !window.FichaTecnica) return '';
+  const aberta = _fichaAberta.has(p.id) ? _fichaAberta.get(p.id) : bucket === 'aceito_preparando';
+  let conteudo;
+  try { conteudo = fichaHtml(FichaTecnica.montarFichaPedido(p.itens_json, dados)); }
+  catch(e){ console.error('ficha técnica', e); conteudo = '<div class="ficha-aviso">⚠️ Não consegui montar a ficha deste pedido.</div>'; }
+  return `<div class="cozinha-ficha-btns">
+      <button class="cozinha-ficha-btn" onclick="alternarFicha(${p.id}, this)">${aberta ? '📋 Fechar ficha' : '📋 Ficha'}</button>
+      <button class="cozinha-ficha-btn" onclick="imprimirFicha(${p.id})">🖨️ Imprimir ficha</button>
+    </div>
+    <div class="ficha" id="ficha-${p.id}" style="${aberta ? '' : 'display:none;'}">${conteudo}</div>`;
 }
 async function avancarStatusCozinha(id, novoStatus, statusEsperado, cardEl){
   await atualizarStatus(id, novoStatus, cardEl, statusEsperado);

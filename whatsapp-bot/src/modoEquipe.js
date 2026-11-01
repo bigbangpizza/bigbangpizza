@@ -3,7 +3,7 @@ import { getMenuData } from './supabaseData.js';
 import { calcularStatusLoja } from './systemPrompt.js';
 import { getAgoraBahiaDetalhado } from './dataUtils.js';
 import { primeiroNome, anotacoesAtivas, salvarAnotacao, removerAnotacao } from './equipe.js';
-import { FERRAMENTAS_EQUIPE, criarExecutoresEquipe, normalizarTexto, dataHoraBahia, intervaloDoDia } from './equipeTools.js';
+import { FERRAMENTAS_EQUIPE, criarExecutoresEquipe, normalizarTexto, dataHoraBahia, intervaloDoDia, tirarFichaDoTurno } from './equipeTools.js';
 import { acaoPendente, descartarAcao, executarAcaoPendente, tirarResumoDoTurno } from './equipeAcoes.js';
 
 // Modo equipe: mensagem de um número da tabela `equipe` (reconhecido pelo
@@ -105,6 +105,7 @@ export async function montarPromptEquipe(membro, agora = new Date()) {
 - Não achou: diga exatamente o que buscou e mostre as sugestões (ex: "não achei 'Matheus Peneluc'; achei 'Matheus' com o pedido #374 de 30/10 às 23h27, é esse?"). Nunca responda só "não encontrei".
 - Conversa com cliente: resumo_conversa, e resuma em poucos tópicos o que o cliente queria e como terminou.
 - Situação da loja, atrasos, faturamento do dia/semana: situacao_loja. Ficha do cliente: consultar_cliente.
+- Ficha técnica de um pedido ("ficha do #380", "ficha do pedido do João", gramas, ingredientes): ficha_pedido. O sistema manda a ficha pronta; você não repete o conteúdo.
 - Mensagem encaminhada de um alerta (ex: "🙋 Cliente precisa de atendimento... Telefone: ...", "⚠️ Pedido atrasado...") seguida de uma pergunta é uma pergunta INTERNA sobre aquele cliente/pedido: consulte pelos dados do alerta e responda. Não é pedido de atendimento.
 
 ## Ações (só com confirmação)
@@ -167,12 +168,18 @@ export async function processarTurnoEquipe({ numero, membro, userContent, histor
   const prompt = await montarPromptEquipe(membro, agora());
   const executores = criarExecutoresEquipe({ numero, membro, agora, lerHistoricoCliente });
   tirarResumoDoTurno(numero); // limpa sobra de turno anterior
+  tirarFichaDoTurno(numero);
   const { textoResposta, novasMensagens } = await conversarComFerramentas(prompt, historico, FERRAMENTAS_EQUIPE, executores);
 
   // Ação preparada neste turno: o resumo e a pergunta saem do código, nunca do modelo.
   const resumoAcao = tirarResumoDoTurno(numero);
+  // Ficha técnica: vai exatamente como o painel monta; do modelo, só um recado curto (ex: outros pedidos com o mesmo nome).
+  const ficha = tirarFichaDoTurno(numero);
   // **negrito** de Markdown não funciona no WhatsApp: vira *negrito*.
-  const resposta = prefixo + (resumoAcao ? `${resumoAcao}\n\nConfirma? (sim/não)` : textoResposta.replace(/\*\*(.+?)\*\*/g, '*$1*'));
+  const textoModelo = textoResposta.replace(/\*\*(.+?)\*\*/g, '*$1*');
+  const resposta = prefixo + (resumoAcao
+    ? `${resumoAcao}\n\nConfirma? (sim/não)`
+    : ficha ? `${ficha}${textoModelo && textoModelo.length < 400 ? `\n\n${textoModelo}` : ''}` : textoModelo);
   const ultima = novasMensagens[novasMensagens.length - 1];
   if (ultima?.role === 'assistant') ultima.content = [textBlock(resposta)];
   historico.push(...novasMensagens);
