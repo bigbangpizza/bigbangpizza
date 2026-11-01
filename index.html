@@ -868,7 +868,7 @@ const HORA_FECHA_LOJA = 23;
 // Mesma regra do servidor (pizza_do_dia_vigente): modo_loja forçado prevalece sobre o horário.
 function lojaAbertaBahia() {
   if (abertaManualVigente()) return true;
-  if (modoLojaOverride === 'fechada') return false;
+  if (fechadaManualVigente()) return false;
   const { dow, hora } = agoraBahia();
   return [0, 4, 5, 6].includes(dow) && hora >= 18 && hora < HORA_FECHA_LOJA;
 }
@@ -995,6 +995,11 @@ let modoLojaOverride = null;
 let modoLojaAte = '';
 function abertaManualVigente() {
   return modoLojaOverride === 'aberta' && /^\d{4}-\d{2}-\d{2}T/.test(modoLojaAte) && Date.now() < new Date(modoLojaAte).getTime();
+}
+// "Fechada" forçada vale até modo_loja_ate (o admin grava 06h do dia seguinte); sem data, até alguém mudar.
+function fechadaManualVigente() {
+  if (modoLojaOverride !== 'fechada') return false;
+  return !/^\d{4}-\d{2}-\d{2}T/.test(modoLojaAte) || Date.now() < new Date(modoLojaAte).getTime();
 }
 
 async function checkModoLoja() {

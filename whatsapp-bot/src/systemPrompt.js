@@ -53,7 +53,9 @@ export function calcularStatusLoja(modoLoja = 'automatico', agora = new Date(), 
     const ate = getAgoraBahiaDetalhado(new Date(abertaAte)).horaTexto;
     return { aberta: true, resumo: `ABERTA agora (aberta manualmente pela equipe até ${ate})`, respostaFechada: '', respostaInsistencia: '' };
   }
-  if (modoLoja === 'fechada') {
+  // "Fechada" forçada vale até modo_loja_ate (o admin grava 06h do dia seguinte); sem data, até alguém mudar.
+  const fechadaVencida = modoLoja === 'fechada' && /^\d{4}-\d{2}-\d{2}T/.test(abertaAte || '') && agora >= new Date(abertaAte);
+  if (modoLoja === 'fechada' && !fechadaVencida) {
     const prox = textoProximaAbertura(diaSemana);
     return {
       aberta: false,

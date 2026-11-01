@@ -1531,8 +1531,11 @@ function updateLojaUI(modo, ate = '') {
   } else if (modo === 'aberta') {
     texto.innerHTML = `🟢 <span style="color:#4ade80;">LOJA FORÇADA ABERTA até ${horaBahia(ate)}</span>`;
     card.style.borderLeft = '4px solid #4ade80'; document.getElementById('btn-abrir').className = 'be';
+  } else if (modo === 'fechada' && /^\d{4}-\d{2}-\d{2}T/.test(ate) && new Date(ate) <= new Date()) {
+    texto.innerHTML = `⚙️ <span style="color:rgba(255,255,255,.6);">Fechamento manual vencido (${horaBahia(ate)}) — seguindo o horário automático</span>`;
+    card.style.borderLeft = '4px solid rgba(255,255,255,.1)'; document.getElementById('btn-auto').className = 'be';
   } else if (modo === 'fechada') {
-    texto.innerHTML = '🔴 <span style="color:#ff4444;">LOJA FORÇADA FECHADA</span>';
+    texto.innerHTML = `🔴 <span style="color:#ff4444;">LOJA FORÇADA FECHADA${ate ? ' até '+horaBahia(ate) : ''}</span>`;
     card.style.borderLeft = '4px solid #ff4444'; document.getElementById('btn-fechar').className = 'be';
   } else {
     texto.innerHTML = '⚙️ <span style="color:rgba(255,255,255,.6);">Modo Automático — segue horário</span>';
@@ -1542,8 +1545,9 @@ function updateLojaUI(modo, ate = '') {
 
 async function setModoLoja(modo) {
   const hhmm = document.getElementById('loja-aberta-ate').value || '23:00';
-  const ate = modo === 'aberta' ? abertaAteISO(hhmm) : '';
-  // O "até" vai primeiro: assim o "aberta" nunca fica gravado sem validade.
+  // "Fechada" forçada volta sozinha pro automático às 06h seguintes.
+  const ate = modo === 'aberta' ? abertaAteISO(hhmm) : modo === 'fechada' ? abertaAteISO('06:00') : '';
+  // O "até" vai primeiro: assim o "aberta"/"fechada" nunca fica gravado sem validade.
   await fetch(`${SB}/rest/v1/configuracoes?chave=eq.modo_loja_ate`, {
     method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ valor: ate })
   });
@@ -1551,7 +1555,7 @@ async function setModoLoja(modo) {
     method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ valor: modo })
   });
   updateLojaUI(modo, ate);
-  showToastAdmin(modo === 'aberta' ? `🟢 Loja ABERTA até ${horaBahia(ate)}!` : modo === 'fechada' ? '🔴 Loja FECHADA!' : '⚙️ Modo automático!');
+  showToastAdmin(modo === 'aberta' ? `🟢 Loja ABERTA até ${horaBahia(ate)}!` : modo === 'fechada' ? `🔴 Loja FECHADA até ${horaBahia(ate)}!` : '⚙️ Modo automático!');
   registrarHistorico(`Modo da loja alterado para ${modo === 'aberta' ? 'Forçada Aberta' : modo === 'fechada' ? 'Forçada Fechada' : 'Automático'}`);
 }
 
@@ -4701,6 +4705,9 @@ async function loadReceitas(filtro='tudo'){
       cmvMap[key].ingredCusto+=custo;
     }
     cmvMap[key].embalagem+=r.embalagem||0;
+    if(r.provisorio) cmvMap[key].provisorio=true;
+    // Ingrediente ainda sem custo (ex: recheio novo): o CMV desse produto sai baixo.
+    if(ing && !(Number(ing.custo_kg)>0)) (cmvMap[key].semCusto ||= new Set()).add(ing.nome);
   });
 
   const list=Object.values(cmvMap).map(item=>{
@@ -4719,7 +4726,9 @@ async function loadReceitas(filtro='tudo'){
 
   const cls=pct=>pct>35?'boff':pct>28?'byellow':'bon';
   const rows=list.map(item=>`<tr>
-    <td data-label="Produto"><strong>${item.produto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${item.tamanho}</span></td>
+    <td data-label="Produto"><strong>${item.produto}</strong><br><span style="font-size:10px;color:rgba(255,255,255,.3)">${item.tamanho}</span>
+      ${item.provisorio ? `<br><span class="byellow" title="Gramatura ainda não confirmada">⏳ provisório</span> <button class="be" style="padding:2px 8px;font-size:11px;" onclick="confirmarReceita('${esc(item.produto).replace(/'/g,"\\'")}','${esc(item.tamanho)}')">✅ Confirmar</button>` : ''}
+      ${item.semCusto ? `<br><span class="boff" style="font-size:11px;">sem custo: ${esc([...item.semCusto].join(', '))}</span>` : ''}</td>
     <td data-label="Ingredientes">${brl(item.ingredCusto)}</td>
     <td data-label="Embalagem">${brl(item.embalagem)}</td>
     <td data-label="Custo Total"><strong>${brl(item.total)}</strong></td>
@@ -4729,6 +4738,16 @@ async function loadReceitas(filtro='tudo'){
   document.getElementById('t-receitas').innerHTML=`<table>
     <thead><tr><th>Produto</th><th>Ingredientes</th><th>Embalagem</th><th>Custo Total</th><th>Preço Venda</th><th>CMV%</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
+}
+
+// Tira a marca "provisório" da receita inteira (produto + tamanho) depois de conferida.
+async function confirmarReceita(produto, tamanho){
+  if(!confirm(`Confirmar as gramas de ${produto} (${tamanho})?`)) return;
+  const r = await authFetch(`${SB}/rest/v1/receitas?produto_nome=eq.${encodeURIComponent(produto)}&tamanho=eq.${encodeURIComponent(tamanho)}`, {
+    method:'PATCH', headers:{ 'Prefer':'return=minimal' }, body: JSON.stringify({ provisorio:false })
+  });
+  showToastAdmin(r.ok ? '✅ Receita confirmada!' : '⚠️ Erro ao salvar.');
+  if(r.ok) loadReceitas(cmvFiltroAtual);
 }
 
 function openModIngrediente(){
