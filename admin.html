@@ -171,7 +171,19 @@ input:checked+.sl::before{transform:translateX(20px);}
 .cozinha-num{font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--orange);}
 .cozinha-item{font-size:20px;font-weight:700;padding:6px 0;border-bottom:1px solid #2a2a2a;}
 .cozinha-obs{background:rgba(255,200,0,.12);border:1px solid rgba(255,200,0,.35);border-radius:8px;padding:10px;margin-top:10px;font-size:17px;font-weight:700;color:#facc15;}
-.cozinha-tempo{font-size:18px;font-weight:700;margin-top:8px;}
+/* CONTADOR DO PEDIDO — tempo desde que foi feito (verde/amarelo/vermelho) + tempo no status atual */
+.tempo-pedido{margin:4px 0 12px;}
+.tempo-total{font-size:26px;font-weight:800;line-height:1.15;}
+.cozinha-card .tempo-pedido{margin:10px 0 4px;}
+.cozinha-card .tempo-total{font-size:32px;}
+.tempo-status{font-size:13px;font-weight:600;color:var(--text-secondary);margin-top:2px;}
+.cozinha-card .tempo-status{font-size:16px;color:#aaa;}
+.tempo-rel .tempo-pedido{margin:0;} .tempo-rel .tempo-total{font-size:15px;} .tempo-rel .tempo-status{font-size:11px;}
+.tempo-total.verde{color:#4ade80;} .tempo-total.amarelo{color:#facc15;} .tempo-total.fim{color:var(--text-secondary);font-size:18px;}
+.tempo-total.vermelho{color:#ff4444;animation:tempoPisca 1.6s ease-in-out infinite;}
+@keyframes tempoPisca{0%,100%{opacity:1;}50%{opacity:.45;}}
+.ordem-pedidos{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:var(--text-secondary);}
+.ordem-pedidos select{background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-color);padding:7px 10px;border-radius:7px;font-size:13px;font-weight:600;}
 .cozinha-avancar{width:100%;margin-top:14px;padding:16px;background:var(--red);color:#fff;border:none;border-radius:10px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;cursor:pointer;}
 .cozinha-vazio{text-align:center;padding:80px 20px;color:rgba(255,255,255,0.3);font-size:18px;}
 /* FICHA TÉCNICA (painel Cozinha) — letra grande pra ler na bancada */
@@ -453,6 +465,12 @@ input:checked+.sl::before{transform:translateX(20px);}
         <div><div class="page-title">PEDIDOS</div><div class="page-sub">Pedidos recebidos em tempo real — autorefresh 30s 🍕</div></div>
         <button class="btn-new" onclick="abrirPedidoManual()">📝 Lançar pedido manual</button>
       </div>
+      <label class="ordem-pedidos">Ordenar:
+        <select id="ordem-pedidos" onchange="mudarOrdemPedidos(this.value)">
+          <option value="recentes">🆕 Mais recentes primeiro</option>
+          <option value="antigos">⏱️ Mais antigos em aberto primeiro</option>
+        </select>
+      </label>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col" data-status="aguardando">
           <div class="kanban-col-head" style="border-color:#ff4444;">
@@ -2438,7 +2456,6 @@ function renderPedidoCard(p){
   const cor=CORES_STATUS_PEDIDO[p.status]||'#fff';
   // Valor de cada item, adicionais, descontos e total — mesmo formato da comanda, do rastreio e do WhatsApp (resumo-pedido.js).
   const itensHtml=`<div style="font-size:14px;">${ResumoPedido.html(ResumoPedido.montarResumoPedido(p, nomesDocesPedidos), esc)}</div>`;
-  const mostrarTimer=(bucket==='aguardando'||bucket==='aceito_preparando');
   const bordas=bordasDoPedido(p);
   return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
@@ -2449,7 +2466,6 @@ function renderPedidoCard(p){
           <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
           ${etiquetaRetirada(p)}
           ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
-          ${mostrarTimer?`<div class="pedido-timer" data-created="${p.created_at}" style="font-size:12px;font-weight:700;margin-top:2px;"></div>`:''}
         </div>
       </div>
       <div style="text-align:right;">
@@ -2458,6 +2474,7 @@ function renderPedidoCard(p){
         ${p.pago ? `<div style="font-size:11px;color:#4ade80;font-weight:700;" title="${esc(p.pago_por ? 'Marcado por '+p.pago_por : '')}">💰 Pago</div>` : ''}
       </div>
     </div>
+    ${tempoPedidoHTML(p)}
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
       <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
       ${itensHtml}
@@ -2492,10 +2509,16 @@ async function loadPedidos(){
   if(!nomesDocesPedidos.size) nomesDocesPedidos = new Set((await api('pizzas_doces','select=nome')).map(d => String(d.nome).toLowerCase()));
   const inputData = document.getElementById('filtro-data-entregue');
   if(inputData && !inputData.value) inputData.value = filtroDataEntregue;
+  const selOrdem = document.getElementById('ordem-pedidos');
+  if(selOrdem) selOrdem.value = ordemPedidos;
   const statusParaCarregar = entreguesVisiveis ? COLUNAS_KANBAN_PEDIDOS : COLUNAS_KANBAN_PEDIDOS.filter(s=>s!=='entregue');
   const resultados = await Promise.all(statusParaCarregar.map(s=>api('pedidos', queryParaStatus(s), 'created_at.desc')));
   const porStatus = {};
   statusParaCarregar.forEach((s,i)=>{ porStatus[s]=resultados[i]; });
+  // "Mais antigos em aberto primeiro": quem está esperando há mais tempo fica no topo
+  // (Entregue continua do mais recente pro mais antigo).
+  if(ordemPedidos==='antigos') statusParaCarregar.forEach(s=>{ if(s!=='entregue') porStatus[s]=[...porStatus[s]].reverse(); });
+  await Promise.all([sincronizarRelogio(), carregarInicioStatus(Object.values(porStatus).flat())]);
   await carregarEntregasDosPedidos([...(porStatus.saiu||[]), ...(porStatus.entregue||[])]).catch(e => console.error('[motoboy]', e));
 
   COLUNAS_KANBAN_PEDIDOS.forEach(status=>{
@@ -2519,22 +2542,90 @@ async function loadPedidos(){
   }, 30000);
 }
 
-function calcTempoEspera(createdAtStr){
-  const diffMin=Math.max(0,Math.floor((Date.now()-new Date(createdAtStr).getTime())/60000));
-  const texto=diffMin<60 ? `⏱️ ${diffMin} min aguardando` : `⏱️ ${Math.floor(diffMin/60)}h ${diffMin%60}min aguardando`;
-  const cor=diffMin<=15 ? '#4ade80' : diffMin<=30 ? '#facc15' : '#ff4444';
-  return {texto,cor};
+let ordemPedidos = (()=>{ try { return localStorage.getItem('bb_ordem_pedidos') || 'recentes'; } catch(e){ return 'recentes'; } })();
+function mudarOrdemPedidos(valor){
+  ordemPedidos = valor;
+  try { localStorage.setItem('bb_ordem_pedidos', valor); } catch(e){}
+  loadPedidos();
 }
-function atualizarTemporizadoresPedidos(){
-  document.querySelectorAll('.pedido-timer').forEach(el=>{
-    const created=el.getAttribute('data-created');
-    if(!created) return;
-    const {texto,cor}=calcTempoEspera(created);
-    el.textContent=texto;
-    el.style.color=cor;
+
+// CONTADOR DO PEDIDO — conta pela hora do servidor (Supabase), não pelo relógio do
+// computador: _difRelogio é quanto o relógio daqui está atrasado/adiantado.
+let _difRelogio = 0, _relogioSincEm = 0;
+async function sincronizarRelogio(){
+  if(_relogioSincEm && Date.now() - _relogioSincEm < 300000) return;
+  try {
+    const t0 = Date.now();
+    const r = await authFetch(`${SB}/rest/v1/rpc/agora_servidor`, { method:'POST', body:'{}' });
+    if(!r.ok) return;
+    const servidor = new Date(await r.json()).getTime();
+    const t1 = Date.now();
+    if(!isNaN(servidor)){ _difRelogio = servidor - (t0 + t1) / 2; _relogioSincEm = t1; }
+  } catch(e){ console.error('[relógio]', e); }
+}
+const agoraServidor = () => Date.now() + _difRelogio;
+
+// Quando o pedido entrou no status atual — vem de pedidos_status_log (registrado
+// pelo banco desde 31/10). Sem registro: aguardando conta da criação; os outros
+// ficam sem a linha de baixo (e entregue/cancelado sem o tempo final).
+const _inicioStatus = new Map();
+async function carregarInicioStatus(pedidos){
+  const ids = [...new Set(pedidos.map(p=>p.id))];
+  if(!ids.length) return;
+  const log = await api('pedidos_status_log', `pedido_id=in.(${ids.join(',')})&select=pedido_id,status_novo,alterado_em`, 'alterado_em.asc');
+  const ultimo = new Map();
+  log.forEach(l => ultimo.set(l.pedido_id, l));
+  pedidos.forEach(p => {
+    const l = ultimo.get(p.id);
+    if(l && statusBucket(l.status_novo) === statusBucket(p.status)) _inicioStatus.set(p.id, l.alterado_em);
+    else _inicioStatus.delete(p.id);
   });
 }
-setInterval(atualizarTemporizadoresPedidos, 60000);
+
+function fmtDuracao(min){
+  return min < 60 ? `${min} min` : `${Math.floor(min/60)}h ${String(min%60).padStart(2,'0')}min`;
+}
+const minutosEntre = (deMs, ateMs) => Math.max(0, Math.floor((ateMs - deMs) / 60000));
+const ROTULO_TEMPO_STATUS = {aguardando:'Aguardando', aceito_preparando:'Preparando', saiu:'Saiu para entrega'};
+
+function tempoPedidoHTML(p){
+  const inicio = _inicioStatus.get(p.id) || (statusBucket(p.status)==='aguardando' ? p.created_at : '');
+  return `<div class="tempo-pedido" data-created="${esc(p.created_at||'')}" data-status-em="${esc(inicio||'')}" data-status="${esc(statusBucket(p.status))}" data-retirada="${p.bairro==='Retirada no local'?1:0}">
+      <div class="tempo-total">${textoTempoPedido(p.created_at, inicio, statusBucket(p.status), p.bairro==='Retirada no local').total}</div>
+      <div class="tempo-status"></div>
+    </div>`;
+}
+// Calcula as duas linhas do contador. Datas: created_at do pedido vem sem fuso
+// (UTC, ver parseUTC); alterado_em do log já vem com fuso.
+function textoTempoPedido(created, statusEm, bucket, retirada){
+  const ms = s => !s ? null : /(Z|[+-]\d\d:?\d\d)$/i.test(s) ? new Date(s).getTime() : parseUTC(s).getTime();
+  const criado = ms(created);
+  if(!criado) return { total:'', classe:'', status:'' };
+  const desde = ms(statusEm);
+  if(bucket==='entregue' || bucket==='cancelado'){
+    const rotulo = bucket==='entregue' ? (retirada ? '✅ Retirado' : '✅ Entregue') : '❌ Cancelado';
+    return { total: desde ? `${rotulo} em ${fmtDuracao(minutosEntre(criado, desde))}` : rotulo, classe:'fim', status:'' };
+  }
+  const agora = agoraServidor();
+  const min = minutosEntre(criado, agora);
+  const rotuloStatus = bucket==='saiu' && retirada ? 'Pronto para retirada' : ROTULO_TEMPO_STATUS[bucket];
+  return {
+    total: `⏱️ ${fmtDuracao(min)}`,
+    classe: min < 30 ? 'verde' : min <= 45 ? 'amarelo' : 'vermelho',
+    status: desde && rotuloStatus ? `${rotuloStatus} há ${fmtDuracao(minutosEntre(desde, agora))}` : '',
+  };
+}
+function atualizarTemporizadoresPedidos(){
+  document.querySelectorAll('.tempo-pedido').forEach(el=>{
+    const t = textoTempoPedido(el.dataset.created, el.dataset.statusEm, el.dataset.status, el.dataset.retirada==='1');
+    const total = el.querySelector('.tempo-total'), status = el.querySelector('.tempo-status');
+    total.textContent = t.total;
+    total.className = 'tempo-total ' + t.classe;
+    status.textContent = t.status;
+    status.style.display = t.status ? '' : 'none';
+  });
+}
+setInterval(atualizarTemporizadoresPedidos, 30000);
 
 async function copiarLinkRastreio(id){
   const dados=await api('pedidos',`id=eq.${id}&select=rastreio_token`);
@@ -4503,25 +4594,26 @@ async function loadCozinha(){
     api('pedidos', 'status=in.(aguardando,aceito_preparando,aceito,preparando)', 'created_at.asc'),
     carregarDadosFicha().catch(() => null),
   ]);
+  await Promise.all([sincronizarRelogio(), carregarInicioStatus(data)]);
   if(!data.length){ grid.innerHTML = '<div class="cozinha-vazio">🎉 Nenhum pedido em preparo no momento.</div>'; return; }
   carregarFidelidade(data); // em segundo plano (mensagem de "saiu")
   grid.innerHTML = data.map(p=>{
     const bucket = statusBucket(p.status);
     const itensHtml = (p.itens||'').split(' | ').filter(Boolean).map(i=>`<div class="cozinha-item">🍕 ${esc(i)}</div>`).join('');
-    const {texto} = calcTempoEspera(p.created_at);
     const avanco = bucket === 'aguardando'
       ? {status:'aceito_preparando', label:'✅🔥 Aceitar e Preparar'}
       : {status:'saiu', label:'🛵 Saiu para Entrega'};
     return `<div class="cozinha-card ${bucket}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}">
       <div class="cozinha-num">#${p.id}</div>
+      ${tempoPedidoHTML(p)}
       ${etiquetaRetirada(p)}
       ${itensHtml}
       ${p.observacao ? `<div class="cozinha-obs">⚠️ ${esc(p.observacao)}</div>` : ''}
-      <div class="cozinha-tempo">${texto}</div>
       ${fichaDoCard(p, bucket, dadosFicha)}
       <button class="cozinha-avancar" onclick="avancarStatusCozinha(${p.id},'${avanco.status}','${bucket}',this.closest('.cozinha-card'))">${avanco.label}</button>
     </div>`;
   }).join('');
+  atualizarTemporizadoresPedidos();
 }
 // ABA FICHAS TÉCNICAS — a receita de cada sabor ativo, montada pelo mesmo cálculo
 // da ficha do pedido (ficha-tecnica.js), separada em base e recheio.
@@ -5552,6 +5644,7 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
   const totalUnidadesPizza=rankingSabores.reduce((s,[,q])=>s+q,0)+unidadesSemSaborDefinido;
 
   const ehDiaUnico=REL_PERIODOS_DE_UM_DIA.includes(period);
+  if(ehDiaUnico) await Promise.all([sincronizarRelogio(), carregarInicioStatus(pedidos)]);
   const label=period==='data'
     ? (parseUTC(dataEspecifica+' 12:00:00')||new Date()).toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZone:'America/Bahia'})
     : (REL_LABELS[period]||period);
@@ -5590,7 +5683,7 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
     </div>
 
     ${ehDiaUnico?`<div class="tw"><div class="tw-head"><h3>📄 Pedidos de ${esc(label)}</h3></div>
-    ${pedidos.length?`<table><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Status</th></tr></thead><tbody>
+    ${pedidos.length?`<table><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Status</th><th>Tempo</th></tr></thead><tbody>
     ${pedidos.map(p=>`<tr>
       <td data-label="#">${p.id}</td>
       <td data-label="Hora">${(parseUTC(p.created_at)||new Date()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'})}</td>
@@ -5598,12 +5691,14 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
       <td data-label="Itens" style="max-width:320px;font-size:12px;color:rgba(255,255,255,.6);">${esc(p.itens||'')}</td>
       <td data-label="Valor" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(p.total||0)}</td>
       <td data-label="Status">${REL_STATUS_LABEL[p.status]||esc(p.status)}</td>
+      <td data-label="Tempo" class="tempo-rel">${tempoPedidoHTML(p)}</td>
     </tr>`).join('')}
     </tbody></table>`:'<div class="loading">Nenhum pedido nesse dia.</div>'}</div>`
     :`<div style="font-size:12px;color:rgba(255,255,255,.35);">Selecione "Hoje", "Ontem" ou uma data específica (calendário acima) pra ver a lista detalhada de pedidos.</div>`}
     <div id="rel-bairros" style="margin-top:16px;"></div>
     <div id="rel-oferta-doce" style="margin-top:16px;"></div>
   `;
+  atualizarTemporizadoresPedidos();
   carregarRelatorioBairros();
   carregarRelatorioOfertaDoce();
 }
