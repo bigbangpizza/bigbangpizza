@@ -189,6 +189,19 @@ input:checked+.sl::before{transform:translateX(20px);}
 .ficha-filho{padding-left:12px;border-left:3px solid #333;margin:6px 0;}
 .ficha-bebida{font-size:18px;color:#aaa;margin-top:6px;}
 .ficha-total{margin-top:12px;padding-top:10px;border-top:2px solid #444;font-size:19px;line-height:1.5;}
+/* ABA FICHAS TÉCNICAS — todos os sabores, letra grande pra bancada */
+.fichas-topo{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px;}
+.fichas-topo button{padding:12px 18px;font-size:16px;font-weight:700;border-radius:10px;border:1px solid #444;background:#262626;color:#fff;cursor:pointer;}
+.fichas-meio{background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.35);color:#facc15;border-radius:10px;padding:12px 14px;font-size:18px;font-weight:700;margin-bottom:16px;}
+.fichas-secao{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:1px;color:var(--orange);margin:22px 0 10px;}
+.fichas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+.fichas-card{background:#151515;border:2px solid #333;border-radius:12px;padding:14px 16px;}
+.fichas-card.prov{border-color:#facc15;}
+.fichas-card.sem{border-color:#ff4444;}
+.fichas-nome{font-size:22px;font-weight:800;color:#fff;margin-bottom:6px;}
+.fichas-linha{font-size:19px;line-height:1.55;color:#e5e5e5;}
+.fichas-linha span{color:#aaa;}
+.fichas-linha b{color:var(--orange);}
 
 /* BOTTOM NAV MOBILE */
 .bottom-nav{display:none;}
@@ -299,6 +312,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('motoboy')"   id="nav-motoboy">  <span class="ic">🏍️</span> Motoboy</div>
       <div class="nav-item" onclick="show('pedidos')"   id="nav-pedidos">  <span class="ic">📋</span> Pedidos</div>
       <div class="nav-item" onclick="show('cozinha')"   id="nav-cozinha">  <span class="ic">👨‍🍳</span> Cozinha</div>
+      <div class="nav-item" onclick="show('fichas')"    id="nav-fichas">   <span class="ic">📋</span> Fichas Técnicas</div>
       <div class="nav-item" onclick="show('avaliacoes')" id="nav-avaliacoes"><span class="ic">⭐</span> Avaliações</div>
       <div class="nav-item" onclick="show('clientes')" id="nav-clientes"><span class="ic">👥</span> Clientes</div>
       <div class="nav-item" onclick="show('contatos')"  id="nav-contatos"> <span class="ic">💬</span> Contatos</div>
@@ -479,9 +493,24 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div id="pg-cozinha" class="hidden">
       <div class="cozinha-header">
         <h1>👨‍🍳 MODO COZINHA</h1>
-        <button class="cozinha-sair" onclick="show('dashboard')">✕ Sair</button>
+        <div style="display:flex;gap:8px;">
+          <button class="cozinha-sair" onclick="show('fichas')">📋 Fichas Técnicas</button>
+          <button class="cozinha-sair" onclick="show('dashboard')">✕ Sair</button>
+        </div>
       </div>
       <div class="cozinha-grid" id="cozinha-grid"><div class="cozinha-vazio">Carregando...</div></div>
+    </div>
+
+    <!-- FICHAS TÉCNICAS (todos os sabores, sem precisar de pedido) -->
+    <div id="pg-fichas" class="hidden">
+      <div class="page-title">📋 FICHAS TÉCNICAS</div>
+      <div class="page-sub">Receita de cada sabor ativo, das receitas cadastradas na aba CMV.</div>
+      <div class="fichas-topo">
+        <button onclick="show('cozinha')">👨‍🍳 Voltar à Cozinha</button>
+        <button onclick="imprimirFichasTecnicas()">🖨️ Imprimir</button>
+      </div>
+      <div class="fichas-meio">½ Meio a meio: base inteira + metade do recheio de cada sabor.</div>
+      <div id="fichas-conteudo"><div class="loading">Carregando...</div></div>
     </div>
 
     <!-- AVALIAÇÕES -->
@@ -833,6 +862,7 @@ input:checked+.sl::before{transform:translateX(20px);}
     <div class="bottom-sheet-panel">
       <div class="bottom-sheet-handle"></div>
       <div class="nav-item" onclick="show('cozinha');fecharMaisMenu()"><span class="ic">👨‍🍳</span> Cozinha</div>
+      <div class="nav-item" onclick="show('fichas');fecharMaisMenu()"><span class="ic">📋</span> Fichas Técnicas</div>
       <div class="nav-item" onclick="show('combos');fecharMaisMenu()"><span class="ic">🔥</span> Combos</div>
       <div class="nav-item" onclick="show('pizzadodia');fecharMaisMenu()"><span class="ic">📅</span> Pizza do Dia</div>
       <div class="nav-item" onclick="show('salgadas');fecharMaisMenu()"><span class="ic">🍕</span> Salgadas</div>
@@ -1480,6 +1510,7 @@ function show(page) {
     motoboy: loadMotoboy,
     pedidos: () => loadPedidos(),
     cozinha: () => { loadCozinha(); _cozinhaTimer = setInterval(loadCozinha, 15000); },
+    fichas: loadFichasTecnicas,
     estoque: loadEstoque,
     cmv: () => { loadIngredientes('tudo'); loadReceitas('tudo'); },
     relatorio: () => { const b = document.querySelector('#pg-relatorio .be.filtro-btn'); setRelFiltro(b, 'hoje'); },
@@ -4492,6 +4523,68 @@ async function loadCozinha(){
     </div>`;
   }).join('');
 }
+// ABA FICHAS TÉCNICAS — a receita de cada sabor ativo, montada pelo mesmo cálculo
+// da ficha do pedido (ficha-tecnica.js), separada em base e recheio.
+const BASE_FICHA = ['Massa', 'Molho', 'Muçarela'];
+const normFicha = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+async function montarFichasTecnicas(){
+  const [dados, receitas, salgadas, doces] = await Promise.all([
+    carregarDadosFicha(), api('receitas','ativo=eq.true'),
+    api('pizzas_salgadas','ativo=eq.true'), api('pizzas_doces','ativo=eq.true'),
+  ]);
+  const provisorias = new Set(receitas.filter(r => r.provisorio).map(r => `${normFicha(r.tamanho)}|${normFicha(r.produto_nome)}`));
+  const ficha = (tamanho, nome) => {
+    const b = FichaTecnica.montarFichaPedido([{ qty:1, tipo:'pizza', tamanho, sabores:[{ nome }] }], { ...dados, doces: [...dados.doces, nome] }).blocos[0];
+    const parte = (b.partes||[])[0] || {};
+    const linhas = parte.linhas || [];
+    return { nome, semReceita: !linhas.length,
+      base: linhas.filter(l => BASE_FICHA.includes(l.nome)), recheio: linhas.filter(l => !BASE_FICHA.includes(l.nome)),
+      provisoria: provisorias.has(`${normFicha(tamanho || 'Doce 25cm')}|${normFicha(nome)}`) };
+  };
+  return [
+    { titulo: 'Grande (35cm)', itens: salgadas.filter(p => p.preco_grande != null).map(p => ficha('Grande', p.nome)) },
+    { titulo: 'Família (40cm)', itens: salgadas.filter(p => p.preco_familia != null).map(p => ficha('Família', p.nome)) },
+    { titulo: 'Doce (25cm)', itens: doces.map(p => ficha(null, p.nome)) },
+  ];
+}
+async function loadFichasTecnicas(){
+  const el = document.getElementById('fichas-conteudo');
+  let secoes;
+  try { secoes = await montarFichasTecnicas(); }
+  catch(e){ console.error('fichas técnicas', e); el.innerHTML = '<div class="ficha-aviso">⚠️ Não consegui carregar as receitas. Tente de novo.</div>'; return; }
+  const g = FichaTecnica.gramas;
+  const linha = ls => ls.map(l => `${esc(l.nome)} <b>${g(l.g)}</b>`).join(' · ');
+  el.innerHTML = secoes.map(sec => `<div class="fichas-secao">${esc(sec.titulo)}</div><div class="fichas-grid">${sec.itens.map(f => `
+    <div class="fichas-card ${f.semReceita ? 'sem' : f.provisoria ? 'prov' : ''}">
+      <div class="fichas-nome">${esc(f.nome)}${f.provisoria ? ' <span style="color:#facc15;font-size:16px;">⏳ provisória</span>' : ''}</div>
+      ${f.semReceita ? '<div class="ficha-aviso">⚠️ Receita não cadastrada</div>' : `
+      <div class="fichas-linha"><span>Base:</span> ${linha(f.base)}</div>
+      <div class="fichas-linha"><span>Recheio:</span> ${f.recheio.length ? linha(f.recheio) : '—'}</div>`}
+    </div>`).join('')}</div>`).join('');
+}
+// Folha A4 pra colar na cozinha (fundo branco, letra grande).
+async function imprimirFichasTecnicas(){
+  const secoes = await montarFichasTecnicas();
+  const g = FichaTecnica.gramas;
+  const linha = ls => ls.map(l => `${esc(l.nome)} <b>${g(l.g)}</b>`).join(' · ');
+  const corpo = secoes.map(sec => `<h2>${esc(sec.titulo)}</h2>${sec.itens.map(f => `<div class="c"><div class="n">${esc(f.nome)}${f.provisoria ? ' (provisória)' : ''}</div>${f.semReceita
+    ? '<div class="s">RECEITA NÃO CADASTRADA</div>'
+    : `<div>Base: ${linha(f.base)}</div><div>Recheio: ${f.recheio.length ? linha(f.recheio) : '—'}</div>`}</div>`).join('')}`).join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fichas Técnicas — Big Bang Pizza</title>
+<style>@page{ size:A4; margin:10mm; } body{ font-family:Arial,Helvetica,sans-serif; color:#000; background:#fff; font-size:15px; }
+h1{ font-size:24px; margin:0 0 4px; } .m{ font-size:16px; font-weight:bold; border:2px solid #000; padding:6px 8px; margin:6px 0 10px; }
+h2{ font-size:20px; border-bottom:2px solid #000; margin:14px 0 6px; } .c{ break-inside:avoid; padding:5px 0; border-bottom:1px solid #bbb; line-height:1.4; }
+.n{ font-size:17px; font-weight:bold; } .s{ font-weight:bold; } b{ font-size:16px; }
+.btn{ display:block; margin:12px 0; padding:10px; width:100%; background:#CC1100; color:#fff; border:none; border-radius:6px; font-size:15px; font-weight:bold; cursor:pointer; } @media print{ .btn{ display:none; } }</style>
+</head><body><h1>BIG BANG PIZZA — FICHAS TÉCNICAS</h1>
+<div class="m">Meio a meio: base inteira + metade do recheio de cada sabor.</div>
+${corpo}<button class="btn" onclick="window.print()">🖨️ IMPRIMIR</button>
+<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });<\/script></body></html>`;
+  const blobUrl = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+  window.open(blobUrl,'_blank','noopener,width=820,height=900'); // noopener: ver imprimirPedido
+  setTimeout(()=>URL.revokeObjectURL(blobUrl), 10000);
+}
+
 function fichaDoCard(p, bucket, dados){
   if(!dados || !window.FichaTecnica) return '';
   const aberta = _fichaAberta.has(p.id) ? _fichaAberta.get(p.id) : bucket === 'aceito_preparando';
