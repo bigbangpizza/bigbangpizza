@@ -1,6 +1,6 @@
 import { getMenuData } from './supabaseData.js';
 import { selectComoAdmin } from './supabaseAdmin.js';
-import { normalizarWhatsapp, diasEntre, parseComoUTC, classificarSegmentoCliente } from './dataUtils.js';
+import { normalizarWhatsapp, chaveTelefone, diasEntre, parseComoUTC, classificarSegmentoCliente } from './dataUtils.js';
 
 // Compartilhado por cancelOrderTool.js e editOrderTool.js — ambos precisam
 // achar "o pedido do cliente que está conversando agora" antes de decidir
@@ -167,14 +167,16 @@ export async function buscarPedidosRecentesDoCliente(numero, horas = JANELA_BUSC
  * @returns {Promise<object|null>} null se o telefone não tiver nenhum pedido.
  */
 export async function buscarHistoricoClienteConhecido(numero) {
-  const numeroNormalizado = normalizarWhatsapp(numero);
-  if (!numeroNormalizado) return null;
+  // Chave sem 55 e sem o 9 do celular: o número do WhatsApp muitas vezes chega sem o 9
+  // (557199998888) e o site grava com o 9 (71 99999-8888) — os dois são o mesmo cliente.
+  const chave = chaveTelefone(numero);
+  if (!chave) return null;
 
   const todos = await selectComoAdmin(
     'pedidos',
     'select=nome,whatsapp,created_at,itens,bairro,endereco,total,status&whatsapp=not.is.null&order=created_at.desc'
   );
-  const pedidosCliente = todos.filter((p) => normalizarWhatsapp(p.whatsapp) === numeroNormalizado);
+  const pedidosCliente = todos.filter((p) => chaveTelefone(p.whatsapp) === chave);
   if (pedidosCliente.length === 0) return null;
 
   const diasDesdeUltimoPedido = diasEntre(parseComoUTC(pedidosCliente[0].created_at), new Date());
@@ -188,8 +190,9 @@ export async function buscarHistoricoClienteConhecido(numero) {
 
   return {
     nome: pedidosCliente[0].nome || null,
-    // Critério do cupom de boas-vindas (BIGBANG15): telefone sem nenhum pedido entregue.
-    temPedidoEntregue: pedidosCliente.some((p) => p.status === 'entregue'),
+    // Critério do cupom de boas-vindas (BIGBANG15), o mesmo do servidor: nenhum pedido
+    // anterior, em qualquer status menos cancelado.
+    temPedidoAnterior: pedidosValidos.length > 0,
     segmento,
     totalPedidos: pedidosCliente.length,
     diasDesdeUltimoPedido,

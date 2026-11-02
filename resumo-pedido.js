@@ -75,6 +75,9 @@
     if (descontoOferta > 0) linhas.push({ tipo: 'desconto', texto: 'Oferta pizza doce', valor: -descontoOferta });
     const desconto = r2(Number(p.desconto || 0));
     if (desconto > 0) linhas.push({ tipo: 'desconto', texto: p.cupom ? `Cupom ${p.cupom}` : 'Desconto', valor: -desconto });
+    // Desconto manual da equipe (edição no admin, com motivo).
+    const descontoManual = r2(Number(p.desconto_manual || 0));
+    if (descontoManual > 0) linhas.push({ tipo: 'desconto', texto: 'Desconto', valor: -descontoManual });
 
     const frete = r2(Number(p.frete || 0));
     const totalGravado = r2(Number(p.total || 0));

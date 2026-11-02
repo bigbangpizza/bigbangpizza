@@ -359,6 +359,9 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="global-search-results" id="global-search-results"></div>
     </div>
 
+    <!-- AVISO: PEDIDOS PARADOS HÁ MAIS DE 3H (sem entregue/cancelado) -->
+    <div id="aviso-parados" class="hidden" style="background:rgba(255,68,68,.1);border:1px solid rgba(255,68,68,.45);border-radius:12px;padding:12px 16px;margin-bottom:16px;"></div>
+
     <!-- DASHBOARD -->
     <div id="pg-dashboard">
       <div class="page-title">DASHBOARD <span class="sec-badge">🔒 Sessão Segura</span></div>
@@ -1515,8 +1518,61 @@ async function verificarPedidosNovos() {
 
 function iniciarMonitorPedidos() {
   verificarPedidosNovos();
+  verificarPedidosParados();
   if (_monitorPedidosTimer) clearInterval(_monitorPedidosTimer);
-  _monitorPedidosTimer = setInterval(verificarPedidosNovos, 30000);
+  _monitorPedidosTimer = setInterval(() => { verificarPedidosNovos(); verificarPedidosParados(); }, 30000);
+}
+
+// PEDIDOS PARADOS — mais de 3h sem virar entregue ou cancelado. Pedido esquecido aberto
+// faz cliente antigo parecer novo e deixa de contar selo; o aviso fica no topo do admin.
+const HORAS_PEDIDO_PARADO = 3;
+const pedidoEstaParado = p => !['entregue', 'cancelado'].includes(statusBucket(p.status))
+  && (agoraServidor() - (parseUTC(p.created_at) || new Date()).getTime()) > HORAS_PEDIDO_PARADO * 3600000;
+let _pedidosParados = [];
+async function verificarPedidosParados() {
+  const el = document.getElementById('aviso-parados');
+  if (!el) return;
+  let lista;
+  try {
+    const limite = new Date(agoraServidor() - HORAS_PEDIDO_PARADO * 3600000).toISOString().replace('Z', '');
+    lista = await api('pedidos', `status=not.in.(entregue,cancelado)&created_at=lt.${limite}&select=id,nome,status,created_at,bairro,total`, 'created_at.asc');
+  } catch (e) { console.error('verificarPedidosParados', e); return; }
+  _pedidosParados = Array.isArray(lista) ? lista : [];
+  if (!_pedidosParados.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const n = _pedidosParados.length;
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div style="font-weight:700;color:#ff7777;">⚠️ ${n} pedido${n > 1 ? 's' : ''} parado${n > 1 ? 's' : ''} há mais de ${HORAS_PEDIDO_PARADO}h</div>
+      ${n > 1 ? `<button class="bt" style="padding:7px 12px;font-size:12px;font-weight:700;" onclick="marcarParadosEntregues()">✅ Marcar todos como entregues</button>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">${_pedidosParados.map(p => `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;">
+        <span>#${p.id} · ${esc(p.nome || '')} · ${esc(STATUS_LABEL[statusBucket(p.status)] || p.status)} · há ${fmtDuracao(minutosEntre(parseUTC(p.created_at), agoraServidor()))}</span>
+        <button class="bp" style="padding:5px 10px;font-size:12px;" onclick="marcarParadoEntregue(${p.id})">✅ Marcar como entregue</button>
+      </div>`).join('')}</div>`;
+  el.classList.remove('hidden');
+}
+// Marca como entregue sem abrir mensagem pro cliente (o pedido é antigo); baixa o estoque,
+// conta o uso do cupom e registra no histórico, igual à troca de status no kanban.
+async function marcarParadoEntregue(id, perguntar = true) {
+  const p = _pedidosParados.find(x => x.id === id);
+  if (!p) return false;
+  if (perguntar && !confirm(`Marcar o pedido #${id} (${p.nome || ''}) como entregue?`)) return false;
+  const linhas = await updSeStatus('pedidos', id, statusBucket(p.status), { status: 'entregue' });
+  if (!linhas || !linhas.length) { showToastAdmin(`⚠️ O pedido #${id} mudou de status — a lista foi atualizada.`); verificarPedidosParados(); return false; }
+  await baixarEstoquePedido(id); await incrementarUsoCupom(id);
+  registrarHistorico(`Pedido #${id} marcado como Entregue (parado há mais de ${HORAS_PEDIDO_PARADO}h)`);
+  await registrarEntregaMotoboy(id);
+  if (perguntar) { showToastAdmin(`✅ Pedido #${id} marcado como entregue.`); verificarPedidosParados(); if (!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos(); }
+  return true;
+}
+async function marcarParadosEntregues() {
+  const ids = _pedidosParados.map(p => p.id);
+  if (!ids.length || !confirm(`Marcar ${ids.length} pedidos parados como entregues (#${ids.join(', #')})?`)) return;
+  let ok = 0;
+  for (const id of ids) if (await marcarParadoEntregue(id, false)) ok++;
+  showToastAdmin(`✅ ${ok} de ${ids.length} pedidos marcados como entregues.`);
+  verificarPedidosParados();
+  if (!document.getElementById('pg-pedidos').classList.contains('hidden')) loadPedidos();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2485,7 +2541,7 @@ function renderPedidoCard(p){
   // Valor de cada item, adicionais, descontos e total — mesmo formato da comanda, do rastreio e do WhatsApp (resumo-pedido.js).
   const itensHtml=`<div style="font-size:14px;">${ResumoPedido.html(ResumoPedido.montarResumoPedido(p, nomesDocesPedidos), esc)}</div>`;
   const bordas=bordasDoPedido(p);
-  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${cor};border-radius:12px;padding:18px;color:var(--text-primary);">
+  return `<div class="pedido-card" data-id="${p.id}" data-status="${bucket}" data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp||'')}" data-endereco="${esc(p.endereco||'')}" data-complemento="${esc(p.complemento||'')}" data-bairro="${esc(p.bairro||'')}" data-total="${p.total||0}" data-subtotal="${p.subtotal||0}" data-brinde="${pedidoTemBrinde(p)?1:0}" data-pagamento="${esc(p.pagamento||'')}" data-itens="${esc(p.itens||'')}" style="position:relative;background:var(--bg-card);border:2px solid ${pedidoEstaParado(p) ? '#ff4444' : cor};border-radius:12px;padding:18px;color:var(--text-primary);">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--orange);">#${p.id}</span>
@@ -2493,7 +2549,7 @@ function renderPedidoCard(p){
           <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
           <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
           ${etiquetaRetirada(p)}
-          ${p.whatsapp?`<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
+          ${p.whatsapp?`<a href="${linkWhatsApp(p.whatsapp)}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
         </div>
       </div>
       <div style="text-align:right;">
@@ -2503,6 +2559,8 @@ function renderPedidoCard(p){
       </div>
     </div>
     ${tempoPedidoHTML(p)}
+    ${pedidoEstaParado(p) ? `<div style="background:rgba(255,68,68,.14);border:1px solid rgba(255,68,68,.5);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:700;color:#ff7777;">⚠️ Parado há mais de ${HORAS_PEDIDO_PARADO}h — marque como entregue ou cancelado (senão o cliente aparece como novo e o selo não conta).</div>` : ''}
+    ${p.troco_para ? `<div style="font-size:13px;font-weight:700;color:#facc15;margin-bottom:10px;">💵 Troco para ${brl(p.troco_para)}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${brl(Number(p.troco_para) - Number(p.total || 0))})` : ''}</div>` : ''}
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
       <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
       ${itensHtml}
@@ -2520,7 +2578,7 @@ function renderPedidoCard(p){
         <option value="entregue"         ${bucket==='entregue'?'selected':''}>🏁 Entregue</option>
       </select>
       ${motoboyCardHTML(p, bucket)}
-      ${STATUS_EDITAVEIS.includes(bucket)?`<button class="bp" onclick="abrirEdicaoPedido(${p.id})">✏️ Editar pedido</button>`:''}
+      <button class="bp" onclick="abrirEdicaoPedido(${p.id})">✏️ Editar pedido</button>
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
@@ -2699,7 +2757,9 @@ async function carregarSaboresTradicionais(){
 const presenteFidelidadeAdmin = () => `uma Grande Tradicional de presente${tradicionaisAdmin.lista ? ` (${tradicionaisAdmin.lista})` : ''}`;
 // Link de WhatsApp com mensagem: api.whatsapp.com/send direto. O wa.me redireciona para lá
 // trocando os emojis por "�" (testado em 18/10/2026), então não usar wa.me com ?text=.
-const linkWhatsApp = (numero, texto) => `https://api.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(texto)}`;
+// Função única de link de WhatsApp do admin (kanban, clientes, avisar cliente, selos, motoboy):
+// o número passa sempre por normalizarWhatsapp (55 uma vez só).
+const linkWhatsApp = (telefone, texto) => `https://api.whatsapp.com/send?phone=${normalizarWhatsapp(telefone) || ''}${texto ? `&text=${encodeURIComponent(texto)}` : ''}`;
 // Mesma normalização da função chave_telefone do banco: DDD + 8 últimos dígitos.
 function chaveTelefoneAdmin(raw){
   let d = String(raw||'').replace(/\D/g,'');
@@ -2735,15 +2795,14 @@ function linhaSelosSaiu(ds){
 }
 const pedidoTemBrinde = p => (p.itens_json||[]).some(i => i && i.brinde_fidelidade);
 
-// Normaliza o campo pedidos.whatsapp (texto livre, sem máscara na origem) para o
-// formato que o wa.me espera: só dígitos, com DDI 55. Se já vier com 55 (12-13
-// dígitos), mantém; se vier só DDD+número (10-11 dígitos), prefixa 55.
+// Telefone para o WhatsApp: só números, tira o 55 do começo se já tiver e põe o 55
+// uma vez só. "71991234567", "5571991234567", "(71) 99123-4567" e
+// "+55 71 99123-4567" viram todos 5571991234567. Sem DDD (menos de 10 dígitos): null.
 function normalizarWhatsapp(raw){
-  const digits = (raw||'').replace(/\D/g,'');
-  if(!digits) return null;
-  if(digits.length>=12 && digits.startsWith('55')) return digits;
-  if(digits.length===10 || digits.length===11) return '55'+digits;
-  return digits;
+  let d = String(raw||'').replace(/\D/g,'');
+  if(d.length>=12 && d.startsWith('55')) d = d.slice(2);
+  if(d.length<10) return null;
+  return '55'+d;
 }
 
 function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw, dataset){
@@ -3373,7 +3432,7 @@ ${CUPOM_TRACO}
 <strong>*** TOTAL: ${esc(ResumoPedido.brl(resumo.total))} ***</strong>
 ${CUPOM_TRACO}
 ${p.observacao ? `<strong>*** OBSERVACAO DO CLIENTE ***</strong>\n<strong>${esc(semAcentoImpressao(p.observacao))}</strong>\n${CUPOM_LINHA}\n` : ''}Pagamento: <strong>*** ${esc(pagamento)} ***</strong>
-${CUPOM_LINHA}
+${p.troco_para ? `<strong>Troco para ${esc(ResumoPedido.brl(p.troco_para))}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${esc(ResumoPedido.brl(Number(p.troco_para) - Number(p.total || 0)))})` : ''}</strong>\n` : ''}${CUPOM_LINHA}
 ${cupomCentralizar('Obrigado pela preferencia!')}
 ${cupomCentralizar('Big Bang Pizza')}
 ${cupomCentralizar('Nao e documento fiscal')}
@@ -3458,6 +3517,8 @@ const PAGAMENTO_TEXTO_MANUAL = {
   presencial: 'Presencial (dinheiro/cartão na entrega)',
   pix: 'Pix (aguardando pagamento)',
   cartao_link: 'Cartão via link Ton (aguardando envio do link)',
+  dinheiro: 'Dinheiro',                 // mesmos textos que o site grava
+  maquininha: 'Maquininha de cartão',
 };
 const BORDA_NOME_MANUAL = { catupiry: 'Catupiry', cheddar: 'Cheddar', chocolate: 'Chocolate' };
 const ITEM_PEDIDO_MANUAL_VAZIO = () => ({ tipo:'', tamanho:'', produto1Id:null, produto2Id:null, borda:'', qty:1, obs:'', _sabor1Texto:'', _sabor2Texto:'', comboPizzas:[], comboBordas:[], comboDoceId:null, comboBordaDoce:'', comboBebidaId:null, pddDia:null });
@@ -3782,7 +3843,7 @@ function renderPedidoManualConfirmacao(){
   document.getElementById('mod-title').textContent = ed ? `✏️ Editar pedido #${ed.id}` : '📝 Confirmar pedido manual';
 
   document.getElementById('mod-body').innerHTML = `
-    ${ed && ed.emPreparo ? `<div style="background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.45);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff7777;font-weight:700;">⚠️ Este pedido já está em preparo. Confirme com a cozinha antes de alterar.</div>` : ''}
+    ${ed && ed.emPreparo ? `<div style="background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.45);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff7777;font-weight:700;">⚠️ ${avisoStatusEdicao(ed.bucket)}</div>` : ''}
     <div style="background:rgba(255,200,0,.1);border:1px solid rgba(255,200,0,.3);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">${ed ? `✏️ Alterando o pedido #${ed.id} (o número continua o mesmo). Nada foi salvo ainda.` : st._semIA ? '✍️ Preencha os campos abaixo. Nada foi salvo ainda.' : '⚠️ Revise TODOS os campos abaixo — a IA pode ter interpretado algo errado. Nada foi salvo ainda.'} Preços, oferta da pizza doce, frete e cupom seguem as mesmas regras do site.</div>
     ${ed && ed.semItensDetalhados ? `<div style="background:rgba(255,200,0,.1);border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#facc15;">Pedido antigo, sem itens detalhados. Itens originais: <strong>${esc(ed.itensTextoOriginal)}</strong> — monte os itens abaixo.</div>` : ''}
     ${ed ? `<div class="fg"><label>Quem está alterando *</label><input id="pm-editor" value="${esc(st._editor||'')}" placeholder="Seu nome" oninput="pmAtualizarCampo('_editor',this.value)"></div>` : ''}
@@ -3812,14 +3873,18 @@ function renderPedidoManualConfirmacao(){
         <option value="presencial" ${st.pagamento==='presencial'?'selected':''}>Presencial (dinheiro/cartão)</option>
         <option value="pix" ${st.pagamento==='pix'?'selected':''}>Pix</option>
         <option value="cartao_link" ${st.pagamento==='cartao_link'?'selected':''}>Cartão via link (Ton)</option>
+        <option value="dinheiro" ${st.pagamento==='dinheiro'?'selected':''}>Dinheiro</option>
+        <option value="maquininha" ${st.pagamento==='maquininha'?'selected':''}>Maquininha de cartão</option>
         ${ed && ed.pagamentoOriginal && !Object.values(PAGAMENTO_TEXTO_MANUAL).includes(ed.pagamentoOriginal) ? `<option value="__original" ${st.pagamento==='__original'?'selected':''}>Manter: ${esc(ed.pagamentoOriginal)}</option>` : ''}
       </select>
     </div>
+    ${ed ? `<div class="fg"><label>Troco para (R$) — vazio se não precisa</label><input id="pm-troco" type="number" min="0" step="0.01" value="${st.troco_para ?? ''}" placeholder="Ex: 100" oninput="pmAtualizarCampo('troco_para',this.value)"></div>` : ''}
     <div class="fg"><label>Cupom (opcional)</label><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"></div>
     <div class="fg"><label>Observação geral</label><textarea id="pm-obs" oninput="pmAtualizarCampo('observacao',this.value)">${esc(st.observacao)}</textarea></div>
-    ${ed ? `<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:13px;cursor:pointer;">
-      <input type="checkbox" id="pm-enviar-cliente" ${st._enviarCliente?'checked':''} onchange="pmAtualizarCampo('_enviarCliente',this.checked)"> Enviar ao cliente no WhatsApp o resumo atualizado (valor de cada item e novo total)
-    </label>` : ''}
+    ${ed ? `<div class="fr">
+      <div class="fg"><label>Desconto manual (R$)</label><input id="pm-desconto-manual" type="number" min="0" step="0.01" value="${st.desconto_manual || ''}" placeholder="0,00" oninput="pmAtualizarCampo('desconto_manual',this.value)"></div>
+      <div class="fg"><label>Motivo do desconto${Number(st.desconto_manual) > 0 ? ' *' : ''}</label><input id="pm-desconto-motivo" value="${esc(st.desconto_manual_motivo || '')}" placeholder="Ex: pizza atrasou" oninput="pmAtualizarCampo('desconto_manual_motivo',this.value)"></div>
+    </div>` : ''}
 
     <div style="font-size:11px;font-weight:700;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase;margin:16px 0 8px;">🍕 Itens</div>
     <div id="pm-itens">${st.itens.map((item,i) => renderItemPedidoManual(item,i,menu)).join('')}</div>
@@ -3996,7 +4061,7 @@ function agendarResumoPedidoManual(){ clearTimeout(_pmResumoTimer); _pmResumoTim
 
 function pmAtualizarCampo(campo, valor){
   window.__pedidoManualState[campo] = valor;
-  if(['bairroNome','cupom','whatsapp'].includes(campo)) agendarResumoPedidoManual();
+  if(['bairroNome','cupom','whatsapp','desconto_manual'].includes(campo)) agendarResumoPedidoManual();
   if(campo==='whatsapp') agendarFidelidadePedidoManual();
 }
 
@@ -4189,6 +4254,8 @@ async function atualizarResumoPedidoManual(){
   }
   if(seq !== _pmResumoSeq) return; // o atendente mudou algo enquanto calculava
   window.__pedidoManualCalculo = r;
+  const dm = descontoManualDe(st);
+  const totalFinal = Math.round((Number(r.total) - dm) * 100) / 100;
   const doceOferta = (r.itens||[]).find(i => i.oferta_doce);
   // Preço de cada item na tela: a oferta vai na primeira pizza doce (mesma escolha do servidor).
   const idxOferta = doceOferta ? st.itens.findIndex(it => it.tipo==='pizza_doce') : -1;
@@ -4213,10 +4280,13 @@ async function atualizarResumoPedidoManual(){
     ${Number(r.desconto) > 0 ? `<div>Desconto: <strong>−${brl(r.desconto)}</strong></div>` : ''}
     <div>Frete: <strong>${Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
     ${Number(r.falta_para_frete_gratis) > 0 && !st.retirada ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Faltam ${brl(r.falta_para_frete_gratis)} para frete grátis</div>` : ''}
-    <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(r.total)}</strong></div>
-    ${st._edicao ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Antes da edição: ${brl(st._edicao.totalOriginal)}${Math.abs(Number(r.total) - st._edicao.totalOriginal) >= 0.01 ? ` → diferença de ${Number(r.total) > st._edicao.totalOriginal ? '+' : '−'}${brl(Math.abs(Number(r.total) - st._edicao.totalOriginal))}` : ' (mesmo total)'}</div>` : ''}
+    ${dm > 0 ? `<div>Desconto manual: <strong>−${brl(dm)}</strong>${dm > Number(r.total) ? ' <span style="color:#ff4444;">(maior que o total)</span>' : ''}</div>` : ''}
+    <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(totalFinal)}</strong></div>
+    ${st._edicao ? `<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Antes da edição: ${brl(st._edicao.totalOriginal)}${Math.abs(totalFinal - st._edicao.totalOriginal) >= 0.01 ? ` → diferença de ${totalFinal > st._edicao.totalOriginal ? '+' : '−'}${brl(Math.abs(totalFinal - st._edicao.totalOriginal))}` : ' (mesmo total)'}</div>` : ''}
   `;
 }
+// Desconto manual (só na edição): valor em R$ digitado pela equipe, descontado do total oficial.
+const descontoManualDe = st => st._edicao ? Math.max(0, Math.round((parseFloat(String(st.desconto_manual ?? '').replace(',', '.')) || 0) * 100) / 100) : 0;
 
 async function lancarPedidoManual(){
   const st = window.__pedidoManualState;
@@ -4286,10 +4356,12 @@ async function lancarPedidoManual(){
 // pedido atual. Total pela calcular_checkout_v2 (mesmas regras do site),
 // gravação só se o status não mudou no meio, e histórico no próprio pedido.
 // ═══════════════════════════════════════════════════════
+const CAMPOS_VALOR_EDICAO = ['subtotal', 'desconto', 'frete', 'total', 'troco_para', 'desconto_manual'];
 const STATUS_EDITAVEIS = ['aguardando', 'aceito_preparando', 'saiu'];
 const CAMPOS_HISTORICO_EDICAO = [
   ['itens', 'Itens'], ['nome', 'Nome'], ['whatsapp', 'WhatsApp'], ['endereco', 'Endereço'], ['complemento', 'Complemento'],
-  ['bairro', 'Bairro'], ['pagamento', 'Pagamento'], ['observacao', 'Observação'], ['cupom', 'Cupom'],
+  ['bairro', 'Bairro'], ['pagamento', 'Pagamento'], ['troco_para', 'Troco para'], ['observacao', 'Observação'], ['cupom', 'Cupom'],
+  ['desconto_manual', 'Desconto manual'], ['desconto_manual_motivo', 'Motivo do desconto'],
   ['subtotal', 'Subtotal'], ['desconto', 'Desconto'], ['frete', 'Frete'], ['total', 'Total'],
 ];
 
@@ -4339,7 +4411,6 @@ async function abrirEdicaoPedido(id){
   const [pedido] = await api('pedidos', `id=eq.${id}`);
   if (!pedido) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
   const bucket = statusBucket(pedido.status);
-  if (!STATUS_EDITAVEIS.includes(bucket)) { showToastAdmin('⚠️ Pedido entregue ou cancelado não pode ser editado.'); return; }
   let menu;
   try { menu = await carregarMenuPedidoManual(true, pedido.bairro !== 'Retirada no local' ? pedido.bairro : null); }
   catch (e) { console.error('abrirEdicaoPedido', e); showToastAdmin('⚠️ Não consegui carregar o cardápio agora.'); return; }
@@ -4356,6 +4427,7 @@ async function abrirEdicaoPedido(id){
     bairroNome: pedido.bairro === 'Retirada no local' ? '' : (pedido.bairro || ''),
     pagamento: pagamentoEstadoDeTexto(pedido.pagamento || ''),
     observacao: pedido.observacao || '', cupom: (pedido.cupom || '').toUpperCase(),
+    troco_para: pedido.troco_para ?? '', desconto_manual: Number(pedido.desconto_manual) || '', desconto_manual_motivo: pedido.desconto_manual_motivo || '',
     itens, _editor: editor,
     _edicao: {
       id: pedido.id, bucket, emPreparo: bucket !== 'aguardando', original: pedido,
@@ -4373,11 +4445,19 @@ function valorHistorico(v){
   return typeof v === 'number' ? brl(v) : String(v);
 }
 
+// Aviso conforme o status: em qualquer status dá pra editar, mas a equipe precisa saber.
+function avisoStatusEdicao(bucket){
+  return bucket === 'saiu' ? 'Este pedido já SAIU PARA ENTREGA. Confirme com o entregador antes de alterar.'
+    : bucket === 'entregue' ? 'Este pedido já foi ENTREGUE. A alteração muda o registro (relatório, selos e caixa).'
+    : bucket === 'cancelado' ? 'Este pedido está CANCELADO. A alteração muda só o registro.'
+    : 'Este pedido já está em preparo. Confirme com a cozinha antes de alterar.';
+}
+
+// 1º passo: confere tudo, calcula pelo servidor e mostra "antes → depois" pra confirmar.
 async function gravarEdicaoPedido(){
   const st = window.__pedidoManualState;
   const menu = window.__pedidoManualMenu;
   const ed = st._edicao;
-  const btn = document.getElementById('mod-save-btn');
 
   if (!(st._editor || '').trim()) { showToastAdmin('⚠️ Informe quem está alterando o pedido.'); return; }
   if (!st.nome.trim()) { showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
@@ -4392,22 +4472,21 @@ async function gravarEdicaoPedido(){
     if (!bairro) { showToastAdmin('⚠️ Selecione o bairro.'); return; }
     bairroNome = bairro.nome;
   }
+  const descontoManual = descontoManualDe(st);
+  const motivoDesconto = String(st.desconto_manual_motivo || '').trim();
+  if (descontoManual > 0 && motivoDesconto.length < 3) { showToastAdmin('⚠️ Informe o motivo do desconto manual.'); return; }
+  const troco = String(st.troco_para ?? '').trim() === '' ? null : Math.round((parseFloat(String(st.troco_para).replace(',', '.')) || 0) * 100) / 100;
+  if (troco !== null && !(troco > 0)) { showToastAdmin('⚠️ Troco inválido — deixe vazio se não precisa.'); return; }
 
-  // Status de agora (pode ter mudado desde que a tela abriu)
-  const [atual] = await api('pedidos', `id=eq.${ed.id}&select=status,historico_edicoes`);
-  if (!atual) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
-  const bucketAgora = statusBucket(atual.status);
-  if (!STATUS_EDITAVEIS.includes(bucketAgora)) { showToastAdmin('⚠️ O pedido foi entregue ou cancelado enquanto você editava — nada foi salvo.'); return; }
-  if (bucketAgora !== 'aguardando' && !confirm('Este pedido já está em preparo. Confirme com a cozinha antes de alterar.\n\nSalvar a alteração mesmo assim?')) return;
-
-  // Valores oficiais (mesma função do site), ignorando o próprio pedido no uso do cupom
+  // Valores oficiais (mesma função do site), ignorando o próprio pedido no uso do cupom e nos selos
   let r;
   try {
     r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom, ed.id);
   } catch (e) { console.error('gravarEdicaoPedido', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
-  if (st.cupom && !r.cupom?.valido) {
-    if (!confirm(`O cupom ${st.cupom} deixa de valer com esta alteração: ${r.cupom?.motivo || 'regras do cupom'}\n\nSalvar o pedido SEM o cupom (total ${brl(r.total)})?`)) return;
+  if (st.itens.some(it => it.brinde) && !r.fidelidade?.brinde_aplicado) {
+    showToastAdmin(`⚠️ Presente da fidelidade não vale: ${r.fidelidade?.motivo || ''} Remova o presente ou corrija o pedido.`, 7000); return;
   }
+  if (descontoManual > Number(r.total)) { showToastAdmin(`⚠️ O desconto manual (${brl(descontoManual)}) é maior que o total (${brl(r.total)}).`); return; }
 
   const o = ed.original;
   const novo = {
@@ -4417,18 +4496,21 @@ async function gravarEdicaoPedido(){
     complemento: st.complemento.trim() || null,
     bairro: bairroNome,
     pagamento: st.pagamento === '__original' ? ed.pagamentoOriginal : PAGAMENTO_TEXTO_MANUAL[st.pagamento],
+    troco_para: troco,
     observacao: st.observacao.trim() || null,
     cupom: r.cupom?.valido ? r.cupom.codigo : null,
     itens: st.itens.map((it, i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | '),
     itens_json: r.itens,
     subtotal: Number(r.subtotal),
     desconto: Number(r.desconto) || 0,
+    desconto_manual: descontoManual,
+    desconto_manual_motivo: descontoManual > 0 ? motivoDesconto : null,
     frete: Number(r.frete) || 0,
-    total: Number(r.total),
+    total: Math.round((Number(r.total) - descontoManual) * 100) / 100,
   };
   const num = (v) => v == null ? null : Number(v);
   const mudancas = CAMPOS_HISTORICO_EDICAO.map(([campo, rotulo]) => {
-    const ehValor = ['subtotal', 'desconto', 'frete', 'total'].includes(campo);
+    const ehValor = CAMPOS_VALOR_EDICAO.includes(campo);
     const antes = ehValor ? num(o[campo]) : (o[campo] ?? null);
     const depois = ehValor ? num(novo[campo]) : (novo[campo] ?? null);
     const igual = ehValor ? Math.abs((antes || 0) - (depois || 0)) < 0.005 : String(antes ?? '') === String(depois ?? '');
@@ -4436,24 +4518,59 @@ async function gravarEdicaoPedido(){
   }).filter(Boolean);
   if (!mudancas.length) { showToastAdmin('Nada mudou — o pedido continua igual.'); return; }
 
+  window.__edicaoPendente = { novo, mudancas, avisoCupom: st.cupom && !r.cupom?.valido ? `O cupom ${st.cupom} deixa de valer: ${r.cupom?.motivo || 'regras do cupom'}` : null };
+  const bucketAgora = (await api('pedidos', `id=eq.${ed.id}&select=status`))?.[0]?.status;
+  const aviso = bucketAgora && statusBucket(bucketAgora) !== 'aguardando' ? avisoStatusEdicao(statusBucket(bucketAgora)) : null;
+  document.getElementById('mod-title').textContent = `✏️ Confirmar alteração do pedido #${ed.id}`;
+  document.getElementById('mod-body').innerHTML = `
+    ${aviso ? `<div style="background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.45);border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px;color:#ff7777;font-weight:700;">⚠️ ${esc(aviso)}</div>` : ''}
+    ${window.__edicaoPendente.avisoCupom ? `<div style="color:#facc15;font-size:13px;margin-bottom:10px;">🎟️ ${esc(window.__edicaoPendente.avisoCupom)} — o pedido fica sem o cupom.</div>` : ''}
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">Antes → depois (por ${esc(st._editor.trim())}):</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">${mudancas.map(m => `
+      <div style="background:var(--bg-input);border-radius:8px;padding:8px 10px;font-size:13px;">
+        <div style="font-weight:700;margin-bottom:3px;">${esc(m.campo)}</div>
+        <div style="color:#ff7777;text-decoration:line-through;">${esc(valorHistorico(m.antes))}</div>
+        <div style="color:#4ade80;">${esc(valorHistorico(m.depois))}</div>
+      </div>`).join('')}</div>
+    <button type="button" class="bc" style="width:100%;" onclick="renderPedidoManualConfirmacao(); configurarBotaoEdicao();">← Voltar e continuar editando</button>`;
+  const btn = document.getElementById('mod-save-btn');
+  btn.disabled = false;
+  btn.textContent = '✅ CONFIRMAR E SALVAR';
+  btn.onclick = salvarEdicaoConfirmada;
+}
+
+// 2º passo: grava (só se o status não mudou desde a confirmação) com o histórico.
+async function salvarEdicaoConfirmada(){
+  const st = window.__pedidoManualState;
+  const ed = st._edicao;
+  const pend = window.__edicaoPendente;
+  if (!pend) return;
+  const btn = document.getElementById('mod-save-btn');
+  const [atual] = await api('pedidos', `id=eq.${ed.id}&select=status,historico_edicoes`);
+  if (!atual) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
+  const bucketAgora = statusBucket(atual.status);
   const historico = [...(Array.isArray(atual.historico_edicoes) ? atual.historico_edicoes : []),
-    { em: new Date().toISOString(), por: st._editor.trim(), mudancas }];
+    { em: new Date().toISOString(), por: st._editor.trim(), mudancas: pend.mudancas }];
   try { localStorage.setItem('bb_admin_editor', st._editor.trim()); } catch (e) {}
 
   btn.disabled = true;
-  const linhas = await updSeStatus('pedidos', ed.id, bucketAgora, { ...novo, historico_edicoes: historico });
+  const linhas = await updSeStatus('pedidos', ed.id, bucketAgora, { ...pend.novo, historico_edicoes: historico });
   btn.disabled = false;
   if (linhas === null) { showToastAdmin('⚠️ Erro ao salvar a alteração.'); return; }
   if (!linhas.length) { showToastAdmin('⚠️ O status do pedido mudou enquanto você salvava — nada foi alterado. Abra de novo.'); loadPedidos(); return; }
+  window.__edicaoPendente = null;
+  registrarHistorico(`Pedido #${ed.id} editado por ${st._editor.trim()}: ${pend.mudancas.map(m => m.campo).join(', ')}`);
   loadPedidos();
-  mostrarPedidoAlterado(linhas[0], st._enviarCliente);
+  mostrarPedidoAlterado(linhas[0]);
 }
+
+function configurarBotaoEdicao(){ const btn=document.getElementById('mod-save-btn'); btn.disabled=false; btn.textContent='💾 SALVAR ALTERAÇÃO'; btn.onclick=gravarEdicaoPedido; }
 
 // Tela depois de salvar a edição: reimprimir a comanda (com "PEDIDO ALTERADO")
 // e, se a opção foi marcada, abrir o WhatsApp do cliente com o resumo novo.
 // Os botões abrem as janelas no próprio clique (o navegador bloqueia janela
 // aberta depois de esperar o banco).
-function mostrarPedidoAlterado(pedido, enviarCliente){
+function mostrarPedidoAlterado(pedido){
   window.__pedidoAlterado = pedido;
   const resumo = ResumoPedido.montarResumoPedido(pedido, nomesDocesPedidos);
   const numero = normalizarWhatsapp(pedido.whatsapp);
@@ -4461,8 +4578,8 @@ function mostrarPedidoAlterado(pedido, enviarCliente){
   document.getElementById('mod-body').innerHTML = `
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:14px;font-size:14px;">${ResumoPedido.html(resumo, esc)}</div>
     <button type="button" class="bc" style="width:100%;margin-bottom:10px;" onclick="imprimirPedido(${pedido.id})">🖨️ Reimprimir comanda atualizada (PEDIDO ALTERADO)</button>
-    ${enviarCliente ? (numero
-      ? `<button type="button" class="bc" style="width:100%;margin-bottom:10px;background:#25D366;color:#fff;" onclick="enviarResumoAlteradoCliente()">💬 Abrir WhatsApp com o resumo para o cliente</button>`
+    ${pedido ? (numero
+      ? `<button type="button" class="bc" style="width:100%;margin-bottom:10px;background:#25D366;color:#fff;" onclick="enviarResumoAlteradoCliente()">📨 Avisar o cliente (resumo atualizado)</button>`
       : `<div style="font-size:12px;color:#facc15;margin-bottom:10px;">⚠️ Pedido sem WhatsApp do cliente — não dá pra enviar o resumo.</div>`) : ''}`;
   const btn = document.getElementById('mod-save-btn');
   btn.disabled = false;
@@ -6299,7 +6416,7 @@ async function loadClientes() {
       : '';
     const html = `<tr>
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
-      <td data-label="WhatsApp">${p.whatsapp ? `<a href="https://wa.me/55${p.whatsapp.replace(/\D/g,'')}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
+      <td data-label="WhatsApp">${p.whatsapp ? `<a href="${linkWhatsApp(p.whatsapp)}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
       <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
       <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}${(() => {
         if (!p.whatsapp || telefonesExcluidos.has(chaveTelefoneAdmin(p.whatsapp))) return '';
@@ -6314,7 +6431,7 @@ async function loadClientes() {
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
       <td data-label="Ação">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${p.whatsapp ? `<a href="${linkWhatsApp('55' + p.whatsapp.replace(/\D/g,''), `Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
+          ${p.whatsapp ? `<a href="${linkWhatsApp(p.whatsapp,`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
           ${segmento==='em_risco' && p.whatsapp ? `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="enviarReativacao(this)" style="background:${seg.cor};color:white;border:none;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">🎟️ Enviar reativação</button>` : ''}
         </div>
         ${avisoReativacao}

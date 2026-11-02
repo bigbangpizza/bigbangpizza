@@ -316,7 +316,7 @@ const CACHE_CLIENTE_TTL_MS = 24 * 60 * 60 * 1000;
 const cacheClienteConhecido = new Map(); // numero -> { bloco, expiraEm }
 
 // numero -> { elegivel, expiraEm } — se o telefone pode receber a oferta do
-// cupom de boas-vindas (nenhum pedido entregue). Calculado junto com o
+// cupom de boas-vindas (nenhum pedido anterior fora os cancelados). Calculado junto com o
 // histórico do cliente, na primeira mensagem da conversa. Se a consulta
 // falhar, fica fora (melhor não oferecer do que oferecer a cliente antigo).
 const cacheElegivelBoasVindas = new Map();
@@ -338,7 +338,7 @@ async function montarBlocoClienteConhecido(numero, ehConversaNova) {
     cacheElegivelBoasVindas.delete(numero);
     return '';
   }
-  cacheElegivelBoasVindas.set(numero, { elegivel: !cliente || !cliente.temPedidoEntregue, expiraEm: Date.now() + CACHE_CLIENTE_TTL_MS });
+  cacheElegivelBoasVindas.set(numero, { elegivel: !cliente || !cliente.temPedidoAnterior, expiraEm: Date.now() + CACHE_CLIENTE_TTL_MS });
   if (!cliente) return '';
 
   const bloco = formatarBlocoClienteConhecido(cliente);
@@ -352,7 +352,7 @@ function montarBlocoCupomBoasVindas(numero, cupom) {
   if (!cache || Date.now() >= cache.expiraEm || !cache.elegivel) return '';
   const desconto = cupom.tipo === 'fixo' ? brl(cupom.desconto) : `${Number(cupom.desconto)}%`;
   const teto = cupom.desconto_maximo != null ? `, até ${brl(cupom.desconto_maximo)} de desconto` : '';
-  return `\n## Cupom de boas-vindas (este cliente ainda não tem pedido entregue)\n- Na primeira mensagem da conversa, junto da apresentação, ofereça de forma natural e em uma linha o cupom ${cupom.codigo}: ${desconto} de desconto no primeiro pedido${teto}, não vale em combos. Ex: "Como é seu primeiro pedido, você pode usar o cupom ${cupom.codigo} (${desconto} off${teto})."\n- Exceção: se o cliente já disse o bairro e \`verificar_bairro\` respondeu \`atendido: false\` (bairro que não atendemos), NÃO ofereça o cupom — nem nenhuma outra promoção.\n- Ofereça uma vez só na conversa: depois dessa primeira oferta, não volte a falar do cupom nem pergunte se ele quer usar (nem no pagamento, nem no resumo), a não ser que o próprio cliente fale do cupom. Só envie \`cupom: "${cupom.codigo}"\` (no \`calcular_total\` e no \`criar_pedido\`) se o cliente disser claramente que quer usar o cupom — agradecer ("obg", "valeu") ou não responder NÃO é aceitar.\n- Lembre que com cupom o frete é cobrado (não acumula com frete grátis) — mencione isso no resumo se ele usar o cupom.\n`;
+  return `\n## Cupom de boas-vindas (este cliente ainda não fez nenhum pedido)\n- Na primeira mensagem da conversa, junto da apresentação, ofereça de forma natural e em uma linha o cupom ${cupom.codigo}: ${desconto} de desconto no primeiro pedido${teto}, não vale em combos. Ex: "Como é seu primeiro pedido, você pode usar o cupom ${cupom.codigo} (${desconto} off${teto})."\n- Exceção: se o cliente já disse o bairro e \`verificar_bairro\` respondeu \`atendido: false\` (bairro que não atendemos), NÃO ofereça o cupom — nem nenhuma outra promoção.\n- Ofereça uma vez só na conversa: depois dessa primeira oferta, não volte a falar do cupom nem pergunte se ele quer usar (nem no pagamento, nem no resumo), a não ser que o próprio cliente fale do cupom. Só envie \`cupom: "${cupom.codigo}"\` (no \`calcular_total\` e no \`criar_pedido\`) se o cliente disser claramente que quer usar o cupom — agradecer ("obg", "valeu") ou não responder NÃO é aceitar.\n- Lembre que com cupom o frete é cobrado (não acumula com frete grátis) — mencione isso no resumo se ele usar o cupom.\n`;
 }
 
 /**
