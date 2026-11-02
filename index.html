@@ -1363,8 +1363,11 @@ function abrirCombo(id) {
   const pizzas = (regra.pizzas || []).map(p => p.categoria
     ? { tamanho: p.tamanho, categoria: p.categoria, sabores: null }
     : { tamanho: p.tamanho, fixo: true, sabores: (p.sabores || []).map(n => { const s = porNome(n); return s ? { id: s.id, nome: s.nome } : { nome: n }; }) });
-  const bebidas = (regra.bebidas || []).map(n => bebidasCache.find(b => b.nome.toLowerCase() === String(n).toLowerCase())).filter(Boolean);
-  const carregando = (pizzas.some(p => p.categoria) && !salgadasCache.length) || (regra.doce && !docesCache.length) || ((regra.bebidas || []).length && !bebidasCache.length);
+  // bebidas: "todas" = qualquer bebida ativa do cardápio; ou a lista de nomes permitidos.
+  const bebidas = regra.bebidas === 'todas' ? [...bebidasCache]
+    : (Array.isArray(regra.bebidas) ? regra.bebidas : []).map(n => bebidasCache.find(b => b.nome.toLowerCase() === String(n).toLowerCase())).filter(Boolean);
+  const temBebida = regra.bebidas === 'todas' || (Array.isArray(regra.bebidas) && regra.bebidas.length > 0);
+  const carregando = (pizzas.some(p => p.categoria) && !salgadasCache.length) || (regra.doce && !docesCache.length) || (temBebida && !bebidasCache.length);
   if (carregando) { toast('Carregando o cardápio, tente de novo em instantes.'); return; }
   gtag('event', 'select_item', { item_name: combo.nome, item_category: 'combo' });
   abrirMontagem({ tipo: 'combo', combo, titulo: combo.nome, pizzas, doce: !!regra.doce, bebidas });

@@ -238,7 +238,9 @@ function montarCombo(combo, itemInput, menuData) {
     }
   }
   let bebida = null;
-  const opcoesBebida = (regra.bebidas || []).map((n) => buscarPorNome(menuData.bebidas, 'nome', n)).filter(Boolean);
+  // bebidas: "todas" = qualquer bebida ativa do cardápio; ou a lista de nomes permitidos.
+  const opcoesBebida = regra.bebidas === 'todas' ? [...menuData.bebidas]
+    : (Array.isArray(regra.bebidas) ? regra.bebidas : []).map((n) => buscarPorNome(menuData.bebidas, 'nome', n)).filter(Boolean);
   if (opcoesBebida.length) {
     const nomes = opcoesBebida.map((b) => b.nome).join(', ');
     if (!itemInput.bebida_do_combo) faltando.push(`a bebida (${nomes})`);

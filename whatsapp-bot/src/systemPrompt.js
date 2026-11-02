@@ -174,7 +174,7 @@ export function formatarMontagemCombos(lista, bebidas = []) {
         ? `${qual}${p.tamanho}, o cliente escolhe 1 sabor ${rotulo[p.categoria] || p.categoria} (inteira)`
         : `${qual}${p.tamanho} ${(p.sabores || []).length === 2 ? `½ ${p.sabores[0]} + ½ ${p.sabores[1]}` : (p.sabores || [])[0]} (sabor fixo)`;
     });
-    const opcoesBebida = (m.bebidas || []).filter(ativa);
+    const opcoesBebida = m.bebidas === 'todas' ? bebidas.map((b) => b.nome) : (Array.isArray(m.bebidas) ? m.bebidas : []).filter(ativa);
     const partes = [...pizzas, ...(m.doce ? ['pizza doce 25cm: o cliente escolhe o sabor'] : []), ...(opcoesBebida.length ? [`bebida: o cliente escolhe entre ${opcoesBebida.join(', ')}`] : [])];
     return `- ${c.nome}: ${partes.join('; ')}.`;
   }).join('\n');

@@ -3477,6 +3477,7 @@ const saboresDaCategoriaManual = (menu, pz) => menu.salgadas.filter(p => categor
 const bebidasComboManual = menu => { const l = menu.bebidas.filter(b => /1\s*l\b/i.test(b.nome)); return l.length ? l : menu.bebidas; };
 function bebidasDoComboManual(regra, menu){
   if(regra.bebidas === null) return bebidasComboManual(menu);
+  if(regra.bebidas === 'todas') return menu.bebidas; // qualquer bebida ativa (as inativas saem na tela)
   return menu.bebidas.filter(b => regra.bebidas.some(n => normalizarTextoPedidoManual(n) === normalizarTextoPedidoManual(b.nome)));
 }
 const precoBordaManual = (menu, tipo, tamanho) => tipo === 'pizza_doce' ? menu.bordaDoce : tamanho === 'Família' ? menu.bordaFamilia : menu.bordaSalgada;
