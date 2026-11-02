@@ -358,8 +358,25 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
 .cart-item-obs{font-size:12px;color:var(--gray);margin-top:2px;}
 .cart-item-price{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--red);white-space:nowrap;}
 .cart-item-qty{display:flex;align-items:center;gap:10px;margin-top:7px;}
-.qty-btn{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--cream-dark);background:white;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;}
-.qty-btn:hover{border-color:var(--red);color:var(--red);}
+.qty-btn{width:36px;height:36px;flex:0 0 36px;border-radius:50%;border:2px solid var(--red);background:white;color:var(--red);cursor:pointer;font-size:20px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;touch-action:manipulation;}
+.qty-btn:hover,.qty-btn:active{background:var(--red);color:white;}
+/* Bloco fixo de bebidas no carrinho (logo acima do resumo) */
+.bebidas-carrinho{padding:12px 0;border-top:1px solid var(--cream-dark);}
+.bebida-linha{display:flex;align-items:center;gap:10px;padding:7px 0;}
+.bebida-linha img,.bebida-linha .bl-emoji{width:40px;height:40px;flex:0 0 40px;border-radius:8px;object-fit:cover;background:var(--cream-dark);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.bebida-linha .bl-info{flex:1;min-width:0;}
+.bebida-linha .bl-nome{font-weight:700;font-size:13.5px;line-height:1.3;}
+.bebida-linha .bl-preco{font-size:12.5px;color:var(--gray);}
+.bebida-linha .bl-qtd{color:var(--green);font-weight:700;}
+.bebida-linha .btn-upsell-add{width:auto;flex:0 0 auto;padding:9px 12px;}
+/* Montagem dos combos e da Pizza do Dia (passo a passo) */
+.mt-progresso{font-size:12px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;}
+.mt-fixo{background:var(--cream);border:1.5px solid var(--cream-dark);border-radius:8px;padding:11px 13px;font-weight:700;font-size:14px;margin-bottom:14px;}
+.mt-fixo small{display:block;font-weight:500;color:var(--gray);font-size:12px;margin-top:2px;}
+.mt-resumo-lista{list-style:none;padding:0;margin:0 0 10px;display:flex;flex-direction:column;gap:6px;font-size:14px;}
+.mt-resumo-lista li{display:flex;justify-content:space-between;gap:10px;}
+.mt-resumo-lista li span:last-child{white-space:nowrap;font-weight:700;}
+.mt-aviso{display:none;background:rgba(204,17,0,0.08);color:var(--red);font-size:13px;font-weight:700;padding:9px 12px;border-radius:8px;margin-bottom:10px;}
 .qty-num{font-weight:700;font-size:14px;min-width:20px;text-align:center;}
 .upsell-section{padding:12px 0;border-top:1px solid var(--cream-dark);border-bottom:1px solid var(--cream-dark);}
 .upsell-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--red);margin-bottom:10px;}
@@ -796,6 +813,7 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     </div>
     <textarea id="f-obs" placeholder="📝 Observações (opcional) — ex: sem cebola, ponto bem assado..."></textarea>
     <div class="upsell-section" id="upsell-section" style="display:none;"></div>
+    <div class="bebidas-carrinho" id="bebidas-carrinho" style="display:none;"></div>
     <div class="checkout-form-label"><span class="cfl-icon">🧾</span> Resumo</div>
     <div class="frete-info"><span>Subtotal:</span><span id="subtotal-val">R$ 0,00</span></div>
     <div class="desconto-row" id="desconto-row" style="display:none;"><span>🎟️ Desconto<span id="desconto-label"></span>:</span><span id="desconto-val">- R$ 0,00</span></div>
@@ -831,6 +849,21 @@ footer img{width:130px;height:auto;margin-bottom:8px;}
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeModal()">Cancelar</button>
       <button class="btn-modal-ok" id="modal-confirm-btn" onclick="confirmModalSabor()" disabled>Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="montagem-overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt-titulo">
+    <div class="mt-progresso" id="mt-progresso"></div>
+    <h3 id="mt-titulo">🍕 Monte seu combo</h3>
+    <p class="modal-sub" id="mt-sub"></p>
+    <div id="mt-corpo"></div>
+    <div class="mt-aviso" id="mt-aviso" role="alert"></div>
+    <div class="modal-resumo" id="mt-preco"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" id="mt-voltar" onclick="montagemVoltar()">Cancelar</button>
+      <button class="btn-modal-ok" id="mt-avancar" onclick="montagemAvancar()">Próximo →</button>
     </div>
   </div>
 </div>
@@ -911,11 +944,16 @@ const presenteFidelidadeTexto = () => { const l = saboresTradicionaisTexto(); re
 // Preço da borda recheada — configurável via admin (Configurações do Bot),
 // tabela `configuracoes`, chaves borda_preco_salgada/borda_preco_doce.
 // Valores abaixo são só o fallback até aplicarConfigsVisuais() carregar.
-let bordaPrecoSalgada = 12, bordaPrecoDoce = 12;
+let bordaPrecoSalgada = 12, bordaPrecoDoce = 12, bordaPrecoFamilia = null; // Família sem valor próprio = preço da Grande
 const OPCOES_BORDA = {
   pizza_salgada: [{ id: 'catupiry', nome: 'Catupiry' }, { id: 'cheddar', nome: 'Cheddar' }],
   pizza_doce: [{ id: 'chocolate', nome: 'Chocolate' }],
 };
+// Preço da borda pelo tipo e tamanho — mesma regra da função calcular_checkout_v2.
+function precoBordaPara(tipoItem, tamanho) {
+  if (tipoItem === 'pizza_doce') return bordaPrecoDoce;
+  return tamanho === 'Família' && bordaPrecoFamilia != null ? bordaPrecoFamilia : bordaPrecoSalgada;
+}
 function brl(v) { return 'R$ ' + Number(v||0).toFixed(2).replace('.',','); }
 // Preço "de/por": só exibição. Devolve a economia (original - atual) quando o
 // preço original está preenchido e é MAIOR que o atual; senão 0 (não mostra nada).
@@ -1140,12 +1178,13 @@ async function loadCombos() {
         ${blocoDePor(c.preco_original, c.preco, 'Separado: ')}
         <div class="combo-bottom">
           <span class="combo-price">R$ ${c.preco.toFixed(2).replace('.',',')}</span>
-          ${c.nome === DUPLA_NOME
-            ? `<button class="btn-add" onclick="abrirDupla()">🍕 Escolher sabores</button>`
+          ${c.montagem
+            ? `<button class="btn-add" onclick="abrirCombo(${c.id})">🍕 ${c.nome === DUPLA_NOME ? 'Escolher sabores' : 'Montar combo'}</button>`
             : `<button class="btn-add" onclick="addItem('${c.nome}',${c.preco},'${(c.descricao||'').replace(/'/g,"\'")}')">🍕 Pedir Agora</button>`}
         </div>
       </div>
     </div>`).join('') : '<p style="color:rgba(255,255,255,0.4)">Nenhum combo.</p>';
+  combosCache = data;
   duplaCombo = data.find(c => c.nome === DUPLA_NOME) || null;
   atualizarDestaqueDupla();
   renderComboDots(data.length);
@@ -1254,22 +1293,31 @@ function abrirPizzaDoDia() {
   const normal = precoNormalPizzaDoDia(pdd);
   const sabor = salgadasCache.find(p => p.nome.toLowerCase() === String(pdd.sabor).toLowerCase());
   if (normal == null || !sabor) return;
-  const existente = cart.find(i => i.pizza_do_dia === pdd.nome && !i.borda);
+  // Montagem de 1 passo: a pizza do dia (sabor fixo) e a borda.
+  abrirMontagem({ tipo: 'pdd', pdd, titulo: pdd.nome, pizzas: [{ tamanho: pdd.tamanho, sabores: [{ id: sabor.id, nome: sabor.nome, preco: normal }] }], doce: false, bebidas: [] });
+}
+// Pizza do Dia montada (com ou sem borda): soma na mesma linha se já tiver uma igual no carrinho.
+function adicionarPizzaDoDiaMontada(m) {
+  const pdd = m.pdd, pz = m.pizzas[0], borda = pz.borda;
+  const preco = +(precoPizzaDoDiaAgora(pdd) + (borda ? borda.preco : 0)).toFixed(2);
+  const nome = nomeItemPizzaDoDia(pdd) + (borda ? ` — Borda ${borda.nome}` : '');
+  const existente = cart.find(i => i.pizza_do_dia === pdd.nome && (i.borda?.id || null) === (borda?.id || null));
   if (existente) existente.qty++;
-  else cart.push({ id: novoId(), tipo: 'pizza', tabela: 'pizzas_salgadas', tamanho: pdd.tamanho, sabores: [{ id: sabor.id, nome: sabor.nome, preco: normal }],
-    borda: null, precoUnitario: precoPizzaDoDiaAgora(pdd), qty: 1, obs: '', pizza_do_dia: pdd.nome, nomeExibicao: nomeItemPizzaDoDia(pdd) });
-  gtag('event', 'add_to_cart', { currency: 'BRL', value: precoPizzaDoDiaAgora(pdd), items: [{ item_name: nomeItemPizzaDoDia(pdd), item_category: 'pizza_do_dia', price: precoPizzaDoDiaAgora(pdd), quantity: 1 }] });
-  fbq('track', 'AddToCart', { value: precoPizzaDoDiaAgora(pdd), currency: 'BRL', content_name: pdd.nome });
+  else cart.push({ id: novoId(), tipo: 'pizza', tabela: 'pizzas_salgadas', tamanho: pdd.tamanho, sabores: pz.sabores,
+    borda, precoUnitario: preco, qty: 1, obs: '', pizza_do_dia: pdd.nome, nomeExibicao: nome });
+  gtag('event', 'add_to_cart', { currency: 'BRL', value: preco, items: [{ item_name: nome, item_category: 'pizza_do_dia', price: preco, quantity: 1 }] });
+  fbq('track', 'AddToCart', { value: preco, currency: 'BRL', content_name: pdd.nome });
   persistCart(); updateCount(); openCart(); toast(`${pdd.nome} adicionada! 🍕`);
 }
 const temPizzaDoDiaNoCarrinho = () => cart.some(i => i.pizza_do_dia);
-// Troca de entrega ↔ retirada: atualiza o preço da pizza do dia no carrinho.
+// Troca de entrega ↔ retirada: atualiza o preço da pizza do dia no carrinho (a borda continua somada).
 function atualizarPrecosPizzaDoDia() {
   let mudou = false;
   cart.forEach(i => {
     if (!i.pizza_do_dia) return;
     const pdd = pizzasDoDia.find(p => p.nome === i.pizza_do_dia);
-    if (pdd && i.precoUnitario !== precoPizzaDoDiaAgora(pdd)) { i.precoUnitario = precoPizzaDoDiaAgora(pdd); mudou = true; }
+    const preco = pdd ? +(precoPizzaDoDiaAgora(pdd) + (i.borda ? i.borda.preco : 0)).toFixed(2) : null;
+    if (pdd && i.precoUnitario !== preco) { i.precoUnitario = preco; mudou = true; }
   });
   if (mudou) { persistCart(); updateCount(); renderCart(); }
 }
@@ -1282,7 +1330,7 @@ function desfazerPizzaDoDiaVencida() {
     const normal = i.sabores?.[0]?.preco ?? i.precoUnitario;
     delete i.pizza_do_dia;
     i.precoUnitario = +(normal + (i.borda ? i.borda.preco : 0)).toFixed(2);
-    i.nomeExibicao = `Pizza ${i.tamanho} — ${i.sabores?.[0]?.nome || ''}`;
+    i.nomeExibicao = `Pizza ${i.tamanho} — ${i.sabores?.[0]?.nome || ''}${i.borda ? ` — Borda ${i.borda.nome}` : ''}`;
   });
   persistCart(); updateCount(); renderCart();
   return true;
@@ -1296,11 +1344,161 @@ function abrirDupla(ev) {
     document.getElementById('combos')?.scrollIntoView({ behavior: 'smooth' });
     return false;
   }
-  gtag('event', 'select_item', { item_name: DUPLA_NOME, item_category: 'combo' });
-  abrirModalSabor('Grande', null, null, { modo: 'dupla', passo: 1, pizzas: [] });
+  abrirCombo(duplaCombo.id);
   return false;
 }
 const textoPizzaEscolhida = sabores => sabores.length === 2 ? `½ ${sabores[0].nome} + ½ ${sabores[1].nome}` : sabores[0].nome;
+
+// MONTAGEM DOS COMBOS E DA PIZZA DO DIA — passo a passo: cada pizza (sabor, quando é à
+// escolha, e borda), a pizza doce (sabor e borda de chocolate), a bebida e o resumo com
+// o preço. A regra de cada combo vem da coluna `montagem` (tabela combos) — a mesma que a
+// Luiza, o admin e o servidor usam. Só entra no carrinho com tudo escolhido.
+let combosCache = [];
+let montagem = null;
+function abrirCombo(id) {
+  const combo = combosCache.find(c => c.id === id);
+  if (!combo || !combo.montagem) return;
+  const regra = combo.montagem;
+  const porNome = nome => salgadasCache.find(p => p.nome.toLowerCase() === String(nome).toLowerCase());
+  const pizzas = (regra.pizzas || []).map(p => p.categoria
+    ? { tamanho: p.tamanho, categoria: p.categoria, sabores: null }
+    : { tamanho: p.tamanho, fixo: true, sabores: (p.sabores || []).map(n => { const s = porNome(n); return s ? { id: s.id, nome: s.nome } : { nome: n }; }) });
+  const bebidas = (regra.bebidas || []).map(n => bebidasCache.find(b => b.nome.toLowerCase() === String(n).toLowerCase())).filter(Boolean);
+  const carregando = (pizzas.some(p => p.categoria) && !salgadasCache.length) || (regra.doce && !docesCache.length) || ((regra.bebidas || []).length && !bebidasCache.length);
+  if (carregando) { toast('Carregando o cardápio, tente de novo em instantes.'); return; }
+  gtag('event', 'select_item', { item_name: combo.nome, item_category: 'combo' });
+  abrirMontagem({ tipo: 'combo', combo, titulo: combo.nome, pizzas, doce: !!regra.doce, bebidas });
+}
+function abrirMontagem(m) {
+  m.pizzas.forEach(p => { p.borda = null; });
+  m.doceEscolhido = null; m.bordaDoce = null; m.bebida = null;
+  m.passos = [...m.pizzas.map((_, k) => ({ tipo: 'pizza', k })), ...(m.doce ? [{ tipo: 'doce' }] : []), ...(m.bebidas.length ? [{ tipo: 'bebida' }] : []), { tipo: 'resumo' }];
+  m.passo = 0;
+  montagem = m;
+  renderMontagem();
+  document.getElementById('montagem-overlay').classList.add('open');
+}
+function fecharMontagem() { document.getElementById('montagem-overlay').classList.remove('open'); montagem = null; }
+const precoBaseMontagem = m => m.tipo === 'pdd' ? precoPizzaDoDiaAgora(m.pdd) : Number(m.combo.preco);
+function precoMontagem(m) {
+  return +(precoBaseMontagem(m) + m.pizzas.reduce((s, p) => s + (p.borda ? p.borda.preco : 0), 0) + (m.bordaDoce ? m.bordaDoce.preco : 0)).toFixed(2);
+}
+function partesMontagem(m) {
+  return [
+    ...m.pizzas.map(p => `${p.tamanho} ${p.sabores ? textoPizzaEscolhida(p.sabores) : '?'}${p.borda ? ` com borda de ${p.borda.nome}` : ''}`),
+    ...(m.doce ? [`Doce ${m.doceEscolhido ? m.doceEscolhido.nome : '?'}${m.bordaDoce ? ' com borda de Chocolate' : ''}`] : []),
+    ...(m.bebidas.length ? [m.bebida ? m.bebida.nome : '?'] : []),
+  ];
+}
+// O que falta escolher no passo atual (null = pode seguir).
+function faltaNoPasso(m) {
+  const passo = m.passos[m.passo];
+  if (passo.tipo === 'pizza' && !m.pizzas[passo.k].sabores) return m.pizzas.length > 1 ? `Escolha o sabor da pizza ${passo.k + 1}.` : 'Escolha o sabor da pizza.';
+  if (passo.tipo === 'doce' && !m.doceEscolhido) return 'Escolha o sabor da pizza doce para continuar.';
+  if (passo.tipo === 'bebida' && !m.bebida) return 'Escolha a bebida para continuar.';
+  return null;
+}
+function opcaoMontagem(ativo, texto, preco, acao) {
+  return `<button type="button" class="sabor-opt ${ativo ? 'active' : ''}" aria-pressed="${ativo}" onclick="${acao}">${esc(texto)} <span>${preco}</span></button>`;
+}
+function bordasMontagem(tipoItem, tamanho, atual, acao) {
+  const preco = precoBordaPara(tipoItem, tamanho);
+  return `<div class="modal-label">Borda recheada (opcional)</div><div class="sabor-grid" style="max-height:none;margin-bottom:12px;">
+    ${opcaoMontagem(!atual, 'Sem borda', '', `${acao}(null)`)}
+    ${OPCOES_BORDA[tipoItem].map(o => opcaoMontagem(atual?.id === o.id, o.nome, '+' + brl(preco), `${acao}('${o.id}')`)).join('')}</div>`;
+}
+function renderMontagem() {
+  const m = montagem;
+  if (!m) return;
+  const passo = m.passos[m.passo];
+  const total = m.passos.length;
+  document.getElementById('mt-progresso').textContent = total > 1 ? `Passo ${m.passo + 1} de ${total}` : '';
+  document.getElementById('mt-aviso').style.display = 'none';
+  const titulo = document.getElementById('mt-titulo'), sub = document.getElementById('mt-sub'), corpo = document.getElementById('mt-corpo');
+  let html = '';
+  if (passo.tipo === 'pizza') {
+    const p = m.pizzas[passo.k];
+    titulo.textContent = m.pizzas.length > 1 ? `🍕 Pizza ${passo.k + 1} de ${m.pizzas.length}` : `🍕 ${m.tipo === 'pdd' ? m.titulo : 'Sua pizza ' + p.tamanho}`;
+    sub.textContent = m.tipo === 'pdd' ? `${p.tamanho} ${textoPizzaEscolhida(p.sabores)} · ${m.titulo}` : p.fixo ? `${m.titulo}` : `${m.titulo} · 1 sabor ${p.categoria === 'tradicional' ? 'Tradicional' : ''} por pizza`;
+    if (p.fixo || m.tipo === 'pdd') {
+      html += `<div class="mt-fixo">${esc(p.tamanho)} ${esc(textoPizzaEscolhida(p.sabores))}<small>Sabor do ${m.tipo === 'pdd' ? 'dia' : 'combo'}</small></div>`;
+    } else {
+      const opcoes = salgadasCache.filter(s => (s.categoria || 'tradicional') === p.categoria && s[p.tamanho === 'Família' ? 'preco_familia' : 'preco_grande'] != null);
+      html += `<div class="modal-label">Sabor</div><div class="sabor-grid" style="margin-bottom:12px;">${opcoes.map(s =>
+        opcaoMontagem(p.sabores?.[0]?.id === s.id, s.nome, 'incluso', `montagemSabor(${s.id})`)).join('')}</div>`;
+    }
+    html += bordasMontagem('pizza_salgada', p.tamanho, p.borda, 'montagemBorda');
+  } else if (passo.tipo === 'doce') {
+    titulo.textContent = '🍫 Pizza doce';
+    sub.textContent = `${m.titulo} · escolha o sabor da doce (25cm)`;
+    html += `<div class="modal-label">Sabor</div><div class="sabor-grid" style="margin-bottom:12px;">${docesCache.map(d =>
+      opcaoMontagem(m.doceEscolhido?.id === d.id, d.nome, 'incluso', `montagemDoce(${d.id})`)).join('')}</div>`;
+    html += bordasMontagem('pizza_doce', null, m.bordaDoce, 'montagemBordaDoce');
+  } else if (passo.tipo === 'bebida') {
+    titulo.textContent = '🥤 Bebida';
+    sub.textContent = `${m.titulo} · escolha a bebida do combo`;
+    html += `<div class="sabor-grid" style="max-height:none;margin-bottom:12px;">${m.bebidas.map(b =>
+      opcaoMontagem(m.bebida?.id === b.id, b.nome, 'incluso', `montagemBebida(${b.id})`)).join('')}</div>`;
+  } else {
+    titulo.textContent = '✅ Confira seu pedido';
+    sub.textContent = `${m.titulo}: ${partesMontagem(m).join(' + ')}`;
+    const linhas = [[m.tipo === 'pdd' ? `${m.titulo}${ehRetirada() ? ' (retirada)' : ''}` : m.titulo, brl(precoBaseMontagem(m))],
+      ...m.pizzas.filter(p => p.borda).map(p => [`+ Borda ${p.borda.nome}${m.pizzas.length > 1 ? ` (${textoPizzaEscolhida(p.sabores)})` : ''}`, brl(p.borda.preco)]),
+      ...(m.bordaDoce ? [[`+ Borda Chocolate (doce ${m.doceEscolhido.nome})`, brl(m.bordaDoce.preco)]] : [])];
+    html += `<ul class="mt-resumo-lista">${linhas.map(([t, v]) => `<li><span>${esc(t)}</span><span>${v}</span></li>`).join('')}</ul>`;
+  }
+  corpo.innerHTML = html;
+  document.getElementById('mt-preco').textContent = brl(precoMontagem(m));
+  document.getElementById('mt-voltar').textContent = m.passo === 0 ? 'Cancelar' : '← Voltar';
+  document.getElementById('mt-avancar').textContent = passo.tipo === 'resumo' ? 'Adicionar ao carrinho' : 'Próximo →';
+}
+function montagemSabor(id) {
+  const s = salgadasCache.find(x => x.id === id);
+  const p = montagem.pizzas[montagem.passos[montagem.passo].k];
+  if (s) p.sabores = [{ id: s.id, nome: s.nome }];
+  renderMontagem();
+}
+function montagemBorda(id) {
+  const p = montagem.pizzas[montagem.passos[montagem.passo].k];
+  const o = OPCOES_BORDA.pizza_salgada.find(x => x.id === id);
+  p.borda = o ? { id: o.id, nome: o.nome, preco: precoBordaPara('pizza_salgada', p.tamanho) } : null;
+  renderMontagem();
+}
+function montagemDoce(id) { const d = docesCache.find(x => x.id === id); if (d) montagem.doceEscolhido = { id: d.id, nome: d.nome }; renderMontagem(); }
+function montagemBordaDoce(id) { montagem.bordaDoce = id === 'chocolate' ? { id: 'chocolate', nome: 'Chocolate', preco: bordaPrecoDoce } : null; renderMontagem(); }
+function montagemBebida(id) { const b = bebidasCache.find(x => x.id === id); if (b) montagem.bebida = { id: b.id, nome: b.nome }; renderMontagem(); }
+function montagemVoltar() {
+  if (!montagem) return;
+  if (montagem.passo === 0) { fecharMontagem(); return; }
+  montagem.passo--; renderMontagem();
+}
+function montagemAvancar() {
+  const m = montagem;
+  if (!m) return;
+  const falta = faltaNoPasso(m);
+  if (falta) { const a = document.getElementById('mt-aviso'); a.textContent = falta; a.style.display = 'block'; return; }
+  if (m.passos[m.passo].tipo !== 'resumo') { m.passo++; renderMontagem(); document.querySelector('#montagem-overlay .modal').scrollTop = 0; return; }
+  // Conferência final: nada fica sem escolher.
+  for (let k = 0; k < m.passos.length; k++) { m.passo = k; if (faltaNoPasso(m)) { renderMontagem(); montagemAvancar(); return; } }
+  fecharMontagem();
+  if (m.tipo === 'pdd') { adicionarPizzaDoDiaMontada(m); return; }
+  adicionarComboMontado(m);
+}
+function adicionarComboMontado(m) {
+  const combo = m.combo, preco = precoMontagem(m);
+  const comboPizzas = m.pizzas.map(p => ({ tamanho: p.tamanho, sabores: p.sabores, borda: p.borda }));
+  const doce = m.doce ? { ...m.doceEscolhido, borda: m.bordaDoce } : null;
+  const nome = `${combo.nome}: ${partesMontagem(m).join(' + ')}`;
+  const chave = JSON.stringify([combo.nome, comboPizzas, doce, m.bebida]);
+  const existente = cart.find(i => i._montagem === chave);
+  if (existente) existente.qty++;
+  else cart.push({ id: novoId(), tipo: 'simples', tabela: null, tamanho: null, sabores: [{ nome: combo.nome, preco: Number(combo.preco) }], borda: null,
+    precoUnitario: preco, qty: 1, obs: '', combo_pizzas: comboPizzas, ...(doce ? { combo_doce: doce } : {}), ...(m.bebida ? { combo_bebida: m.bebida } : {}),
+    nomeExibicao: nome, _montagem: chave });
+  gtag('event', 'add_to_cart', { currency: 'BRL', value: preco, items: [{ item_name: combo.nome, item_category: 'combo', price: preco, quantity: 1 }] });
+  fbq('track', 'AddToCart', { value: preco, currency: 'BRL', content_name: combo.nome });
+  persistCart(); updateCount(); openCart(); toast(`${combo.nome} adicionado! 🍕`);
+}
 
 // CARROSSEL DE COMBOS — navegação por setas, bolinhas e autoplay
 let comboAutoplayTimer = null;
@@ -1657,6 +1855,7 @@ async function aplicarConfigsVisuais() {
 
   if (cfg.borda_preco_salgada != null && cfg.borda_preco_salgada !== '') bordaPrecoSalgada = parseFloat(cfg.borda_preco_salgada);
   if (cfg.borda_preco_doce != null && cfg.borda_preco_doce !== '') bordaPrecoDoce = parseFloat(cfg.borda_preco_doce);
+  if (cfg.borda_preco_familia != null && cfg.borda_preco_familia !== '') bordaPrecoFamilia = parseFloat(cfg.borda_preco_familia);
   if (Number.isFinite(parseFloat(cfg.frete_padrao))) fretePadrao = parseFloat(cfg.frete_padrao);
   ofertaDoceAtiva = ['true','1','sim'].includes(String(cfg.oferta_doce_ativa||'').toLowerCase());
   if (Number.isFinite(parseFloat(cfg.oferta_doce_preco))) ofertaDocePreco = parseFloat(cfg.oferta_doce_preco);
@@ -1746,7 +1945,7 @@ function abrirModalSabor(tamanho, produtoIdClicado, editItem=null, especial=null
 }
 
 function renderBordaOpcoes() {
-  const precoBorda = modalState.tipoItem === 'pizza_salgada' ? bordaPrecoSalgada : bordaPrecoDoce;
+  const precoBorda = precoBordaPara(modalState.tipoItem, modalState.tamanho);
   const opcoes = [{ id: null, nome: 'Sem borda', preco: 0 }, ...OPCOES_BORDA[modalState.tipoItem].map(o => ({ ...o, preco: precoBorda }))];
   document.getElementById('borda-grid').innerHTML = opcoes.map(o => `
     <button type="button" class="sabor-opt ${(modalState.borda?.id ?? null) === o.id ? 'active' : ''}" onclick="selecionarBorda(${o.id ? `'${o.id}'` : 'null'})">
@@ -1757,7 +1956,7 @@ function renderBordaOpcoes() {
 function selecionarBorda(bordaId) {
   if (!bordaId) { modalState.borda = null; }
   else {
-    const precoBorda = modalState.tipoItem === 'pizza_salgada' ? bordaPrecoSalgada : bordaPrecoDoce;
+    const precoBorda = precoBordaPara(modalState.tipoItem, modalState.tamanho);
     const opcao = OPCOES_BORDA[modalState.tipoItem].find(o => o.id === bordaId);
     modalState.borda = opcao ? { id: opcao.id, nome: opcao.nome, preco: precoBorda } : null;
   }
@@ -1947,17 +2146,12 @@ function renderUpsell() {
   if (!temPizzaSalgada) { sec.style.display = 'none'; sec.innerHTML = ''; return; }
 
   const nomesNoCarrinho = new Set(cart.map(i => i.nomeExibicao));
-  const temBebida = cart.some(i => bebidasCache.some(b => b.nome === i.nomeExibicao));
   const temDoce = cart.some(i => ehPizzaDoce(i) || i.nomeExibicao.startsWith('Doce '));
   // Oferta da pizza doce: aparece até o cliente escolher uma doce ou clicar "Agora não".
   const mostrarOfertaDoce = !temDoce && !ofertaDoceRecusada && ofertaDoceElegivel() && docesCache.some(d => d.preco > ofertaDocePreco);
 
+  // Bebidas ficam no bloco fixo "🥤 Bebidas" (renderBebidasCarrinho), sempre visível.
   let sugestoes = [];
-  if (!temBebida) {
-    sugestoes.push(...bebidasCache
-      .filter(b => UPSELL_BEBIDAS.includes(b.nome) && !nomesNoCarrinho.has(b.nome))
-      .map(b => ({ addNome: b.nome, nome: b.nome, preco: b.preco, foto: b.foto_url })));
-  }
   if (!temDoce && !mostrarOfertaDoce) {
     // Doce abre a escolha de sabor (e borda), igual ao cardápio — mesmo formato de item do servidor.
     sugestoes.push(...docesCache
@@ -1992,13 +2186,30 @@ function renderUpsell() {
             <div class="upsell-name">${s.nome}</div>
             <div class="upsell-price">${brl(s.preco)}</div>
           </div>
-          <button class="btn-upsell-add" onclick="${s.doceId ? `abrirModalSabor(null,${s.doceId})` : `addItem('${s.addNome.replace(/'/g,"\\'")}',${s.preco})`}">+ Adicionar</button>
+          <button class="btn-upsell-add" onclick="abrirModalSabor(null,${s.doceId})">+ Adicionar</button>
         </div>`).join('')}
     </div>` : ''}`;
 }
+// Bloco fixo de bebidas, logo acima do resumo: sempre visível com o carrinho cheio, pra
+// adicionar mais de uma sem fechar o carrinho (cada clique soma 1 na linha da bebida).
+function renderBebidasCarrinho() {
+  const el = document.getElementById('bebidas-carrinho');
+  if (!el) return;
+  if (!cart.length || !bebidasCache.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const ordem = b => { const k = UPSELL_BEBIDAS.indexOf(b.nome); return k < 0 ? 99 : k; };
+  el.style.display = '';
+  el.innerHTML = `<div class="upsell-title">🥤 Bebidas</div>${[...bebidasCache].sort((a, b) => ordem(a) - ordem(b)).map(b => {
+    const qtd = cart.filter(i => i.tipo === 'simples' && i.nomeExibicao === b.nome).reduce((s, i) => s + i.qty, 0);
+    return `<div class="bebida-linha">
+      ${b.foto_url ? `<img src="${esc(b.foto_url)}" alt="" loading="lazy">` : '<div class="bl-emoji">🥤</div>'}
+      <div class="bl-info"><div class="bl-nome">${esc(b.nome)}</div><div class="bl-preco">${brl(b.preco)}${qtd ? ` · <span class="bl-qtd">${qtd} no carrinho</span>` : ''}</div></div>
+      <button type="button" class="btn-upsell-add" onclick="addItem('${b.nome.replace(/'/g, "\\'")}',${b.preco})" aria-label="Adicionar ${esc(b.nome)}">+ Adicionar</button>
+    </div>`;
+  }).join('')}`;
+}
 function renderCart() {
   const body = document.getElementById('cart-body'), form = document.getElementById('checkout-form'), upsell = document.getElementById('upsell-section');
-  if (!cart.length) { body.innerHTML='<div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!</p></div>'; form.style.display='none'; upsell.style.display='none'; upsell.innerHTML=''; return; }
+  if (!cart.length) { body.innerHTML='<div class="cart-empty"><div style="font-size:44px;margin-bottom:10px;">🍕</div><p>Carrinho vazio!</p></div>'; form.style.display='none'; upsell.style.display='none'; upsell.innerHTML=''; renderBebidasCarrinho(); return; }
   form.style.display='flex';
   body.innerHTML = cart.map((item,i) => `
     <div class="cart-item">
@@ -2006,9 +2217,9 @@ function renderCart() {
         <div class="cart-item-name${item.tipo==='pizza'&&!item.brinde_fidelidade&&!item.pizza_do_dia?' clickable':''}"${item.tipo==='pizza'&&!item.brinde_fidelidade&&!item.pizza_do_dia?` onclick="editCartItem('${item.id}')"`:''}>${item.nomeExibicao}</div>
         ${item.obs?`<div class="cart-item-obs">${item.obs}</div>`:''}
         ${item.brinde_fidelidade ? '<div class="cart-item-obs">1 por pedido · não acumula com cupom</div>' : `<div class="cart-item-qty">
-          <button class="qty-btn" onclick="chQty(${i},-1)">−</button>
+          <button class="qty-btn" onclick="chQty(${i},-1)" aria-label="Diminuir quantidade">−</button>
           <span class="qty-num">${item.qty}</span>
-          <button class="qty-btn" onclick="chQty(${i},1)">+</button>
+          <button class="qty-btn" onclick="chQty(${i},1)" aria-label="Aumentar quantidade">+</button>
         </div>`}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
@@ -2017,6 +2228,7 @@ function renderCart() {
       </div>
     </div>`).join('');
   renderUpsell();
+  renderBebidasCarrinho();
   updateTotals();
 }
 function chQty(i, d) { cart[i].qty+=d; if(cart[i].qty<=0) cart.splice(i,1); persistCart(); updateCount(); renderCart(); }
@@ -2506,7 +2718,8 @@ function itensJsonDoCarrinho(comOferta = false) {
   const oferta = comOferta ? ofertaDoceAtual() : null;
   return cart.flatMap(i => {
     const base = { tipo:i.tipo, tamanho:i.tamanho, sabores:i.sabores, borda:i.borda||null, precoUnitario:i.precoUnitario, qty:i.qty, obs:i.obs||null,
-      ...(i.combo_pizzas ? { combo_pizzas: i.combo_pizzas } : {}), ...(i.brinde_fidelidade ? { brinde_fidelidade: true } : {}),
+      ...(i.combo_pizzas ? { combo_pizzas: i.combo_pizzas } : {}), ...(i.combo_doce ? { combo_doce: i.combo_doce } : {}),
+      ...(i.combo_bebida ? { combo_bebida: i.combo_bebida } : {}), ...(i.brinde_fidelidade ? { brinde_fidelidade: true } : {}),
       ...(i.pizza_do_dia ? { pizza_do_dia: i.pizza_do_dia } : {}) };
     if (!oferta || oferta.id !== i.id) return [base];
     const comDesconto = { ...base, qty: 1, precoUnitario: +(i.precoUnitario - oferta.economia).toFixed(2), oferta_doce: true };

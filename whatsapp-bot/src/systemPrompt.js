@@ -160,6 +160,26 @@ export function formatarCombos(lista, { comDePor = false } = {}) {
   return linhas.join('\n');
 }
 
+// O que cada combo deixa escolher (coluna combos.montagem — mesma regra do site e do admin).
+export function formatarMontagemCombos(lista, bebidas = []) {
+  const comMontagem = lista.filter((c) => c.montagem);
+  if (!comMontagem.length) return '(nenhum combo com montagem)';
+  const rotulo = { tradicional: 'Tradicional', especial: 'Especial', premium: 'Premium' };
+  const ativa = (n) => bebidas.some((b) => String(b.nome).toLowerCase() === String(n).toLowerCase());
+  return comMontagem.map((c) => {
+    const m = c.montagem;
+    const pizzas = (m.pizzas || []).map((p, k) => {
+      const qual = (m.pizzas || []).length > 1 ? `pizza ${k + 1}: ` : 'pizza: ';
+      return p.categoria
+        ? `${qual}${p.tamanho}, o cliente escolhe 1 sabor ${rotulo[p.categoria] || p.categoria} (inteira)`
+        : `${qual}${p.tamanho} ${(p.sabores || []).length === 2 ? `½ ${p.sabores[0]} + ½ ${p.sabores[1]}` : (p.sabores || [])[0]} (sabor fixo)`;
+    });
+    const opcoesBebida = (m.bebidas || []).filter(ativa);
+    const partes = [...pizzas, ...(m.doce ? ['pizza doce 25cm: o cliente escolhe o sabor'] : []), ...(opcoesBebida.length ? [`bebida: o cliente escolhe entre ${opcoesBebida.join(', ')}`] : [])];
+    return `- ${c.nome}: ${partes.join('; ')}.`;
+  }).join('\n');
+}
+
 // Pizza do Dia: a de hoje (se a loja está aberta) e a próxima, pro cliente que perguntar.
 function montarBlocoPizzaDoDia(pizzasDoDia, salgadas, lojaAberta) {
   if (!pizzasDoDia?.length) return '';
@@ -380,6 +400,7 @@ export async function buildSystemPrompt(numero, ehConversaNova = false) {
   // a ferramenta de fato vai cobrar, senão a Claude prometeria um valor errado.
   const bordaPrecoSalgada = Number.isFinite(parseFloat(configuracoes.borda_preco_salgada)) ? parseFloat(configuracoes.borda_preco_salgada) : 12;
   const bordaPrecoDoce = Number.isFinite(parseFloat(configuracoes.borda_preco_doce)) ? parseFloat(configuracoes.borda_preco_doce) : 12;
+  const bordaPrecoFamilia = Number.isFinite(parseFloat(configuracoes.borda_preco_familia)) ? parseFloat(configuracoes.borda_preco_familia) : bordaPrecoSalgada;
 
   const instrucaoApresentacao = ehConversaNova
     ? 'Esta é a PRIMEIRA mensagem desta conversa: sua resposta SEMPRE começa com a apresentação, em uma linha — "Oi, aqui é a Luiza, da Big Bang Pizza. O que vai ser hoje?" ou uma variação curta parecida. Vale pra qualquer assunto (pedido, dúvida, encomenda, reclamação, pedido de atendente) e mesmo quando você chamar uma ferramenta antes de responder: o texto que vai pro cliente começa com a apresentação e só depois trata do assunto. Se o cliente já disse o que quer, apresente-se e já responda o pedido dele, sem perguntar "o que vai ser".'
@@ -492,7 +513,8 @@ Com a loja FECHADA:
 Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou alguma coisa em qualquer mensagem (sabor, tamanho, endereço, bairro, pagamento), não pergunte de novo — use o que ele disse e vá pra próxima pendência.
 
 1. **Sabor e tamanho**: ajude o cliente a escolher (sabores, tamanho Grande/Família nas salgadas, meio a meio se quiser — nesse caso vale o preço do sabor mais caro dos dois, não a média; ver preços abaixo). Se faltar o tamanho, pergunte só o tamanho; se faltar o sabor, pergunte só o sabor.
-   - **Combos com item genérico incluído**: alguns combos incluem um item sem sabor/opção definida na descrição (ex: "Pizza Doce", "Coca-Cola 1L") — isso é só o TIPO do item, não a opção específica. Sempre que um combo incluir algo assim, pergunte ao cliente qual opção ele quer dentre as ativas do cardápio correspondente (pizza doce: pergunte o sabor entre as pizzas doces abaixo; bebida genérica tipo "Coca-Cola 1L": pergunte entre as bebidas ativas — pode ser Coca-Cola Tradicional, Coca-Cola Zero, Guaraná ou outra, não assuma qual) — do mesmo jeito que já faz pra pizza doce. Anote a escolha no campo \`obs\` do item do combo (ex: "pizza doce: Brigadeiro; bebida: Guaraná Antarctica").
+   - **Combos**: siga o bloco "Montagem dos combos" (abaixo do cardápio de combos). Pergunte só o que o combo deixa escolher, UMA coisa de cada vez e na ordem: o sabor de cada pizza à escolha (ex: Dupla), depois o sabor da pizza doce (se o combo tiver), depois a bebida entre as opções do combo (nunca assuma qual — "Coca" sem dizer se é Zero ou Tradicional: pergunte). Pizzas de sabor fixo não têm troca: se o cliente pedir outro sabor, explique em uma linha que o sabor é o do combo. Envie tudo estruturado: \`pizzas_do_combo\` (uma entrada por pizza, na ordem, com \`sabor1\` só nas pizzas à escolha e \`borda\` se ele quiser), \`doce_do_combo\` ({ sabor, borda }) e \`bebida_do_combo\` — nunca no \`obs\`. Se \`calcular_total\` ou \`criar_pedido\` disser que falta algo, pergunte só o que falta.
+   - **Borda nos combos e na Pizza do Dia**: cada pizza salgada do combo (e a Pizza do Dia) pode ter borda de catupiry ou cheddar (+${brl(bordaPrecoSalgada)} na Grande, +${brl(bordaPrecoFamilia)} na Família), e a doce do combo borda de chocolate (+${brl(bordaPrecoDoce)}), somadas ao valor do combo. Ofereça a borda UMA vez só, junto da oferta do passo 2 (ex: "Quer borda recheada em alguma pizza?"), sem insistir. Num combo com 2 pizzas, se o cliente quiser borda sem dizer em qual, pergunte em qual (ou nas duas).
 2. **Bebida ou adicional (uma única vez por pedido)**: depois de fechar a(s) pizza(s), faça UMA oferta, em uma linha, juntando bebida e borda recheada${ofertaDoce.ativa ? ` — e, se o pedido tiver pelo menos uma pizza salgada Grande ou Família fora de combo, também a pizza doce por ${brl(ofertaDoce.preco)}` : ''} — ex: "${ofertaDoce.ativa ? `Quer incluir uma bebida, borda recheada (catupiry ou cheddar, +${brl(bordaPrecoSalgada)}) ou uma pizza doce por ${brl(ofertaDoce.preco)}?` : `Quer incluir uma bebida ou borda recheada (catupiry ou cheddar, +${brl(bordaPrecoSalgada)})?`}". Borda de chocolate nas doces: +${brl(bordaPrecoDoce)}. Envie o campo \`borda\` do item só se o cliente pedir. Se o cliente recusar ou ignorar, siga em frente e não ofereça mais nada (nem bebida, nem borda, nem pizza doce, nem sobremesa) até o fim do pedido. Se ele já pediu bebida/borda por conta própria, pule esta etapa.${ofertaDoce.ativa ? `
    - **Oferta da pizza doce**: qualquer sabor por ${brl(ofertaDoce.preco)}, uma por pedido (a segunda sai no preço normal), só com pizza salgada Grande ou Família fora de combo, e não vale junto com cupom. Se o cliente já informou um cupom, não cite o preço da oferta (ofereça só "pizza doce"). Nunca aplique cupom por conta própria.
    - **Cupom x oferta da doce**: se \`calcular_total\` devolver \`comparacao_cupom_x_oferta_doce\` (o cliente tem direito aos dois, e eles não acumulam), ANTES do resumo diga em uma linha os dois totais — "Com o cupom fica R$ X; com a pizza doce em oferta (sem cupom) fica R$ Y." —, recomende a opção mais barata e pergunte qual ele prefere. Se escolher a oferta, chame \`calcular_total\` de novo sem o cupom e não envie cupom no \`criar_pedido\`. Se escolher o cupom mesmo sendo mais caro, envie \`cliente_escolheu_cupom_mais_caro: true\`. Nunca registre a opção mais cara sem o cliente ter visto os dois totais. Se ele aceitar, pergunte o sabor e envie a doce como item \`pizza_doce\` normal — o sistema aplica o preço da oferta sozinho; no resumo use os preços de \`calcular_total\`.` : ''}
@@ -548,13 +570,16 @@ ${formatarDoces(doces)}
 
 ## Cardápio — Combos
 ${formatarCombos(combos, { comDePor: true })}
-- **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza é inteira, de 1 sabor (a Dupla NÃO tem meio a meio — nunca ofereça; se o cliente pedir, explique em uma linha que na Dupla cada pizza é de 1 sabor). Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode repetir o sabor."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, só \`sabor1\`, sem \`sabor2\`), nunca no \`obs\`. Cupom não vale na Dupla (é combo).
+
+### Montagem dos combos
+${formatarMontagemCombos(combos, bebidas)}
+- **Dupla Tradicional** (se estiver na lista acima): 2 Pizzas Grandes Tradicionais com os sabores que o cliente escolher; cada pizza é inteira, de 1 sabor (a Dupla NÃO tem meio a meio — nunca ofereça; se o cliente pedir, explique em uma linha que na Dupla cada pizza é de 1 sabor). Pergunte os sabores das duas pizzas numa mensagem só (ex: "Quais os sabores das duas pizzas? Pode repetir o sabor."). Só Tradicionais — se ele quiser Especial ou Premium, explique que a Dupla é só com Tradicionais. Envie os sabores em \`pizzas_do_combo\` (uma entrada por pizza, \`sabor1\` sem \`sabor2\`), nunca no \`obs\`. Cupom não vale em combo nenhum.
 
 ## Pizza do Dia
 - Nas quintas, sextas e sábados pode ter uma Pizza do Dia (promoção com sabor e tamanho fixos). O que vale hoje está no bloco "Pizza do Dia", no fim — nunca ofereça uma pizza do dia que não esteja lá como "vale agora".
 - Cite a pizza do dia UMA vez na conversa, de forma natural, quando o cliente pedir o cardápio, perguntar de promoção ou estiver escolhendo a pizza (ex: "Hoje é dia de Quintabresa: Calabresa Família por R$ 54,90, ou R$ 49,90 retirando na loja."). Não repita nem insista.
 - Preço de entrega x retirada: explique a diferença se o cliente perguntar ou falar de frete — o preço menor vale só retirando na loja.
-- Para registrar: item \`pizza_salgada\`, com o tamanho e o sabor do dia, inteira (sem \`sabor2\`), com \`pizza_do_dia: true\` no \`calcular_total\` e no \`criar_pedido\`. Não acumula com cupom: se o cliente quiser cupom, explique em uma linha que não acumulam e deixe ele escolher. Conta selo da fidelidade normalmente.
+- Para registrar: item \`pizza_salgada\`, com o tamanho e o sabor do dia, inteira (sem \`sabor2\`), com \`pizza_do_dia: true\` no \`calcular_total\` e no \`criar_pedido\`. Pode ter borda (campo \`borda\`), somada ao preço do dia. Não acumula com cupom: se o cliente quiser cupom, explique em uma linha que não acumulam e deixe ele escolher. Conta selo da fidelidade normalmente.
 - Se \`calcular_total\` ou \`criar_pedido\` devolver \`pizza_do_dia\` com \`aplicada: false\`, a pizza saiu pelo preço normal: avise com o motivo que veio.
 
 ## Cartão fidelidade

@@ -51,10 +51,11 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
             obs: { type: 'string', description: 'Observação específica deste item, se houver.' },
             pizzas_do_combo: {
               type: 'array',
-              description: 'Só na Dupla Tradicional: o sabor de cada uma das 2 pizzas (Tradicionais, inteiras), na ordem. Deixe sabor1 vazio se o texto não disser.',
-              items: { type: 'object', properties: { sabor1: { type: 'string' } } },
+              description: 'Só em combo: uma entrada por pizza salgada do combo, na ordem. sabor1 só nas pizzas à escolha (Dupla Tradicional: Tradicionais, inteiras); vazio se o texto não disser ou se o sabor for fixo. borda: catupiry ou cheddar, se o texto pedir borda nessa pizza.',
+              items: { type: 'object', properties: { sabor1: { type: 'string' }, borda: { type: 'string', enum: ['catupiry', 'cheddar', ''] } } },
             },
             doce: { type: 'string', description: 'Só em combo que tem pizza doce: o sabor da doce, se o texto disser. Vazio se não disser.' },
+            doce_borda: { type: 'string', enum: ['chocolate', ''], description: 'Só em combo com pizza doce: "chocolate" se o texto pedir borda de chocolate na doce.' },
             bebida: { type: 'string', description: 'Só em combo que tem bebida: a bebida escolhida (nome do cardápio), se o texto disser. Vazio se não disser.' },
           },
           required: ['tipo', 'sabor1', 'quantidade'],

@@ -1,7 +1,7 @@
 import { getMenuData, calcularCheckout } from './supabaseData.js';
 import { temServiceRoleConfigurada, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
 import { buscarPedidoRecenteDoCliente, mensagemRecusaAcaoPedido, JANELA_BUSCA_PEDIDO_HORAS } from './pedidoStatusUtil.js';
-import { processarItens, itemParaJson, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero } from './orderTool.js';
+import { processarItens, itemParaJson, PAGAMENTO_TEXTO, ultimaConfirmacaoPorNumero, CRIAR_PEDIDO_TOOL } from './orderTool.js';
 import { resolverBairro, mensagemBairroNaoReconhecido, mensagemBairroNaoAtendido } from './bairroMatch.js';
 
 const CAMPOS_PEDIDO_EDITAVEL = 'nome,endereco,bairro,complemento,pagamento,itens,itens_json,subtotal,frete,total,desconto,cupom';
@@ -32,55 +32,8 @@ export const EDITAR_PEDIDO_TOOL = {
         type: 'array',
         minItems: 1,
         description: 'Lista COMPLETA e final dos itens do pedido. Omita se os itens não vão mudar.',
-        items: {
-          type: 'object',
-          properties: {
-            tipo: { type: 'string', enum: ['pizza_salgada', 'pizza_doce', 'combo', 'bebida'] },
-            tamanho: {
-              type: 'string',
-              enum: ['Grande', 'Família'],
-              description: 'Obrigatório apenas para tipo "pizza_salgada".',
-            },
-            sabor1: { type: 'string', description: 'Nome do produto/sabor exatamente como está no cardápio.' },
-            sabor2: {
-              type: 'string',
-              description: 'Segundo sabor, apenas se for pizza salgada meio a meio. Deixe vazio para pizza de sabor único.',
-            },
-            borda: {
-              type: 'string',
-              enum: ['catupiry', 'cheddar', 'chocolate'],
-              description:
-                'Borda recheada, só se o cliente pedir. "catupiry" e "cheddar" valem só para tipo "pizza_salgada"; ' +
-                '"chocolate" só para tipo "pizza_doce". Omita se o cliente não quiser borda ou se o item não for pizza.',
-            },
-            quantidade: { type: 'integer', minimum: 1 },
-            obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
-            pizzas_do_combo: {
-              type: 'array',
-              description:
-                'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
-                'com o sabor em sabor1 (sem sabor2: a Dupla não tem meio a meio). Na Dupla, só sabores Tradicionais.',
-              items: {
-                type: 'object',
-                properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },
-                required: ['sabor1'],
-              },
-            },
-            pizza_do_dia: {
-              type: 'boolean',
-              description:
-                'true só na Pizza do Dia de hoje (bloco "Pizza do Dia" no fim): tipo "pizza_salgada", o tamanho e o sabor do dia, inteira (sem sabor2). ' +
-                'O sistema confere o dia e cobra o preço de entrega ou de retirada; fora do dia, sai pelo preço normal.',
-            },
-            brinde_fidelidade: {
-              type: 'boolean',
-              description:
-                'true só na Pizza Grande Tradicional de presente da fidelidade (tipo "pizza_salgada", tamanho "Grande", sem borda). ' +
-                'Use só se o bloco "Fidelidade deste cliente" disser que ele tem direito. O sistema confere; sem direito, ela é cobrada.',
-            },
-          },
-          required: ['tipo', 'sabor1', 'quantidade'],
-        },
+        // Mesmos campos do item do criar_pedido (combo montado, bordas, Pizza do Dia, presente).
+        items: CRIAR_PEDIDO_TOOL.input_schema.properties.itens.items,
       },
       endereco: { type: 'string', description: 'Novo endereço (rua e número). Omita se o endereço não vai mudar.' },
       complemento: { type: 'string', description: 'Novo complemento. Omita se não vai mudar.' },

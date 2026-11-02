@@ -49,13 +49,21 @@
     if (itens.length) {
       for (const i of itens) {
         const qty = Math.max(1, parseInt(i.qty, 10) || 1);
-        const borda = i.borda && Number(i.borda.preco) > 0 ? i.borda : null;
-        const precoBorda = borda ? Number(borda.preco) : 0;
+        // Bordas: a do item e, nos combos, a de cada pizza e a da doce (cada uma em linha própria).
+        const bordas = [];
+        if (i.borda && Number(i.borda.preco) > 0) bordas.push({ nome: i.borda.nome, preco: Number(i.borda.preco), onde: '' });
+        const pizzasDoCombo = Array.isArray(i.combo_pizzas) ? i.combo_pizzas : [];
+        pizzasDoCombo.forEach((pz) => {
+          if (pz && pz.borda && Number(pz.borda.preco) > 0) bordas.push({ nome: pz.borda.nome, preco: Number(pz.borda.preco), onde: pizzasDoCombo.length > 1 ? ` na ${textoSabores(pz.sabores || [])}` : '' });
+        });
+        const bordaDoce = i.combo_doce && i.combo_doce.borda;
+        if (bordaDoce && Number(bordaDoce.preco) > 0) bordas.push({ nome: bordaDoce.nome, preco: Number(bordaDoce.preco), onde: ' na doce' });
+        const precoBorda = bordas.reduce((s, b) => s + b.preco, 0);
         const precoPizza = r2(Number(i.precoUnitario || 0) - precoBorda);
         // Item da oferta: mostra o preço cheio e o desconto em linha própria.
         const precoCheio = i.oferta_doce ? Math.max(precoPizza, Number((i.sabores && i.sabores[0] && i.sabores[0].preco) || 0)) : precoPizza;
         linhas.push({ tipo: 'item', texto: `${qty}x ${nomeItem(i, nomesDoces)}`, valor: r2(precoCheio * qty) });
-        if (borda) linhas.push({ tipo: 'adicional', texto: `+ Borda ${borda.nome}${qty > 1 ? ` (${qty}x)` : ''}`, valor: r2(precoBorda * qty) });
+        for (const b of bordas) linhas.push({ tipo: 'adicional', texto: `+ Borda ${b.nome}${b.onde}${qty > 1 ? ` (${qty}x)` : ''}`, valor: r2(b.preco * qty) });
         if (precoCheio > precoPizza) descontoOferta = r2(descontoOferta + (precoCheio - precoPizza) * qty);
       }
     } else {

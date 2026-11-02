@@ -92,21 +92,36 @@ export const CRIAR_PEDIDO_TOOL = {
               type: 'string',
               enum: ['catupiry', 'cheddar', 'chocolate'],
               description:
-                'Borda recheada, só se o cliente pedir. "catupiry" e "cheddar" valem só para tipo "pizza_salgada"; ' +
-                '"chocolate" só para tipo "pizza_doce". Omita se o cliente não quiser borda ou se o item não for pizza.',
+                'Borda recheada, só se o cliente pedir. "catupiry" e "cheddar" valem só para tipo "pizza_salgada" (inclusive a Pizza do Dia); ' +
+                '"chocolate" só para tipo "pizza_doce". Omita se o cliente não quiser borda ou se o item não for pizza. ' +
+                'Em combo, NÃO use este campo: a borda vai em cada pizza de "pizzas_do_combo" e na "doce_do_combo".',
             },
             quantidade: { type: 'integer', minimum: 1 },
             obs: { type: 'string', description: 'Observação específica deste item (ex: massa fina, bem assada).' },
             pizzas_do_combo: {
               type: 'array',
               description:
-                'Só para combo com pizzas à escolha do cliente (ex: Dupla Tradicional): uma entrada por pizza, na ordem, ' +
-                'com o sabor em sabor1 (sem sabor2: a Dupla não tem meio a meio). Na Dupla, só sabores Tradicionais.',
+                'Só para tipo "combo": uma entrada por pizza salgada do combo, na ordem da montagem (bloco "Montagem dos combos"). ' +
+                'sabor1 só nas pizzas à escolha do cliente (ex: Dupla Tradicional: 1 sabor Tradicional por pizza, sem sabor2); ' +
+                'nas pizzas de sabor fixo deixe sabor1 vazio. borda: "catupiry" ou "cheddar" só se o cliente quiser borda nessa pizza.',
               items: {
                 type: 'object',
-                properties: { sabor1: { type: 'string' }, sabor2: { type: 'string' } },
-                required: ['sabor1'],
+                properties: {
+                  sabor1: { type: 'string' },
+                  sabor2: { type: 'string' },
+                  borda: { type: 'string', enum: ['catupiry', 'cheddar'] },
+                },
               },
+            },
+            doce_do_combo: {
+              type: 'object',
+              description: 'Só em combo com pizza doce: o sabor escolhido pelo cliente (nome do cardápio de doces) e, se ele quiser, borda "chocolate".',
+              properties: { sabor: { type: 'string' }, borda: { type: 'string', enum: ['chocolate'] } },
+              required: ['sabor'],
+            },
+            bebida_do_combo: {
+              type: 'string',
+              description: 'Só em combo com bebida: a bebida escolhida pelo cliente, entre as opções do combo (nome do cardápio).',
             },
             pizza_do_dia: {
               type: 'boolean',
@@ -155,10 +170,12 @@ export function buscarPorNome(lista, campoNome, nomeBusca) {
 
 // Item no formato gravado em pedidos.itens_json (sabores das pizzas do combo e a
 // marca do presente da fidelidade vão juntos — o servidor confere o presente).
-export function itemParaJson({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs, combo_pizzas, brinde_fidelidade, pizza_do_dia }) {
+export function itemParaJson({ tipo, tamanho, sabores, borda, precoUnitario, qty, obs, combo_pizzas, combo_doce, combo_bebida, brinde_fidelidade, pizza_do_dia }) {
   return {
     tipo, tamanho, sabores, borda, precoUnitario, qty, obs,
     ...(combo_pizzas ? { combo_pizzas } : {}),
+    ...(combo_doce ? { combo_doce } : {}),
+    ...(combo_bebida ? { combo_bebida } : {}),
     ...(brinde_fidelidade ? { brinde_fidelidade: true } : {}),
     ...(pizza_do_dia ? { pizza_do_dia } : {}),
   };
@@ -172,10 +189,73 @@ export function pizzaDoDiaDeHoje(menuData, agora = new Date()) {
   return (menuData.pizzasDoDia || []).find((p) => p.dia_semana === dia && p.ativo !== false) || null;
 }
 
-// Combos em que o cliente escolhe os sabores das pizzas (nome do combo em minúsculas).
-const COMBOS_COM_PIZZAS_ESCOLHIDAS = {
-  'dupla tradicional': { pizzas: 2, tamanho: 'Grande', categoria: 'tradicional', rotulo: 'Tradicionais', meioAMeio: false },
-};
+const ROTULO_CATEGORIA = { tradicional: 'Tradicionais', especial: 'Especiais', premium: 'Premium' };
+
+/**
+ * Combo montado pela regra da coluna combos.montagem (a mesma do site e do admin): sabor
+ * das pizzas à escolha (1 sabor por pizza), borda de cada pizza, sabor e borda da doce e a
+ * bebida entre as opções do combo. Devolve o que falta perguntar ao cliente, se faltar algo.
+ */
+function montarCombo(combo, itemInput, menuData) {
+  const regra = combo.montagem;
+  const pizzasInput = Array.isArray(itemInput.pizzas_do_combo) ? itemInput.pizzas_do_combo : [];
+  const faltando = [];
+  const pizzas = [];
+  let precoBordas = 0;
+  for (const [k, pz] of (regra.pizzas || []).entries()) {
+    const tamanho = pz.tamanho || 'Grande';
+    const entrada = pizzasInput[k] || {};
+    const qual = (regra.pizzas || []).length > 1 ? ` da pizza ${k + 1}` : ' da pizza';
+    let sabores;
+    if (pz.categoria) {
+      const rotulo = ROTULO_CATEGORIA[pz.categoria] || pz.categoria;
+      if (entrada.sabor2) return { erro: `No combo "${combo.nome}" cada pizza é inteira, de 1 sabor (sem meio a meio). Pergunte ao cliente o sabor de cada pizza.` };
+      if (!entrada.sabor1) { faltando.push(`o sabor${qual} (${rotulo})`); continue; }
+      const s = saborDaCategoria(menuData, entrada.sabor1, pz.categoria, tamanho === 'Família' ? 'preco_familia' : 'preco_grande');
+      if (!s) return { erro: `"${entrada.sabor1}" não é um sabor ${rotulo} — o combo "${combo.nome}" só aceita ${rotulo}.` };
+      sabores = [{ id: s.id, nome: s.nome }];
+    } else {
+      sabores = (pz.sabores || []).map((n) => { const s = buscarPorNome(menuData.salgadas, 'nome', n); return s ? { id: s.id, nome: s.nome } : { nome: n }; });
+    }
+    let borda = null;
+    if (entrada.borda) {
+      const nomeBorda = OPCOES_BORDA.pizza_salgada[entrada.borda];
+      if (!nomeBorda) return { erro: `Borda "${entrada.borda}" não existe para pizza salgada (só catupiry ou cheddar).` };
+      borda = { id: entrada.borda, nome: nomeBorda, preco: precoBorda(menuData, 'pizza_salgada', tamanho) };
+      precoBordas += borda.preco;
+    }
+    pizzas.push({ tamanho, sabores, borda });
+  }
+  let doce = null;
+  if (regra.doce) {
+    const d = itemInput.doce_do_combo?.sabor ? buscarPorNome(menuData.doces, 'nome', itemInput.doce_do_combo.sabor) : null;
+    if (itemInput.doce_do_combo?.sabor && !d) return { erro: `Não encontrei a pizza doce "${itemInput.doce_do_combo.sabor}" no cardápio.` };
+    if (!d) faltando.push('o sabor da pizza doce');
+    else {
+      const borda = itemInput.doce_do_combo.borda === 'chocolate' ? { id: 'chocolate', nome: 'Chocolate', preco: precoBorda(menuData, 'pizza_doce') } : null;
+      if (borda) precoBordas += borda.preco;
+      doce = { id: d.id, nome: d.nome, borda };
+    }
+  }
+  let bebida = null;
+  const opcoesBebida = (regra.bebidas || []).map((n) => buscarPorNome(menuData.bebidas, 'nome', n)).filter(Boolean);
+  if (opcoesBebida.length) {
+    const nomes = opcoesBebida.map((b) => b.nome).join(', ');
+    if (!itemInput.bebida_do_combo) faltando.push(`a bebida (${nomes})`);
+    else {
+      // "coca zero" → Coca-Cola 1L Zero: todas as palavras ditas aparecem no nome (só vale se der 1 opção).
+      const palavras = normalizar(itemInput.bebida_do_combo).split(/[^a-z0-9]+/).filter(Boolean);
+      const porPalavras = opcoesBebida.filter((o) => palavras.every((p) => normalizar(o.nome).includes(p)));
+      const b = buscarPorNome(opcoesBebida, 'nome', itemInput.bebida_do_combo) || (porPalavras.length === 1 ? porPalavras[0] : null);
+      if (!b) return { erro: `No combo "${combo.nome}" a bebida pode ser: ${nomes}. Pergunte qual o cliente prefere.` };
+      bebida = { id: b.id, nome: b.nome };
+    }
+  }
+  if (faltando.length) return { erro: `Falta escolher no combo "${combo.nome}": ${faltando.join('; ')}. Pergunte ao cliente, uma coisa de cada vez.` };
+  const textoPizza = (p) => `${p.tamanho} ${p.sabores.length === 2 ? `½ ${p.sabores[0].nome} + ½ ${p.sabores[1].nome}` : p.sabores[0].nome}${p.borda ? ` com borda de ${p.borda.nome}` : ''}`;
+  const partes = [...pizzas.map(textoPizza), ...(doce ? [`Doce ${doce.nome}${doce.borda ? ' com borda de Chocolate' : ''}`] : []), ...(bebida ? [bebida.nome] : [])];
+  return { pizzas, doce, bebida, precoBordas, nome: `${combo.nome}: ${partes.join(' + ')}` };
+}
 
 // Sabor de pizza salgada de uma categoria (e tamanho) — usado na Dupla e no presente da fidelidade.
 function saborDaCategoria(menuData, nome, categoria, campoPreco) {
@@ -215,7 +295,12 @@ const OPCOES_BORDA = {
  * borda_preco_doce — mesmas chaves que o site usa). Cai pro padrão de
  * R$12 se ainda não foi configurado, igual ao fallback do site.
  */
-function precoBorda(menuData, tipoItem) {
+function precoBorda(menuData, tipoItem, tamanho) {
+  // Família tem preço próprio (borda_preco_familia); sem ele, vale o da Grande.
+  if (tipoItem !== 'pizza_doce' && tamanho === 'Família') {
+    const familia = parseFloat(menuData.configuracoes.borda_preco_familia);
+    if (Number.isFinite(familia)) return familia;
+  }
   const chave = tipoItem === 'pizza_doce' ? 'borda_preco_doce' : 'borda_preco_salgada';
   const valor = parseFloat(menuData.configuracoes[chave]);
   return Number.isFinite(valor) ? valor : 12;
@@ -254,6 +339,8 @@ export function processarItens(itensInput, menuData) {
     let tabela = null;
     let tipoItem = 'simples';
     let comboPizzas = null;
+    let comboDoce = null;
+    let comboBebida = null;
     let brinde = false;
     let pizzaDoDia = null;
 
@@ -331,29 +418,19 @@ export function processarItens(itensInput, menuData) {
       sabores = [{ nome: encontrado1.nome, preco: encontrado1.preco }];
       precoUnitario = encontrado1.preco;
       nomeExibicao = `${prefixo}${encontrado1.nome}`;
-      // Combo com pizzas à escolha (Dupla Tradicional): sabores estruturados em combo_pizzas.
-      const regraCombo = itemInput.tipo === 'combo' ? COMBOS_COM_PIZZAS_ESCOLHIDAS[String(encontrado1.nome).toLowerCase()] : null;
-      if (regraCombo) {
-        const pizzasInput = Array.isArray(itemInput.pizzas_do_combo) ? itemInput.pizzas_do_combo : [];
-        if (pizzasInput.length !== regraCombo.pizzas) {
-          erros.push(`O combo "${encontrado1.nome}" precisa dos sabores das ${regraCombo.pizzas} pizzas em "pizzas_do_combo" (${regraCombo.rotulo}${regraCombo.meioAMeio === false ? '; cada uma inteira, de 1 sabor' : '; cada uma pode ser meio a meio'}). Pergunte ao cliente.`);
+      // Combo com montagem (todos os ativos): pizzas, bordas, doce e bebida estruturados.
+      if (itemInput.tipo === 'combo' && encontrado1.montagem) {
+        if (itemInput.borda) {
+          erros.push(`No combo, a borda vai em cada pizza (pizzas_do_combo[].borda) e na doce (doce_do_combo.borda), não no campo "borda" do item.`);
           continue;
         }
-        const campoPreco = regraCombo.tamanho === 'Grande' ? 'preco_grande' : 'preco_familia';
-        const montadas = [];
-        for (const pz of pizzasInput) {
-          if (pz.sabor2 && regraCombo.meioAMeio === false) { erros.push(`O combo "${encontrado1.nome}" não tem meio a meio: cada pizza é inteira, de 1 sabor. Pergunte ao cliente o sabor de cada pizza.`); break; }
-          const nomes = [pz.sabor1, pz.sabor2].filter(Boolean);
-          const achados = nomes.map((n) => saborDaCategoria(menuData, n, regraCombo.categoria, campoPreco));
-          const invalido = nomes.find((n, k) => !achados[k]);
-          if (invalido) { erros.push(`"${invalido}" não é um sabor ${regraCombo.rotulo} — o combo "${encontrado1.nome}" só aceita ${regraCombo.rotulo}.`); break; }
-          if (achados.length === 2 && achados[0].id === achados[1].id) { erros.push(`Meio a meio precisa de 2 sabores diferentes ("${achados[0].nome}").`); break; }
-          montadas.push({ tamanho: regraCombo.tamanho, sabores: achados.map((a) => ({ id: a.id, nome: a.nome })) });
-        }
-        if (montadas.length !== regraCombo.pizzas) continue;
-        comboPizzas = montadas;
-        const textoPizza = (p) => (p.sabores.length === 2 ? `½ ${p.sabores[0].nome} + ½ ${p.sabores[1].nome}` : p.sabores[0].nome);
-        nomeExibicao = `${encontrado1.nome} — ${montadas.map(textoPizza).join(' / ')}`;
+        const montado = montarCombo(encontrado1, itemInput, menuData);
+        if (montado.erro) { erros.push(montado.erro); continue; }
+        comboPizzas = montado.pizzas;
+        comboDoce = montado.doce;
+        comboBebida = montado.bebida;
+        precoUnitario = +(precoUnitario + montado.precoBordas).toFixed(2);
+        nomeExibicao = montado.nome;
       }
     }
 
@@ -369,7 +446,7 @@ export function processarItens(itensInput, menuData) {
         erros.push(`Borda "${itemInput.borda}" não está disponível para ${tipoLabel}.`);
         continue;
       }
-      const precoDaBorda = precoBorda(menuData, itemInput.tipo);
+      const precoDaBorda = precoBorda(menuData, itemInput.tipo, tamanho);
       borda = { id: itemInput.borda, nome: nomeBorda, preco: precoDaBorda };
       precoUnitario = +(precoUnitario + precoDaBorda).toFixed(2);
       nomeExibicao += ` — Borda ${nomeBorda}`;
@@ -387,6 +464,8 @@ export function processarItens(itensInput, menuData) {
       obs: itemInput.obs || null,
       nomeExibicao,
       ...(comboPizzas ? { combo_pizzas: comboPizzas } : {}),
+      ...(comboDoce ? { combo_doce: comboDoce } : {}),
+      ...(comboBebida ? { combo_bebida: comboBebida } : {}),
       ...(brinde ? { brinde_fidelidade: true } : {}),
       ...(pizzaDoDia ? { pizza_do_dia: pizzaDoDia } : {}),
     });
@@ -702,11 +781,16 @@ function linhasDosItens(itensNormalizados) {
     const textoSabores = (s) => (s?.length === 2 ? `½ ${s[0].nome} + ½ ${s[1].nome}` : s?.[0]?.nome);
     const nome = textoSabores(i.sabores);
     const tam = i.tamanho ? `${i.tamanho} ` : '';
-    // Dupla: sabores de cada pizza; presente da fidelidade: marcado.
-    const pizzasCombo = Array.isArray(i.combo_pizzas) && i.combo_pizzas.length
-      ? ` (${i.combo_pizzas.map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores)}`).join(' / ')})` : '';
-    if (i.pizza_do_dia && typeof i.pizza_do_dia === 'string') return `${i.qty}x Pizza do Dia — ${i.pizza_do_dia} (${tam}${nome}) — ${brl(i.precoUnitario * i.qty)}`;
-    return `${i.qty}x ${tam}${nome}${pizzasCombo}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
+    const comBorda = (b) => (b && b.nome ? ` com borda de ${b.nome}` : '');
+    // Combo: cada pizza (com a borda), a doce e a bebida; presente da fidelidade: marcado.
+    const partesCombo = [
+      ...(Array.isArray(i.combo_pizzas) ? i.combo_pizzas : []).map((p) => `${p.tamanho ? p.tamanho + ' ' : ''}${textoSabores(p.sabores)}${comBorda(p.borda)}`),
+      ...(i.combo_doce && i.combo_doce.nome ? [`Doce ${i.combo_doce.nome}${comBorda(i.combo_doce.borda)}`] : []),
+      ...(i.combo_bebida && i.combo_bebida.nome ? [i.combo_bebida.nome] : []),
+    ];
+    const pizzasCombo = partesCombo.length ? ` (${partesCombo.join(' + ')})` : '';
+    if (i.pizza_do_dia && typeof i.pizza_do_dia === 'string') return `${i.qty}x Pizza do Dia — ${i.pizza_do_dia} (${tam}${nome})${comBorda(i.borda)} — ${brl(i.precoUnitario * i.qty)}`;
+    return `${i.qty}x ${tam}${nome}${pizzasCombo}${comBorda(i.borda)}${i.brinde_fidelidade ? ' (presente fidelidade)' : ''} — ${brl(i.precoUnitario * i.qty)}${i.oferta_doce ? ' (oferta pizza doce)' : ''}`;
   });
 }
 

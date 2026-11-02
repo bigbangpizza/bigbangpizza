@@ -12,6 +12,8 @@
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
   const nomeIngrediente = (n) => NOME_CURTO[norm(n)] || n;
   const ehBase = (nome) => ORDEM_BASE.includes(nome);
+  // Recheio de cada borda — a gramatura vem da receita "Borda <nome>" cadastrada na aba CMV.
+  const RECHEIO_BORDA = { catupiry: 'Requeijão', cheddar: 'Cheddar', chocolate: 'Chocolate' };
   const gramas = (g) => (g >= 1000 ? (Math.round(g / 100) / 10) + 'kg' : (Math.round(g * 10) / 10) + 'g').replace('.', ',');
 
   /**
@@ -51,7 +53,7 @@
     const pizza = { tipo: 'pizza', titulo: `${ROTULO_TAMANHO[tamanho] || 'Pizza ' + (tamanho || '')} — ${nomes.length === 2 ? `½ ${nomes[0]} + ½ ${nomes[1]}` : nomes[0] || '?'}`, ...extras, partes: [] };
     if (nomes.length < 2) {
       pizza.partes.push(recs[0] ? { linhas: ordenar(recs[0]) } : { semReceita: true, sabor: nomes[0] || '?' });
-      return pizza;
+      return comBorda(idx, tamanho, pizza);
     }
     const comBase = recs.find(Boolean);
     if (comBase) pizza.partes.push({ rotulo: 'Base', linhas: ordenar(comBase.filter((l) => ehBase(l.nome))) });
@@ -60,6 +62,16 @@
         ? { rotulo: `½ ${n}`, linhas: recs[i].filter((l) => !ehBase(l.nome)).map((l) => ({ nome: l.nome, g: l.g / 2 })) }
         : { rotulo: `½ ${n}`, semReceita: true, sabor: n });
     });
+    return comBorda(idx, tamanho, pizza);
+  }
+
+  // Borda recheada: entra como parte da pizza ("Borda: Requeijão 80g"). Sem a receita
+  // da borda cadastrada, mostra o recheio com aviso — nunca gramas inventadas.
+  function comBorda(idx, tamanho, pizza) {
+    if (!pizza.borda) return pizza;
+    const rec = idx.get(`${norm(tamanho)}|${norm('Borda ' + pizza.borda)}`);
+    const recheio = RECHEIO_BORDA[norm(pizza.borda)] || pizza.borda;
+    pizza.partes.push(rec ? { rotulo: 'Borda', linhas: rec } : { rotulo: `Borda (${recheio})`, semReceita: true, sabor: `Borda ${pizza.borda}` });
     return pizza;
   }
 
@@ -103,14 +115,18 @@
         const filhos = [];
         const pizzas = Array.isArray(it.combo_pizzas) && it.combo_pizzas.length
           ? it.combo_pizzas : pizzasDaDescricao(combo && combo.descricao, dados.salgadas);
-        pizzas.forEach((p) => filhos.push(fichaPizza(idx, p.tamanho || 'Grande', p.sabores, borda ? { borda } : {})));
+        pizzas.forEach((p) => {
+          const bordaPizza = (p.borda && (p.borda.nome || p.borda)) || borda;
+          filhos.push(fichaPizza(idx, p.tamanho || 'Grande', p.sabores, bordaPizza ? { borda: bordaPizza } : {}));
+        });
         if (!pizzas.length) filhos.push({ tipo: 'aviso', titulo: 'Pizzas do combo não identificadas — confira a descrição do combo no admin' });
         const descr = (combo && combo.descricao) || '';
-        if (it.combo_doce && it.combo_doce.nome) filhos.push(doce(it.combo_doce.nome));
+        const bordaDoce = it.combo_doce && it.combo_doce.borda ? (it.combo_doce.borda.nome || it.combo_doce.borda) : null;
+        if (it.combo_doce && it.combo_doce.nome) filhos.push(doce(it.combo_doce.nome, bordaDoce ? { borda: bordaDoce } : {}));
         else if (/doce/i.test(descr)) filhos.push({ tipo: 'aviso', titulo: 'Pizza Doce (25cm) — sabor não informado no pedido' });
         if (it.combo_bebida && it.combo_bebida.nome) filhos.push({ tipo: 'bebida', titulo: it.combo_bebida.nome });
         else if (/coca|refri|bebida|guaran/i.test(descr)) filhos.push({ tipo: 'bebida', titulo: (descr.match(/(coca[^+()]*|refri[^+()]*|guaran[^+()]*)/i) || [])[1]?.trim() || 'Bebida' });
-        blocos.push({ tipo: 'combo', titulo: nome || 'Combo', ...comuns, filhos });
+        blocos.push({ tipo: 'combo', titulo: nome || 'Combo', ...comuns, borda: null, filhos });
       } else if (it.tamanho === 'Grande' || it.tamanho === 'Família') {
         const extras = it.pizza_do_dia ? { etiqueta: `Pizza do Dia — ${it.pizza_do_dia}` } : it.brinde_fidelidade ? { etiqueta: '🎁 Presente da fidelidade' } : {};
         blocos.push(fichaPizza(idx, it.tamanho, sabores, { ...comuns, ...extras }));
