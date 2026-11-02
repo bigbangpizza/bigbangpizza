@@ -79,6 +79,26 @@ export async function inserirComoAdmin(table, row) {
   }
 }
 
+/**
+ * Chama uma função (RPC) do banco com a service_role key. Erro de regra da
+ * função (ex: "O saldo não pode ficar negativo...") vem em `err.mensagemDoBanco`,
+ * pronto pra mostrar à equipe.
+ */
+export async function rpcComoAdmin(funcao, args) {
+  const r = await fetch(`${config.supabase.url}/rest/v1/rpc/${funcao}`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(args),
+  });
+  const corpo = await r.json().catch(() => null);
+  if (!r.ok) {
+    const err = new Error(`Falha na rpc ${funcao} (service_role) (${r.status}): ${mascararSegredos(JSON.stringify(corpo))}`);
+    if (corpo?.code === 'P0001') err.mensagemDoBanco = corpo.message;
+    throw err;
+  }
+  return corpo;
+}
+
 /** UPDATE genérico (por id) com a service_role key — só para uso interno do cron. */
 export async function atualizarComoAdmin(table, id, dados) {
   const r = await fetch(`${config.supabase.url}/rest/v1/${table}?id=eq.${id}`, {

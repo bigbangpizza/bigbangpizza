@@ -4,7 +4,7 @@ import { calcularStatusLoja } from './systemPrompt.js';
 import { obterConfigBotAdmin } from './botConfig.js';
 import { parseComoUTC, minutosEntre, chaveTelefone, normalizarWhatsapp } from './dataUtils.js';
 import { formatarTelefoneExibicao } from './pedidoStatusUtil.js';
-import { prepararAcao } from './equipeAcoes.js';
+import { prepararAcao, prepararAjusteSelos } from './equipeAcoes.js';
 import { montarFichaPedido, fichaEmTexto } from './fichaTecnica.js';
 
 // Ferramentas do modo equipe (ver modoEquipe.js). Todas só leem o banco na
@@ -386,30 +386,42 @@ export const CONSULTAR_CLIENTE_TOOL = {
   },
 };
 
-export async function executarConsultarCliente(input = {}) {
+/**
+ * Acha o cliente pelo telefone ou pelo nome (nos pedidos). Devolve
+ * { telefone, doCliente } ou { resposta } (nome ambíguo, não achado) pra
+ * repassar ao modelo.
+ */
+async function resolverCliente(input) {
   const pedidos = await todosOsPedidos();
   let telefone = input.telefone;
   if (!telefone && input.nome) {
     const { achados, sugestoes } = filtrarPorNome(pedidos.filter((p) => p.whatsapp), input.nome);
     const telefones = [...new Set(achados.map((p) => chaveTelefone(p.whatsapp)).filter(Boolean))];
     if (telefones.length !== 1) {
-      return {
+      return { resposta: {
         buscou: input,
         observacao: telefones.length ? 'Mais de um cliente com esse nome — peça o telefone ou escolha um.' : 'Nenhum cliente com esse nome.',
         clientes: (telefones.length ? achados : sugestoes).slice(0, 6).map((p) => ({ nome: p.nome, telefone: formatarTelefoneExibicao(normalizarWhatsapp(p.whatsapp)), ultimo_pedido: `#${p.id} ${dataHoraBahia(p.created_at)}` })),
-      };
+      } };
     }
     telefone = achados[0].whatsapp;
   }
-  if (!telefone) return { erro: 'Diga o telefone ou o nome do cliente.' };
+  if (!telefone) return { resposta: { erro: 'Diga o telefone ou o nome do cliente.' } };
+  return { telefone, doCliente: pedidosDoTelefone(pedidos, telefone) };
+}
 
-  const doCliente = pedidosDoTelefone(pedidos, telefone);
+export async function executarConsultarCliente(input = {}) {
+  const { telefone, doCliente, resposta } = await resolverCliente(input);
+  if (resposta) return resposta;
   if (!doCliente.length) return { buscou: input, observacao: 'Nenhum pedido com esse telefone.' };
 
   const cupons = {};
   for (const p of doCliente) if (p.cupom) cupons[p.cupom] = (cupons[p.cupom] || 0) + 1;
   const ultimo = doCliente[0];
-  const fidelidade = await consultarFidelidade(normalizarWhatsapp(telefone));
+  const [fidelidade, ajustes] = await Promise.all([
+    consultarFidelidade(normalizarWhatsapp(telefone)),
+    selectComoAdmin('fidelidade_ajustes', `select=quantidade,selos_antes,selos_depois,motivo,autor,criado_em&telefone=eq.${chaveTelefone(telefone)}&order=criado_em.desc&limit=5`).catch(() => []),
+  ]);
   return {
     nomes_usados: [...new Set(doCliente.map((p) => p.nome).filter(Boolean))],
     telefone: formatarTelefoneExibicao(normalizarWhatsapp(telefone)),
@@ -420,9 +432,39 @@ export async function executarConsultarCliente(input = {}) {
       primeiro: dataHoraBahia(doCliente[doCliente.length - 1].created_at),
     },
     ultimo_pedido: { pedido_id: ultimo.id, quando: dataHoraBahia(ultimo.created_at), itens: ultimo.itens, total: ultimo.total, status: STATUS_LABEL[ultimo.status] || ultimo.status },
-    fidelidade: fidelidade || '(não consegui consultar agora)',
+    fidelidade: fidelidade ? { selos: fidelidade.selos, meta: fidelidade.meta, tem_presente: fidelidade.tem_brinde, presente_em_pedido_aberto: fidelidade.brinde_pendente, valido: fidelidade.valido } : '(não consegui consultar agora)',
+    ajustes_manuais_de_selos: ajustes.map((a) => ({ quantidade: a.quantidade, de: a.selos_antes, para: a.selos_depois, motivo: a.motivo, por: a.autor, quando: dataHoraBahia(a.criado_em) })),
     cupons_usados: cupons,
   };
+}
+
+// ── preparar_ajuste_selos ────────────────────────────────────────────────
+
+export const PREPARAR_AJUSTE_SELOS_TOOL = {
+  name: 'preparar_ajuste_selos',
+  description:
+    'Prepara um ajuste manual nos selos de fidelidade de um cliente — NÃO grava. Operações: "somar" (valor +1, -1...), ' +
+    '"definir" (valor = quantos selos o cliente deve ficar, 0 a 5) e "presente" (libera a Grande Tradicional no próximo pedido = 5 de 5). ' +
+    'O motivo é obrigatório: se a pessoa não disse, pergunte antes de chamar. O sistema mostra o resumo e pergunta "confirma? (sim/não)".',
+  input_schema: {
+    type: 'object',
+    properties: {
+      telefone: { type: 'string' },
+      nome: { type: 'string' },
+      operacao: { type: 'string', enum: ['somar', 'definir', 'presente'] },
+      valor: { type: 'integer', description: 'somar: quantidade (+/-); definir: total de selos (0 a 5); presente: não precisa.' },
+      motivo: { type: 'string', description: 'Por que o ajuste (ex: "pedido feito pelo iFood", "compensação por atraso").' },
+    },
+    required: ['operacao', 'motivo'],
+  },
+};
+
+export async function executarPrepararAjusteSelos(input = {}, { numero, membro }) {
+  const { telefone, doCliente, resposta } = await resolverCliente(input);
+  if (resposta) return resposta;
+  // Sem pedido no sistema (ex: cliente só do iFood) também pode: o ajuste é pelo telefone.
+  const nome = doCliente[0]?.nome || input.nome || formatarTelefoneExibicao(normalizarWhatsapp(telefone));
+  return prepararAjusteSelos({ numero, membro, telefone: normalizarWhatsapp(telefone), nome, operacao: input.operacao, valor: input.valor, motivo: input.motivo });
 }
 
 // ── preparar_acao ────────────────────────────────────────────────────────
@@ -451,6 +493,7 @@ export function criarExecutoresEquipe({ numero, membro, agora, lerHistoricoClien
     situacao_loja: (input) => executarSituacaoLoja(input, { agora: agora?.() }),
     consultar_cliente: (input) => executarConsultarCliente(input),
     preparar_acao: (input) => prepararAcao({ numero, membro, ...input }),
+    preparar_ajuste_selos: (input) => executarPrepararAjusteSelos(input, { numero, membro }),
     ficha_pedido: (input) => executarFichaPedido(input, { numero }),
   };
 }
@@ -523,4 +566,4 @@ export async function executarFichaPedido(input = {}, { numero }) {
   };
 }
 
-export const FERRAMENTAS_EQUIPE = [BUSCAR_PEDIDOS_EQUIPE_TOOL, RESUMO_CONVERSA_TOOL, SITUACAO_LOJA_TOOL, CONSULTAR_CLIENTE_TOOL, PREPARAR_ACAO_TOOL, FICHA_PEDIDO_TOOL];
+export const FERRAMENTAS_EQUIPE = [BUSCAR_PEDIDOS_EQUIPE_TOOL, RESUMO_CONVERSA_TOOL, SITUACAO_LOJA_TOOL, CONSULTAR_CLIENTE_TOOL, PREPARAR_ACAO_TOOL, PREPARAR_AJUSTE_SELOS_TOOL, FICHA_PEDIDO_TOOL];

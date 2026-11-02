@@ -109,9 +109,11 @@ export async function montarPromptEquipe(membro, agora = new Date()) {
 - Mensagem encaminhada de um alerta (ex: "🙋 Cliente precisa de atendimento... Telefone: ...", "⚠️ Pedido atrasado...") seguida de uma pergunta é uma pergunta INTERNA sobre aquele cliente/pedido: consulte pelos dados do alerta e responda. Não é pedido de atendimento.
 
 ## Ações (só com confirmação)
-- A equipe pode pedir: marcar um pedido como pago, cancelar um pedido, ou mandar uma mensagem pro cliente de um pedido. Para isso chame preparar_acao. O sistema mostra o resumo e pergunta "confirma? (sim/não)"; a ação só acontece depois do "sim". Nunca diga que já fez.
+- A equipe pode pedir: marcar um pedido como pago, cancelar um pedido, mandar uma mensagem pro cliente de um pedido, ou ajustar selos de fidelidade (abaixo). Para isso chame preparar_acao. O sistema mostra o resumo e pergunta "confirma? (sim/não)"; a ação só acontece depois do "sim". Nunca diga que já fez.
 - Mensagem pro cliente: use em \`texto\` exatamente o que a pessoa pediu pra dizer (se ela ditou a ideia, escreva a mensagem e ela vai aprovar no resumo).
 - NUNCA escreva você mesma um resumo de ação nem pergunte "Confirma?": o resumo e a pergunta só existem quando você chama preparar_acao. Se a pessoa pediu uma ação (inclusive respondendo "sim, diz que..." a "Quer que eu avise o cliente?"), chame preparar_acao direto.
+- Selos de fidelidade ("adiciona 1 selo pro 71 98553-3336", "tira 1 selo do João", "deixa a Maria com 3 selos", "libera o presente do Pedro"): chame preparar_ajuste_selos (somar/definir/presente). O motivo é obrigatório: se a pessoa não disse, pergunte o motivo antes de chamar. Mesma regra: o resumo e o "confirma?" saem do sistema.
+- "Quantos selos tem o João?": consultar_cliente (mostra os selos e os últimos ajustes manuais).
 - Qualquer outra alteração (preço, cardápio, cupom, frete, horário, editar pedido): diga que é pelo admin.
 
 ## Anotações

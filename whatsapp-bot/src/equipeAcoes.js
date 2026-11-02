@@ -1,4 +1,5 @@
-import { selectComoAdmin, atualizarComoAdmin, atualizarComoAdminSeStatus } from './supabaseAdmin.js';
+import { selectComoAdmin, atualizarComoAdmin, atualizarComoAdminSeStatus, rpcComoAdmin } from './supabaseAdmin.js';
+import { consultarFidelidade } from './supabaseData.js';
 import { enviarTexto } from './evolutionApi.js';
 import { normalizarWhatsapp } from './dataUtils.js';
 import { formatarTelefoneExibicao } from './pedidoStatusUtil.js';
@@ -54,6 +55,92 @@ export async function prepararAcao({ numero, membro, tipo, pedido_id, texto }) {
   return { preparado: true, resumo };
 }
 
+// ── Ajuste de selos de fidelidade ───────────────────────────────────────
+// Quem grava e confere a regra (nunca negativo, máximo 5, motivo obrigatório)
+// é a função fidelidade_ajustar do banco; aqui só antecipamos a conta pro resumo.
+
+const META_SELOS = 5;
+
+/** Mensagem pro cliente depois do ajuste (só vai se a equipe confirmar). */
+export function mensagemAjusteSelos(nomeCompleto, quantidade, selos, operacao) {
+  const nome = primeiroNome(nomeCompleto);
+  const oi = `Oi${nome ? `, ${nome}` : ''}!`;
+  if (operacao === 'presente') return `${oi} Liberamos o seu presente da fidelidade: seu próximo pedido ganha uma Grande Tradicional! 🎁🍕`;
+  if (quantidade < 0) return `${oi} Corrigimos o seu cartão fidelidade: agora você tem ${selos} de ${META_SELOS} selos 🍕`;
+  const presente = selos >= META_SELOS ? ' Seu próximo pedido ganha uma Grande Tradicional de presente! 🎁' : '';
+  return `${oi} Adicionamos ${quantidade} selo${quantidade > 1 ? 's' : ''} no seu cartão fidelidade. Agora você tem ${Math.min(selos, META_SELOS)} de ${META_SELOS} 🍕${presente}`;
+}
+
+export async function prepararAjusteSelos({ numero, membro, telefone, nome, operacao, valor, motivo }) {
+  const motivoLimpo = String(motivo || '').trim();
+  if (motivoLimpo.length < 3) return { erro: 'Falta o motivo do ajuste: pergunte à pessoa antes de preparar.' };
+  if (!telefone) return { erro: 'Telefone do cliente inválido.' };
+  const st = await consultarFidelidade(telefone);
+  if (!st) return { erro: 'Não consegui consultar os selos agora. Tenta de novo em instantes.' };
+  if (!st.valido) return { erro: 'Esse telefone está fora do programa de fidelidade.' };
+  const antes = st.saldo ?? st.selos;
+  const n = Number(valor);
+  let depois;
+  if (operacao === 'somar') {
+    if (!Number.isInteger(n) || n === 0) return { erro: 'Diga quantos selos somar ou tirar (ex: +1, -1).' };
+    depois = antes + n;
+  } else if (operacao === 'definir') {
+    if (!Number.isInteger(n)) return { erro: 'Diga com quantos selos o cliente deve ficar (0 a 5).' };
+    depois = n;
+  } else if (operacao === 'presente') {
+    if (antes >= META_SELOS) return { erro: `${nome} já está com o presente liberado (5 de 5).` };
+    depois = META_SELOS;
+  } else {
+    return { erro: `Operação desconhecida: ${operacao}` };
+  }
+  if (depois < 0) return { erro: `Não dá: ${nome} tem ${antes} selo(s), e o saldo não pode ficar negativo.` };
+  if (depois > META_SELOS) return { erro: `Não dá: o máximo é ${META_SELOS} selos (5 = presente liberado). ${nome} já tem ${Math.min(antes, META_SELOS)}.` };
+  if (depois === antes) return { erro: `${nome} já tem ${antes} selo(s); nada mudaria.` };
+
+  const presente = depois >= META_SELOS ? ' (🎁 presente liberado: Grande Tradicional no próximo pedido)' : '';
+  const resumo = `Vou ajustar os selos de fidelidade de ${nome} (${formatarTelefoneExibicao(telefone)}):\n${Math.min(antes, META_SELOS)} → ${depois} de ${META_SELOS}${presente}\nMotivo: ${motivoLimpo}`;
+  pendentes.set(numero, { tipo: 'ajuste_selos', cliente: { nome, telefone }, operacao, valor: operacao === 'presente' ? 0 : n, motivo: motivoLimpo, membro, criadaEm: Date.now() });
+  resumoDoTurno.set(numero, resumo);
+  return { preparado: true, resumo };
+}
+
+async function executarAjusteSelos(numero, acao) {
+  const { cliente, operacao, valor, motivo, membro } = acao;
+  let resultado;
+  let resposta;
+  let gravado = null;
+  try {
+    gravado = await rpcComoAdmin('fidelidade_ajustar', { p_whatsapp: cliente.telefone, p_operacao: operacao, p_valor: valor, p_motivo: motivo, p_autor: membro.nome });
+    resultado = 'ok';
+    resposta = `Feito ✅ ${cliente.nome} agora tem ${gravado.selos} de ${META_SELOS} selos${gravado.tem_brinde ? ' (🎁 presente liberado)' : ''}.\n\nQuer que eu avise o cliente?`;
+    pendentes.set(numero, {
+      tipo: 'oferta_aviso',
+      pedido: { id: null, nome: cliente.nome },
+      destino: cliente.telefone,
+      texto: mensagemAjusteSelos(cliente.nome, gravado.quantidade, gravado.saldo, operacao),
+      membro,
+      criadaEm: Date.now(),
+    });
+  } catch (err) {
+    if (err.mensagemDoBanco) {
+      resultado = `recusado: ${err.mensagemDoBanco}`;
+      resposta = `Não ajustei: ${err.mensagemDoBanco}`;
+    } else {
+      console.error(`[equipeAcoes] falha ao ajustar selos de ${cliente.telefone}:`, err);
+      resultado = `erro: ${String(err.message).slice(0, 200)}`;
+      resposta = 'Não consegui ajustar agora (erro técnico). Nada foi alterado.';
+    }
+  }
+  await registrarAcaoEquipe({
+    membro,
+    tipo: 'ajuste_selos',
+    pedidoId: null,
+    detalhes: { telefone: cliente.telefone, nome: cliente.nome, operacao, valor, motivo, selos_antes: gravado?.selos_antes ?? null, selos_depois: gravado?.selos ?? null },
+    resultado,
+  });
+  return resposta;
+}
+
 export function acaoPendente(numero) {
   const a = pendentes.get(numero);
   if (!a) return null;
@@ -86,10 +173,11 @@ export async function executarAcaoPendente(numero, { aoEnviarMensagem } = {}) {
   pendentes.delete(numero);
   if (!acao) return 'Não tenho nenhuma ação esperando confirmação (ela vale 10 min).';
   const { tipo, pedido, membro } = acao;
-  // "Sim" pra "Quer que eu avise o cliente?" (depois de um cancelamento): só prepara a
-  // mensagem padrão — ela ainda precisa do próprio "confirma? (sim/não)".
+  if (tipo === 'ajuste_selos') return executarAjusteSelos(numero, acao);
+  // "Sim" pra "Quer que eu avise o cliente?" (depois de cancelar ou de ajustar selos): só
+  // prepara a mensagem padrão — ela ainda precisa do próprio "confirma? (sim/não)".
   if (tipo === 'oferta_aviso') {
-    const texto = `Olá${primeiroNome(pedido.nome) ? `, ${primeiroNome(pedido.nome)}` : ''}! Aqui é da Big Bang Pizza. Seu pedido #${pedido.id} foi cancelado. Qualquer dúvida, é só responder por aqui.`;
+    const texto = acao.texto;
     pendentes.set(numero, { tipo: 'mensagem_cliente', pedido, texto, destino: acao.destino, membro, criadaEm: Date.now() });
     return `Vou mandar pelo número da loja para ${pedido.nome} (${formatarTelefoneExibicao(acao.destino)}), exatamente:
 
@@ -116,7 +204,8 @@ Confirma? (sim/não)
         resposta = `Feito ✅ Pedido #${pedido.id} cancelado.`;
         const destino = normalizarWhatsapp(pedido.whatsapp);
         if (destino) {
-          pendentes.set(numero, { tipo: 'oferta_aviso', pedido, destino, membro, criadaEm: Date.now() });
+          const texto = `Olá${primeiroNome(pedido.nome) ? `, ${primeiroNome(pedido.nome)}` : ''}! Aqui é da Big Bang Pizza. Seu pedido #${pedido.id} foi cancelado. Qualquer dúvida, é só responder por aqui.`;
+          pendentes.set(numero, { tipo: 'oferta_aviso', pedido, destino, texto, membro, criadaEm: Date.now() });
           resposta += '\n\nQuer que eu avise o cliente?';
         } else {
           resposta += '\n(O pedido não tem telefone gravado, então não dá pra avisar o cliente por aqui.)';
@@ -126,7 +215,7 @@ Confirma? (sim/não)
       await enviarTexto(acao.destino, acao.texto);
       await aoEnviarMensagem?.(acao.destino, acao.texto);
       resultado = 'ok';
-      resposta = `Enviado ✅ para ${pedido.nome} (pedido #${pedido.id}).`;
+      resposta = `Enviado ✅ para ${pedido.nome}${pedido.id ? ` (pedido #${pedido.id})` : ''}.`;
     }
   } catch (err) {
     console.error(`[equipeAcoes] falha ao executar ${tipo} no pedido #${pedido.id}:`, err);

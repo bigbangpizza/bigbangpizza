@@ -97,6 +97,13 @@ tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);bord
 .mo.open{display:flex;}
 .md{background:var(--bg-card);border:1px solid var(--border-input);border-radius:11px;width:min(480px,100%);max-height:88vh;overflow-y:auto;padding:22px;color:var(--text-primary);}
 .md h3{font-family:'Bebas Neue',sans-serif;font-size:22px;margin-bottom:18px;}
+.selos-saldo{font-size:20px;font-weight:800;margin-bottom:14px;}
+.selos-botoes{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px;}
+.selos-definir{display:flex;gap:6px;}
+.selos-definir input{width:70px;}
+.selos-hist-titulo{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);margin:14px 0 6px;}
+.selos-hist{font-size:13px;padding:7px 0;border-bottom:1px solid var(--border-color);}
+.selos-hist small{color:var(--text-secondary);}
 .fg{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
 .fg label{font-size:11px;font-weight:600;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase;}
 .fg input,.fg textarea,.fg select{width:100%;padding:9px 11px;background:var(--bg-input);border:1.5px solid var(--border-input);border-radius:7px;color:var(--text-primary);font-size:13px;font-family:'Inter',sans-serif;outline:none;}
@@ -923,6 +930,26 @@ input:checked+.sl::before{transform:translateX(20px);}
       <button class="bc" id="cc-cancel">Cancelar</button>
       <button class="bs" id="cc-ok">CONFIRMAR</button>
     </div>
+  </div>
+</div>
+
+<!-- AJUSTE DE SELOS DE FIDELIDADE (aba Clientes) -->
+<div class="mo" id="modal-selos">
+  <div class="md" style="width:min(520px,100%);">
+    <h3 id="selos-titulo">🍕 Selos</h3>
+    <div id="selos-saldo" class="selos-saldo">Carregando...</div>
+    <div class="fg"><label>Motivo (obrigatório)</label>
+      <input type="text" id="selos-motivo" maxlength="200" placeholder='Ex: "pedido feito pelo iFood", "compensação por atraso"'></div>
+    <div class="selos-botoes">
+      <button class="bp" onclick="ajustarSelos('somar', 1)">+1 selo</button>
+      <button class="bp" onclick="ajustarSelos('somar', -1)">−1 selo</button>
+      <span class="selos-definir"><input type="number" id="selos-definir" min="0" max="5" placeholder="0–5"><button class="bp" onclick="ajustarSelos('definir')">Definir selos</button></span>
+      <button class="bp" style="background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.4);" onclick="ajustarSelos('presente')">🎁 Dar presente agora</button>
+    </div>
+    <div id="selos-aviso"></div>
+    <div class="selos-hist-titulo">Histórico de ajustes</div>
+    <div id="selos-historico"></div>
+    <div class="ma"><button class="bc" onclick="fecharSelosCliente()">Fechar</button></div>
   </div>
 </div>
 
@@ -6143,10 +6170,11 @@ function enviarReativacao(btnEl){
 
 async function loadClientes() {
   carregarReativacaoCupomInfo();
-  const [todosPedidos, reativacoes, equipe] = await Promise.all([
+  const [todosPedidos, reativacoes, equipe, ajustesFid] = await Promise.all([
     api('pedidos','','created_at.desc'),
     api('reativacoes_enviadas','','enviado_em.desc'),
     api('equipe','ativo=is.true'),
+    api('fidelidade_ajustes','select=telefone,quantidade,criado_em','criado_em.asc'),
   ]);
   // Equipe (Configurações do Bot > Equipe) não é cliente: fica fora da lista.
   const telefonesEquipe = new Set(equipe.map(m => chaveTelefoneAdmin(m.telefone)).filter(Boolean));
@@ -6199,7 +6227,12 @@ async function loadClientes() {
     const lista = pedidosPorChave.get(chaveTelefoneAdmin(whatsapp)) || [];
     const usos = lista.filter(x => pedidoTemBrinde(x) && x.status !== 'cancelado');
     const ultimoUso = usos.reduce((m, x) => (!m || x.created_at > m ? x.created_at : m), null);
-    const selos = lista.filter(x => x.status === 'entregue' && Number(x.subtotal||0) >= 40 && !pedidoTemBrinde(x) && (!ultimoUso || x.created_at > ultimoUso)).length;
+    const pedidosValidos = lista.filter(x => x.status === 'entregue' && Number(x.subtotal||0) >= 40 && !pedidoTemBrinde(x) && (!ultimoUso || x.created_at > ultimoUso)).length;
+    // Ajustes manuais (fidelidade_ajustes) feitos depois do último presente usado; nunca abaixo de 0.
+    const usoEm = ultimoUso ? parseUTC(ultimoUso).getTime() : null;
+    const ajustes = ajustesFid.filter(a => a.telefone === chaveTelefoneAdmin(whatsapp) && (usoEm === null || new Date(a.criado_em).getTime() > usoEm))
+      .reduce((s, a) => s + a.quantidade, 0);
+    const selos = Math.max(0, pedidosValidos + ajustes);
     return { selos: Math.min(selos, 5), temBrinde: selos >= 5, ultimoUso };
   };
 
@@ -6224,7 +6257,8 @@ async function loadClientes() {
         const f = fidelidadeDoCliente(p.whatsapp);
         return `<div title="Fidelidade: a cada 5 pedidos entregues (R$ 40+ em produtos), o 6º ganha uma Grande Tradicional" style="font-size:10.5px;color:#facc15;white-space:nowrap;margin-top:3px;">🍕 ${f.selos}/5 selos</div>`
           + (f.temBrinde ? `<div style="font-size:10.5px;color:#4ade80;white-space:nowrap;">🎁 tem presente</div>` : '')
-          + (f.ultimoUso ? `<div style="font-size:10.5px;color:rgba(255,255,255,0.45);white-space:nowrap;">🎁 usado em ${(parseUTC(f.ultimoUso)||new Date(f.ultimoUso)).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>` : '');
+          + (f.ultimoUso ? `<div style="font-size:10.5px;color:rgba(255,255,255,0.45);white-space:nowrap;">🎁 usado em ${(parseUTC(f.ultimoUso)||new Date(f.ultimoUso)).toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</div>` : '')
+          + `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="abrirSelosCliente(this)" style="margin-top:5px;background:rgba(250,204,21,.12);color:#facc15;border:1px solid rgba(250,204,21,.35);padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">🍕 Ajustar selos</button>`;
       })()}</td>
       <td data-label="Total Gasto" style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--orange);">R$ ${totalGasto.toFixed(2).replace('.',',')}</td>
       <td data-label="Último Pedido" style="font-size:11px;color:rgba(255,255,255,0.3);">${dt.toLocaleDateString('pt-BR', {timeZone:'America/Bahia'})}</td>
@@ -6332,6 +6366,90 @@ function enviarProximaMsgFidelidade(){
   window.open(linkWhatsApp(normalizarWhatsapp(cli.whatsapp), mensagemSelosFidelidade(cli.nome, cli.selos)), '_blank');
   fila.i++;
   renderTabelaClientes();
+}
+
+// AJUSTE MANUAL DE SELOS — grava pela RPC fidelidade_ajustar, que confere o saldo no
+// servidor (nunca negativo, máximo 5) e registra quem, quando, quanto e por quê em
+// fidelidade_ajustes. O site, o checkout e a Luiza leem o saldo já com os ajustes
+// (fidelidade_status), então vale na hora.
+let _selosCliente = null; // { nome, whatsapp, st }
+async function rpcAdmin(nome, corpo){
+  try {
+    const r = await authFetch(`${SB}/rest/v1/rpc/${nome}`, { method:'POST', body: JSON.stringify(corpo) });
+    const dados = await r.json().catch(() => null);
+    return r.ok ? { ok: true, dados } : { ok: false, erro: dados?.message || `Erro ${r.status}` };
+  } catch (e) { return { ok: false, erro: 'Falha de conexão. Tente de novo.' }; }
+}
+async function abrirSelosCliente(btn){
+  _selosCliente = { nome: btn.dataset.nome, whatsapp: btn.dataset.whatsapp, st: null };
+  document.getElementById('selos-titulo').textContent = `🍕 Selos — ${_selosCliente.nome}`;
+  document.getElementById('selos-motivo').value = '';
+  document.getElementById('selos-definir').value = '';
+  document.getElementById('selos-aviso').innerHTML = '';
+  document.getElementById('modal-selos').classList.add('open');
+  await atualizarModalSelos();
+}
+function fecharSelosCliente(){
+  document.getElementById('modal-selos').classList.remove('open');
+  _selosCliente = null;
+}
+const OPERACAO_SELOS = { somar: 'Ajuste', definir: 'Definido', presente: 'Presente liberado' };
+async function atualizarModalSelos(){
+  const c = _selosCliente;
+  if(!c) return;
+  const [st, hist] = await Promise.all([
+    rpcAdmin('fidelidade_status', { p_whatsapp: c.whatsapp }),
+    api('fidelidade_ajustes', `telefone=eq.${chaveTelefoneAdmin(c.whatsapp)}`, 'criado_em.desc'),
+  ]);
+  c.st = st.ok ? st.dados : null;
+  document.getElementById('selos-saldo').innerHTML = !c.st ? '⚠️ Não consegui ler os selos agora.'
+    : !c.st.valido ? 'Este telefone está fora do programa de fidelidade.'
+    : `${c.st.selos} de ${c.st.meta} selos${c.st.tem_brinde ? ' — <span style="color:#4ade80;">🎁 tem o presente (Grande Tradicional no próximo pedido)</span>' : ''}`;
+  document.getElementById('selos-historico').innerHTML = hist.length ? hist.map(a => {
+    const quando = new Date(a.criado_em).toLocaleString('pt-BR', { timeZone:'America/Bahia', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+    const q = a.quantidade > 0 ? `+${a.quantidade}` : `${a.quantidade}`;
+    return `<div class="selos-hist"><b>${q}</b> (${a.selos_antes} → ${a.selos_depois}) · ${esc(OPERACAO_SELOS[a.operacao] || a.operacao)} — ${esc(a.motivo)}<br><small>${quando} · ${esc(a.autor)}${a.origem === 'Luiza' ? ' pela Luiza' : ''}</small></div>`;
+  }).join('') : '<div style="font-size:13px;color:var(--text-faint);">Nenhum ajuste manual.</div>';
+}
+function mensagemAjusteSelos(nomeCompleto, quantidade, depois, operacao){
+  const nome = String(nomeCompleto || '').trim().split(/\s+/)[0] || '';
+  if (operacao === 'presente') return `Oi, ${nome}! Liberamos o seu presente da fidelidade: seu próximo pedido ganha uma Grande Tradicional! 🎁🍕`;
+  const presente = depois >= 5 ? ' Seu próximo pedido ganha uma Grande Tradicional de presente! 🎁' : '';
+  return quantidade > 0
+    ? `Oi, ${nome}! Adicionamos ${quantidade} selo${quantidade > 1 ? 's' : ''} no seu cartão fidelidade. Agora você tem ${Math.min(depois, 5)} de 5 🍕${presente}`
+    : `Oi, ${nome}! Corrigimos o seu cartão fidelidade: agora você tem ${depois} de 5 selos 🍕`;
+}
+async function ajustarSelos(operacao, valor){
+  const c = _selosCliente;
+  const aviso = document.getElementById('selos-aviso');
+  if(!c?.st?.valido){ aviso.innerHTML = '<div class="ficha-aviso">⚠️ Este cliente não está no programa de fidelidade.</div>'; return; }
+  const motivoEl = document.getElementById('selos-motivo');
+  const motivo = motivoEl.value.trim();
+  if(motivo.length < 3){ aviso.innerHTML = '<div class="ficha-aviso">⚠️ Escreva o motivo do ajuste.</div>'; motivoEl.focus(); return; }
+  if(operacao === 'definir'){
+    const campo = document.getElementById('selos-definir').value;
+    valor = Number(campo);
+    if(campo === '' || !Number.isInteger(valor) || valor < 0 || valor > 5){ aviso.innerHTML = '<div class="ficha-aviso">⚠️ Digite quantos selos (de 0 a 5).</div>'; return; }
+  }
+  const antes = c.st.selos;
+  const depois = operacao === 'somar' ? antes + valor : operacao === 'definir' ? valor : 5;
+  const descricao = operacao === 'presente' ? 'liberar o presente (5 de 5)' : `${antes} → ${depois} selos`;
+  if(!confirm(`${c.nome}: ${descricao}\nMotivo: ${motivo}\n\nConfirma?`)) return;
+  document.querySelectorAll('#modal-selos .selos-botoes button').forEach(b => b.disabled = true);
+  const r = await rpcAdmin('fidelidade_ajustar', { p_whatsapp: c.whatsapp, p_operacao: operacao, p_valor: valor ?? 0, p_motivo: motivo });
+  document.querySelectorAll('#modal-selos .selos-botoes button').forEach(b => b.disabled = false);
+  if(!r.ok){ aviso.innerHTML = `<div class="ficha-aviso">⚠️ ${esc(r.erro)}</div>`; return; }
+  const st = r.dados;
+  registrarHistorico(`Selos de ${c.nome}: ${st.selos_antes} → ${st.selos} (${motivo})`);
+  fidelidadeCache.delete(chaveTelefoneAdmin(c.whatsapp));
+  motivoEl.value = '';
+  const numero = normalizarWhatsapp(c.whatsapp);
+  const texto = mensagemAjusteSelos(c.nome, st.quantidade, st.saldo, operacao);
+  aviso.innerHTML = `<div style="color:#4ade80;font-weight:700;margin-bottom:6px;">✅ Salvo: agora ${st.selos} de 5${st.tem_brinde ? ' (🎁 presente liberado)' : ''}.</div>
+    ${numero ? `<a class="bp" style="display:inline-block;background:#25D366;color:#fff;text-decoration:none;" target="_blank" href="${linkWhatsApp(numero, texto)}">📨 Avisar o cliente pelo WhatsApp</a>
+    <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">Abre o WhatsApp com: "${esc(texto)}"</div>` : ''}`;
+  await atualizarModalSelos();
+  loadClientes();
 }
 
 // ═══════════════════════════════════════════════════════
