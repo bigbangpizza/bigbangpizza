@@ -438,6 +438,16 @@ Na configuração da instância (via Manager UI ou API), aponte o webhook para:
 https://<sua-url>/webhook?secret=<o mesmo valor de WEBHOOK_SECRET no .env>
 ```
 
+> **Obrigatório:** sem `WEBHOOK_SECRET` (e `UPTIME_WEBHOOK_SECRET` pro
+> `/alerta-uptime`) configurado, a rota responde 503 e recusa tudo — evita que
+> alguém mande mensagem falsa pro bot se passando por cliente ou pela equipe.
+
+> **Cabeçalhos de segurança do site:** o GitHub Pages não lê arquivo
+> `_headers` (isso é do Netlify/Cloudflare Pages). HSTS, X-Frame-Options e CSP
+> por cabeçalho HTTP só com Cloudflare na frente do domínio. Por enquanto o
+> admin.html e o rastreio.html se protegem sozinhos contra iframe
+> (frame-buster no `<head>`) e não são indexados (`noindex`).
+
 Habilite pelo menos o evento **MESSAGES_UPSERT**. Recomenda-se também ativar
 a opção **`webhook_base64: true`** na instância — assim áudios e imagens já
 chegam em base64 dentro do próprio webhook, sem precisar de uma chamada

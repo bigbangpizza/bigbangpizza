@@ -1,4 +1,5 @@
 import express from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import cron from 'node-cron';
 import { config } from './config.js';
 import { buildSystemPrompt, lojaEstaAberta, statusDaLoja } from './systemPrompt.js';
@@ -49,6 +50,17 @@ import { variacoesNumeroWhatsapp } from './equipeTools.js';
 import { processarAlertasAcumulados } from './alertasEquipe.js';
 
 const app = express();
+
+// Confere o ?secret= dos webhooks em tempo constante (não vaza o segredo pela
+// diferença de tempo de resposta). Segredo vazio = rota fechada: sem
+// WEBHOOK_SECRET/UPTIME_WEBHOOK_SECRET no Railway, ninguém consegue mandar
+// mensagem falsa pro bot se passando por cliente ou pela equipe.
+function segredoConfere(recebido, esperado) {
+  if (!esperado || typeof recebido !== 'string') return false;
+  const a = Buffer.from(recebido);
+  const b = Buffer.from(esperado);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 app.use(express.json({ limit: '25mb' })); // imagens/áudios em base64 podem ser grandes
 
 // Fallback em memória, por número de telefone — usado quando o Redis não
@@ -88,7 +100,11 @@ async function persistirHistorico(numero, mensagens) {
 app.get('/health', (req, res) => res.json({ ok: true, commit: (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || undefined }));
 
 app.post('/webhook', (req, res) => {
-  if (config.webhookSecret && req.query.secret !== config.webhookSecret) {
+  if (!config.webhookSecret) {
+    console.error('[webhook] WEBHOOK_SECRET não configurado — webhook recusado por segurança.');
+    return res.sendStatus(503);
+  }
+  if (!segredoConfere(req.query.secret, config.webhookSecret)) {
     return res.sendStatus(401);
   }
   // Responde 200 imediatamente pra Evolution API não re-tentar o webhook —
@@ -197,7 +213,11 @@ async function processarFila(numero) {
 // de WhatsApp pro Gabriel. Ver src/uptimeAlert.js pro template JSON exato
 // que precisa ser configurado no painel do serviço de monitoramento.
 app.post('/alerta-uptime', (req, res) => {
-  if (config.uptimeWebhookSecret && req.query.secret !== config.uptimeWebhookSecret) {
+  if (!config.uptimeWebhookSecret) {
+    console.error('[alerta-uptime] UPTIME_WEBHOOK_SECRET não configurado — alerta recusado por segurança.');
+    return res.sendStatus(503);
+  }
+  if (!segredoConfere(req.query.secret, config.uptimeWebhookSecret)) {
     return res.sendStatus(401);
   }
   res.sendStatus(200);
