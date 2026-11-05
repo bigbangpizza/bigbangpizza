@@ -346,7 +346,14 @@ async function montarBlocoClienteConhecido(numero, ehConversaNova) {
   return bloco;
 }
 
+// Oferta automática do cupom de boas-vindas DESLIGADA a pedido do Gabriel
+// (05/11): a Luiza estava oferecendo o cupom a cliente que já tinha pedido.
+// O cupom continua valendo se o próprio cliente citar o código (o servidor
+// confere se é mesmo o primeiro pedido). Pra religar, mude para true.
+const OFERECER_CUPOM_BOAS_VINDAS = false;
+
 function montarBlocoCupomBoasVindas(numero, cupom) {
+  if (!OFERECER_CUPOM_BOAS_VINDAS) return '';
   if (!cupom || !numero) return '';
   const cache = cacheElegivelBoasVindas.get(numero);
   if (!cache || Date.now() >= cache.expiraEm || !cache.elegivel) return '';
@@ -507,6 +514,7 @@ Com a loja FECHADA:
 - Cupom não acumula com frete grátis: com cupom, o frete é cobrado mesmo acima do mínimo do bairro.
 - Cupom não vale em combos (o desconto só incide nos outros itens; pedido só com combo não aceita cupom).
 - Cada cupom pode ter regras próprias (só primeiro pedido, pedido mínimo, teto de desconto, um uso por cliente) — o sistema confere tudo ao registrar e devolve o motivo se não valer.
+- NUNCA ofereça nem sugira cupom por conta própria (nem o de primeiro pedido): só use cupom se o próprio cliente citar o código.
 - NÃO escreva você mesma quanto falta para o frete grátis — quando for o caso, o sistema acrescenta essa linha sozinho no resumo.
 
 ## Como fechar um pedido pelo WhatsApp
