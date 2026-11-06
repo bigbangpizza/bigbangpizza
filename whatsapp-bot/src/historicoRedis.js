@@ -22,7 +22,7 @@ const PREFIXO_VALOR = 'bbpizza:valor:';
 // TTL renovado a cada leitura/escrita — 24h de inatividade é folga de sobra
 // pra sobreviver a um restart no meio de uma conversa, sem guardar histórico
 // indefinidamente pra sempre (a conversa não tem valor depois que esfria).
-const TTL_SEGUNDOS = 24 * 60 * 60;
+export const TTL_SEGUNDOS = 24 * 60 * 60;
 
 /**
  * Fábrica isolada do cliente real de Redis — existe pra dar pra testar essa
@@ -185,11 +185,50 @@ export function criarHistoricoStore(ClienteRedis, url) {
     }
   }
 
+  async function apagarValor(nome) {
+    if (!cliente) return false;
+    try {
+      await cliente.del(`${PREFIXO_VALOR}${nome}`);
+      return true;
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao apagar ${nome}:`, err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Grava só se a chave ainda não existe (SET NX), com TTL — base da
+   * deduplicação de mensagens (id da mensagem) e da trava por número.
+   * @returns {Promise<boolean|undefined>} true = gravou (era novo); false = já
+   *   existia; undefined = não deu pra saber (Redis ausente ou falhou).
+   */
+  async function marcarSeNovo(nome, valor, ttlSegundos) {
+    if (!cliente) return undefined;
+    try {
+      const r = await cliente.set(`${PREFIXO_VALOR}${nome}`, String(valor), 'EX', ttlSegundos, 'NX');
+      return r === 'OK';
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao marcar ${nome}:`, err.message);
+      return undefined;
+    }
+  }
+
+  /** Apaga a chave só se ainda guarda `valor` (libera a trava de quem a pegou). */
+  async function liberarSeIgual(nome, valor) {
+    if (!cliente) return;
+    try {
+      const chaveV = `${PREFIXO_VALOR}${nome}`;
+      if ((await cliente.get(chaveV)) === String(valor)) await cliente.del(chaveV);
+    } catch (err) {
+      console.error(`[historicoRedis] falha ao liberar ${nome}:`, err.message);
+    }
+  }
+
   function redisConfigurado() {
     return Boolean(cliente);
   }
 
-  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, salvarUltimoContato, obterUltimoContato, obterValor, salvarValor, redisConfigurado };
+  return { obterHistorico, salvarHistorico, salvarPausa, obterPausa, salvarUltimoContato, obterUltimoContato, obterValor, salvarValor, apagarValor, marcarSeNovo, liberarSeIgual, redisConfigurado };
 }
 
 const store = criarHistoricoStore(Redis, config.redis.url);
@@ -202,4 +241,7 @@ export const salvarUltimoContato = store.salvarUltimoContato;
 export const obterUltimoContato = store.obterUltimoContato;
 export const obterValor = store.obterValor;
 export const salvarValor = store.salvarValor;
+export const apagarValor = store.apagarValor;
+export const marcarSeNovo = store.marcarSeNovo;
+export const liberarSeIgual = store.liberarSeIgual;
 export const redisConfigurado = store.redisConfigurado;

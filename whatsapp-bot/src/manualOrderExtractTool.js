@@ -22,7 +22,7 @@ export const EXTRAIR_PEDIDO_MANUAL_TOOL = {
     type: 'object',
     properties: {
       nome: { type: 'string', description: 'Nome do cliente, se aparecer no texto. String vazia se não souber.' },
-      whatsapp: { type: 'string', description: 'Número de WhatsApp do cliente, se aparecer no texto. String vazia se não souber.' },
+      whatsapp: { type: 'string', description: 'Número de WhatsApp do CLIENTE, se aparecer no texto (nunca o número da própria pizzaria, 71 99373-8823). String vazia se não souber.' },
       endereco: { type: 'string', description: 'Rua e número. Se o endereço vier em várias mensagens, junte as partes. String vazia se não souber.' },
       complemento: { type: 'string', description: 'Condomínio, bloco/torre, apartamento e ponto de referência, juntando todas as partes que aparecerem no texto.' },
       bairro: {

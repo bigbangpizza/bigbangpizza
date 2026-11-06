@@ -112,7 +112,7 @@ export const config = {
   // Quantas mensagens (pares usuário/assistente) manter por contato, pra dar
   // contexto de conversa. Vale tanto pro histórico em Redis quanto pro
   // fallback em memória (ver historicoRedis.js).
-  historyMaxMessages: Number(process.env.HISTORY_MAX_MESSAGES || 12),
+  historyMaxMessages: Number(process.env.HISTORY_MAX_MESSAGES || 30),
 
   redis: {
     // URL de conexão do Redis já provisionado no Railway junto com a

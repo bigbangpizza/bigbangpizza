@@ -7,7 +7,7 @@ import { getMenuData } from './supabaseData.js';
 import { conversarComFerramentas, textBlock, imageBlock } from './claude.js';
 import { transcreverAudio } from './transcribe.js';
 import { baixarMediaBase64, enviarTexto } from './evolutionApi.js';
-import { enviarRespostaHumanizada } from './respostaHumanizada.js';
+import { enviarRespostaHumanizada, pizzaDoDiaCitadaNoHistorico, semPizzaDoDiaRepetida } from './respostaHumanizada.js';
 import {
   CRIAR_PEDIDO_TOOL,
   criarExecutorCriarPedido,
@@ -28,7 +28,10 @@ import { verificarPedidosAtrasados } from './delayedOrdersJob.js';
 import { verificarAvaliacoesRuins } from './badReviewsJob.js';
 import { verificarCarrinhosAbandonados } from './abandonedCartJob.js';
 import { temServiceRoleConfigurada } from './supabaseAdmin.js';
-import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis, salvarUltimoContato } from './historicoRedis.js';
+import { obterHistorico as obterHistoricoRedis, salvarHistorico as salvarHistoricoRedis, salvarUltimoContato, marcarSeNovo, liberarSeIgual, obterValor, salvarValor } from './historicoRedis.js';
+import { ANOTAR_PEDIDO_TOOL, criarExecutorAnotarPedido, comRascunho, carregarRascunho, apagarRascunho, montarBlocoRascunho } from './rascunhoPedido.js';
+import { pizzaDoDiaDeHoje } from './orderTool.js';
+import { randomUUID } from 'node:crypto';
 import { chaveTelefone } from './dataUtils.js';
 import { processarAlertaUptime } from './uptimeAlert.js';
 import { ehEcoDoBot, ativarPausaHumana, estaPausadoPorHumano } from './atendimentoHumanoUtil.js';
@@ -137,7 +140,7 @@ app.post('/webhook', (req, res) => {
 // respostas parciais e possivelmente contraditórias. Se uma mensagem nova
 // chegar enquanto o lote anterior ainda está sendo processado, ela entra
 // na fila do próximo lote (nunca dispara processamento em paralelo).
-const JANELA_DEBOUNCE_MS = 4000;
+const JANELA_DEBOUNCE_MS = 3000;
 // Logo depois de a Luiza pedir o endereço, o cliente costuma mandar em
 // pedaços (rua, número, condomínio, apto, bairro, CEP) — espera um pouco
 // mais pra juntar tudo numa resposta só, em vez de responder a cada pedaço.
@@ -155,6 +158,8 @@ function ultimaFalaPediuEndereco(numero) {
   }
   return false;
 }
+// A trava some sozinha se o processo cair no meio (nunca prende o número pra sempre).
+const TTL_TRAVA_SEGUNDOS = 120;
 const filasPorNumero = new Map(); // numero -> { buffer, nomeContato, timer, processando }
 
 function filaDe(numero) {
@@ -186,12 +191,23 @@ async function processarFila(numero) {
   if (fila.processando || !fila.buffer.length) return;
 
   fila.processando = true;
+  // Trava por número no Redis (vale até entre 2 instâncias do bot): se outra
+  // resposta pra esse número ainda está sendo gerada, espera e tenta de novo.
+  const tokenTrava = randomUUID();
+  const travou = await marcarSeNovo(`trava:${numero}`, tokenTrava, TTL_TRAVA_SEGUNDOS);
+  if (travou === false) {
+    fila.processando = false;
+    fila.timer = setTimeout(() => processarFila(numero), JANELA_DEBOUNCE_MS);
+    return;
+  }
   const blocos = fila.buffer.splice(0, fila.buffer.length);
   const nomeContato = fila.nomeContato;
   const membro = fila.membro;
+  // Mensagens que chegarem enquanto a resposta é gerada entram nessa mesma resposta.
+  const pegarMensagensNovas = () => fila.buffer.splice(0, fila.buffer.length);
   try {
     if (membro) await comTravaHistorico(chaveHistoricoEquipe(numero), () => processarLoteEquipe(numero, membro, blocos));
-    else await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos));
+    else await comTravaHistorico(numero, () => processarLote(numero, nomeContato, blocos, pegarMensagensNovas));
   } catch (err) {
     console.error(`[webhook] numero=${numero} erro ao processar lote de mensagens:`, err);
     // Equipe: só avisa a própria pessoa — nunca vira alerta de "cliente sem resposta".
@@ -202,6 +218,7 @@ async function processarFila(numero) {
     // Nunca deixa o cliente sem resposta: mensagem fixa + alerta pra equipe.
     await avisarFalhaNoAtendimento(numero, nomeContato, err).catch((e) => console.error('[falhaAtendimento]', e));
   } finally {
+    if (travou) await liberarSeIgual(`trava:${numero}`, tokenTrava);
     fila.processando = false;
     if (fila.buffer.length) {
       fila.timer = setTimeout(() => processarFila(numero), JANELA_DEBOUNCE_MS);
@@ -285,6 +302,13 @@ async function processarWebhook(body) {
     return;
   }
 
+  // A Evolution às vezes entrega o mesmo webhook 2 vezes (retentativa,
+  // reconexão) — sem isso a mesma mensagem virava 2 respostas.
+  if (!(await mensagemAindaNaoVista(data.key?.id))) {
+    console.log(`[webhook] numero=${numero} mensagem ${data.key?.id} repetida — ignorada`);
+    return;
+  }
+
   // Equipe: reconhecida SÓ pelo número de origem (remoteJid), nunca pelo texto.
   // Não entra no registro de contato (carrinho abandonado) nem no fluxo de cliente.
   const membro = await membroDaEquipe(numero);
@@ -294,6 +318,48 @@ async function processarWebhook(body) {
   const mensagem = data.message || {};
 
   await processarMensagemDoClienteEmOrdem(numero, nomeContato, mensagem, data.key?.id, membro);
+}
+
+// ── Deduplicação pelo id da mensagem (key.id) ─────────────────────────────
+// Redis (vale entre restarts/instâncias) com TTL; sem Redis, memória local.
+const TTL_DEDUPE_SEGUNDOS = 6 * 60 * 60;
+const idsVistosLocal = new Map(); // id -> expira em (ms)
+
+async function mensagemAindaNaoVista(messageId) {
+  if (!messageId) return true;
+  const agora = Date.now();
+  for (const [id, expira] of idsVistosLocal) if (expira < agora) idsVistosLocal.delete(id);
+  const jaLocal = idsVistosLocal.has(messageId);
+  idsVistosLocal.set(messageId, agora + TTL_DEDUPE_SEGUNDOS * 1000);
+  const novo = await marcarSeNovo(`msgid:${messageId}`, agora, TTL_DEDUPE_SEGUNDOS);
+  if (novo === undefined) return !jaLocal; // Redis fora: decide pela memória
+  return novo;
+}
+
+// ── Não repetir o mesmo texto pro mesmo número em 2 minutos ───────────────
+const JANELA_TEXTO_REPETIDO_SEGUNDOS = 120;
+const ultimoTextoLocal = new Map(); // numero -> { texto, em }
+const normalizarEnvio = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+async function textoRepetidoRecente(numero, texto) {
+  const alvo = normalizarEnvio(texto);
+  if (!alvo) return false;
+  const doRedis = await obterValor(`ultimoenvio:${numero}`);
+  const ultimo = doRedis || ultimoTextoLocal.get(numero);
+  return Boolean(ultimo && ultimo.texto === alvo && Date.now() - ultimo.em < JANELA_TEXTO_REPETIDO_SEGUNDOS * 1000);
+}
+
+/** Envia a resposta da Luiza, menos se for idêntica à última enviada há menos de 2 min. */
+async function enviarSemRepetir(numero, texto) {
+  if (await textoRepetidoRecente(numero, texto)) {
+    console.warn(`[webhook] numero=${numero} resposta idêntica à última (menos de 2 min) — não reenviada`);
+    return false;
+  }
+  const registro = { texto: normalizarEnvio(texto), em: Date.now() };
+  ultimoTextoLocal.set(numero, registro);
+  await salvarValor(`ultimoenvio:${numero}`, registro, JANELA_TEXTO_REPETIDO_SEGUNDOS);
+  await enviarRespostaHumanizada(numero, texto);
+  return true;
 }
 
 // ── Serialização da extração por número (evita reordenar mensagens do cliente) ──
@@ -391,7 +457,7 @@ async function responderPedidoDoSite(numero, texto, token) {
   historico.push({ role: 'assistant', content: [textBlock(textoResposta)] });
   aplicarLimiteHistorico(historico);
   await persistirHistorico(numero, historico);
-  await enviarRespostaHumanizada(numero, textoResposta);
+  await enviarSemRepetir(numero, textoResposta);
   return { respondido: true };
 }
 
@@ -454,7 +520,19 @@ function comLojaAberta(executor) {
  * Claude, executa as tools necessárias e envia a resposta humanizada.
  * Nunca roda duas vezes em paralelo pro mesmo número — ver fila acima.
  */
-async function processarLote(numero, nomeContato, userContent) {
+// Ferramentas que só consultam ou anotam o rascunho: dá pra refazer a resposta
+// depois delas sem efeito duplicado pro cliente (anotar é refeito a partir do
+// rascunho já salvo, que vai no prompt da nova tentativa).
+const FERRAMENTAS_SEM_EFEITO_PRO_CLIENTE = new Set(['verificar_bairro', 'calcular_total', 'buscar_pedidos_recentes', 'anotar_pedido']);
+
+function podeRefazerResposta(novasMensagens, numero) {
+  if (ultimaConfirmacaoPorNumero.has(numero)) return false;
+  if (novasMensagens[novasMensagens.length - 1]?.role !== 'assistant') return false; // terminou sem texto final (limite de ferramentas)
+  return novasMensagens.every((m) => m.role !== 'assistant' || !Array.isArray(m.content)
+    || m.content.every((b) => b.type !== 'tool_use' || FERRAMENTAS_SEM_EFEITO_PRO_CLIENTE.has(b.name)));
+}
+
+async function processarLote(numero, nomeContato, userContent, pegarMensagensNovas = () => []) {
   const historico = await carregarHistorico(numero);
   // Pedidos do site confirmados nesta conversa contam como do cliente (mesmo sem o telefone dele no pedido).
   vincularPedidosDoHistorico(numero, historico);
@@ -490,29 +568,65 @@ async function processarLote(numero, nomeContato, userContent) {
     return;
   }
 
-  const systemPrompt = await buildSystemPrompt(numero, ehConversaNova);
-  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL, ENVIAR_LOCALIZACAO_TOOL];
+  // Conversa nova (histórico expirou): rascunho de um pedido antigo não vale mais.
+  if (ehConversaNova) await apagarRascunho(numero);
+
+  const tools = [CRIAR_PEDIDO_TOOL, CANCELAR_PEDIDO_TOOL, EDITAR_PEDIDO_TOOL, CHAMAR_ATENDENTE_TOOL, VERIFICAR_BAIRRO_TOOL, CALCULAR_TOTAL_TOOL, BUSCAR_PEDIDOS_RECENTES_TOOL, ENVIAR_LOCALIZACAO_TOOL, ANOTAR_PEDIDO_TOOL];
   // Localização da loja: a ferramenta só agenda; o envio sai depois da resposta (ver o fim desta função).
   let enviarLocalizacaoDepois = false;
+  const rascunho = comRascunho({ numero, getMenuData });
   const toolExecutors = {
-    criar_pedido: comLojaAberta(criarExecutorCriarPedido({ numero, nomeContato })),
+    criar_pedido: rascunho.criarPedido(comLojaAberta(criarExecutorCriarPedido({ numero, nomeContato }))),
     cancelar_pedido: criarExecutorCancelarPedido({ numero }),
     editar_pedido: criarExecutorEditarPedido({ numero }),
     chamar_atendente: criarExecutorChamarAtendente({ numero, nomeContato }),
-    verificar_bairro: criarExecutorVerificarBairro(),
-    calcular_total: criarExecutorCalcularTotal({ numero }),
+    verificar_bairro: rascunho.verificarBairro(criarExecutorVerificarBairro()),
+    calcular_total: rascunho.calcularTotal(criarExecutorCalcularTotal({ numero })),
     buscar_pedidos_recentes: criarExecutorBuscarPedidosRecentes({ numero }),
     enviar_localizacao_loja: criarExecutorEnviarLocalizacao({
       jaEnviada: localizacaoJaEnviadaNoHistorico(historico),
       agendar: () => { enviarLocalizacaoDepois = true; },
     }),
+    anotar_pedido: criarExecutorAnotarPedido({ numero }),
   };
 
   ultimoResumoPorNumero.delete(numero);
   ultimaConfirmacaoPorNumero.delete(numero);
-  const resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
+  const menuAtual = await getMenuData();
+  const nomePizzaDoDia = pizzaDoDiaDeHoje(menuAtual)?.nome || '';
+
+  // Se o cliente mandar mais mensagens enquanto a resposta está sendo gerada,
+  // a resposta (ainda não enviada) é descartada e refeita com tudo junto —
+  // uma resposta só, em vez de duas respostas emboladas. Não refaz depois de
+  // uma ação que já tem efeito pro cliente (pedido criado/editado/cancelado,
+  // atendente chamado, localização).
+  let resultado;
+  for (let tentativa = 0; ; tentativa++) {
+    const systemPrompt = await buildSystemPrompt(numero, ehConversaNova, {
+      blocoRascunho: montarBlocoRascunho(await carregarRascunho(numero)),
+      pizzaDoDiaJaCitada: pizzaDoDiaCitadaNoHistorico(historico, nomePizzaDoDia),
+    });
+    resultado = await conversarComFerramentas(systemPrompt, historico, tools, toolExecutors);
+    if (tentativa >= 2 || !podeRefazerResposta(resultado.novasMensagens, numero)) break;
+    const extras = pegarMensagensNovas();
+    if (!extras.length) break;
+    console.log(`[webhook] numero=${numero} ${extras.length} bloco(s) novo(s) durante a resposta — refazendo numa resposta só`);
+    const parciais = resultado.novasMensagens.slice(0, -1); // tira só o texto final (não enviado)
+    historico.push(...parciais);
+    // As mensagens novas entram na última mensagem do cliente (texto depois dos tool_result, se houver).
+    const ultimaDoCliente = historico[historico.length - 1];
+    ultimaDoCliente.content = [...(Array.isArray(ultimaDoCliente.content) ? ultimaDoCliente.content : [textBlock(String(ultimaDoCliente.content || ''))]), ...extras];
+    await persistirHistorico(numero, historico);
+  }
   const { novasMensagens } = resultado;
   let { textoResposta } = resultado;
+
+  // A Pizza do Dia citada duas vezes na mesma resposta (aconteceu em 05/11): fica só a primeira.
+  textoResposta = semPizzaDoDiaRepetida(textoResposta, nomePizzaDoDia);
+  {
+    const ultima = novasMensagens[novasMensagens.length - 1];
+    if (ultima?.role === 'assistant') ultima.content = [textBlock(textoResposta)];
+  }
 
   // "Faltam R$ X para frete grátis" vem do cálculo oficial (calcular_total),
   // nunca do modelo.
@@ -545,7 +659,7 @@ async function processarLote(numero, nomeContato, userContent) {
   aplicarLimiteHistorico(historico);
   await persistirHistorico(numero, historico);
 
-  await enviarRespostaHumanizada(numero, textoResposta);
+  await enviarSemRepetir(numero, textoResposta);
 
   if (enviarLocalizacaoDepois) {
     await enviarLocalizacaoLoja(numero).catch((err) => console.error(`[localizacao] numero=${numero} falha ao enviar localização da loja:`, err.message));

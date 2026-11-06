@@ -56,3 +56,39 @@ export async function enviarRespostaHumanizada(numero, textoResposta) {
     await enviarTexto(numero, mensagem);
   }
 }
+
+// ── Pizza do Dia citada uma vez só ─────────────────────────────────────────
+function textoDoAssistente(m) {
+  if (m.role !== 'assistant') return '';
+  return (Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content || '') }])
+    .filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+}
+
+/** A Luiza já ofereceu a Pizza do Dia (nome + preço) numa resposta anterior desta conversa? */
+export function pizzaDoDiaCitadaNoHistorico(historico, nomePizzaDoDia) {
+  if (!nomePizzaDoDia) return false;
+  const nome = nomePizzaDoDia.toLowerCase();
+  return historico.some((m) => {
+    const t = textoDoAssistente(m).toLowerCase();
+    return t.includes(nome) && /r\$/.test(t);
+  });
+}
+
+/**
+ * Mantém só o primeiro parágrafo (bolha) que oferece a Pizza do Dia com preço;
+ * os outros que repetem a oferta saem. Resumo e confirmação de pedido ficam intactos.
+ */
+export function semPizzaDoDiaRepetida(texto, nomePizzaDoDia) {
+  if (!nomePizzaDoDia || !texto) return texto;
+  const nome = nomePizzaDoDia.toLowerCase();
+  const ehOferta = (p) => p.toLowerCase().includes(nome) && /r\$/i.test(p) && !/resumo do pedido|pedido #|posso confirmar/i.test(p);
+  const partes = texto.split(/\n\s*\n/);
+  let jaCitou = false;
+  const ficam = partes.filter((p) => {
+    if (!ehOferta(p)) return true;
+    if (jaCitou) return false;
+    jaCitou = true;
+    return true;
+  });
+  return ficam.length === partes.length ? texto : ficam.join('\n\n');
+}

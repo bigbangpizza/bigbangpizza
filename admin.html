@@ -2552,7 +2552,7 @@ function renderPedidoCard(p){
           <div style="font-weight:700;font-size:15px;">${esc(p.nome)}</div>
           <div style="font-size:12px;color:var(--text-secondary);">${hora} · ${esc(p.bairro||'')}</div>
           ${etiquetaRetirada(p)}
-          ${p.whatsapp?`<a href="${linkWhatsApp(p.whatsapp)}" target="_blank" style="font-size:12px;color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>`:''}
+          ${linkOuAvisoWhatsApp(p.whatsapp, `💬 ${esc(p.whatsapp||'')}`, 'font-size:12px;color:#25D366;text-decoration:none;')}
         </div>
       </div>
       <div style="text-align:right;">
@@ -2563,6 +2563,7 @@ function renderPedidoCard(p){
     </div>
     ${tempoPedidoHTML(p)}
     ${pedidoEstaParado(p) ? `<div style="background:rgba(255,68,68,.14);border:1px solid rgba(255,68,68,.5);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:700;color:#ff7777;">⚠️ Parado há mais de ${HORAS_PEDIDO_PARADO}h — marque como entregue ou cancelado (senão o cliente aparece como novo e o selo não conta).</div>` : ''}
+    ${pagamentoDivididoAdmin(p) ? `<div style="background:rgba(255,107,0,.16);border:2px solid var(--orange);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:14px;font-weight:800;color:var(--orange);">💳💵 ${esc(pagamentoDivididoAdmin(p))}</div>` : ''}
     ${p.troco_para ? `<div style="font-size:13px;font-weight:700;color:#facc15;margin-bottom:10px;">💵 Troco para ${brl(p.troco_para)}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${brl(Number(p.troco_para) - Number(p.total || 0))})` : ''}</div>` : ''}
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
       <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
@@ -2762,7 +2763,47 @@ const presenteFidelidadeAdmin = () => `uma Grande Tradicional de presente${tradi
 // trocando os emojis por "�" (testado em 18/10/2026), então não usar wa.me com ?text=.
 // Função única de link de WhatsApp do admin (kanban, clientes, avisar cliente, selos, motoboy):
 // o número passa sempre por normalizarWhatsapp (55 uma vez só).
-const linkWhatsApp = (telefone, texto) => `https://api.whatsapp.com/send?phone=${normalizarWhatsapp(telefone) || ''}${texto ? `&text=${encodeURIComponent(texto)}` : ''}`;
+// Sem número válido (vazio, sem DDD ou o da própria loja) devolve null — "phone=" vazio
+// abria a conversa com o próprio número da pizzaria (bug de 05/11).
+const AVISO_PEDIDO_SEM_WHATSAPP = '⚠️ Pedido sem WhatsApp do cliente — edite o pedido e coloque o número';
+const WHATSAPP_LOJA_PADRAO = '5571993738823';
+function ehWhatsappDaLoja(raw){
+  const n = normalizarWhatsapp(raw);
+  if(!n) return false;
+  const chave = chaveTelefoneAdmin(n);
+  return [WHATSAPP_LOJA_PADRAO, (typeof apConfigsAtuais !== 'undefined' && apConfigsAtuais && apConfigsAtuais.info_whatsapp) || '']
+    .some(l => normalizarWhatsapp(l) && chaveTelefoneAdmin(l) === chave);
+}
+const whatsappDoCliente = (telefone) => { const n = normalizarWhatsapp(telefone); return n && !ehWhatsappDaLoja(n) ? n : null; };
+const linkWhatsApp = (telefone, texto) => { const n = whatsappDoCliente(telefone); return n ? `https://api.whatsapp.com/send?phone=${n}${texto ? `&text=${encodeURIComponent(texto)}` : ''}` : null; };
+// Link (ou aviso clicável, se o número não serve) — usado nos cards e na lista de clientes.
+function linkOuAvisoWhatsApp(telefone, conteudo, estilo, texto){
+  const href = linkWhatsApp(telefone, texto);
+  if(href) return `<a href="${href}" target="_blank" style="${estilo}">${conteudo}</a>`;
+  return `<a href="#" onclick="event.preventDefault();showToastAdmin(AVISO_PEDIDO_SEM_WHATSAPP, 6000)" style="font-size:12px;color:#facc15;text-decoration:none;">⚠️ Sem WhatsApp válido${telefone ? ` (${esc(telefone)})` : ''}</a>`;
+}
+// Validação ao salvar pedido (manual/edição): vazio é permitido; inválido ou o da loja, não.
+function validarWhatsappPedido(raw){
+  const bruto = String(raw || '').trim();
+  if(!bruto) return { ok: true, valor: null };
+  const n = normalizarWhatsapp(bruto);
+  if(!n) return { ok: false, erro: '⚠️ WhatsApp do cliente inválido — coloque com DDD (ex: 71 99138-1886).' };
+  if(ehWhatsappDaLoja(n)) return { ok: false, erro: '⚠️ Esse é o WhatsApp da própria pizzaria — coloque o número do cliente.' };
+  return { ok: true, valor: n };
+}
+// Rede de segurança: nenhum link de WhatsApp sem número abre (nem por window.open, nem por <a>).
+const urlWhatsSemNumero = (url) => /^https:\/\/(api\.whatsapp\.com\/send|wa\.me)/.test(String(url || '')) && !/[?&]phone=\d{10,}/.test(String(url)) && !/wa\.me\/\d{10,}/.test(String(url));
+(function(){
+  const abrir = window.open.bind(window);
+  window.open = function(url, ...resto){
+    if(url == null || urlWhatsSemNumero(url)){ showToastAdmin(AVISO_PEDIDO_SEM_WHATSAPP, 6000); return { closed: false }; }
+    return abrir(url, ...resto);
+  };
+  document.addEventListener('click', (ev) => {
+    const a = ev.target.closest && ev.target.closest('a[href]');
+    if(a && urlWhatsSemNumero(a.getAttribute('href'))){ ev.preventDefault(); showToastAdmin(AVISO_PEDIDO_SEM_WHATSAPP, 6000); }
+  }, true);
+})();
 // Mesma normalização da função chave_telefone do banco: DDD + 8 últimos dígitos.
 function chaveTelefoneAdmin(raw){
   let d = String(raw||'').replace(/\D/g,'');
@@ -2797,6 +2838,11 @@ function linhaSelosSaiu(ds){
   return `\n\n🍕 Você tem ${st.selos} de ${st.meta} selos (pedidos a partir de R$ 40 contam selo).`;
 }
 const pedidoTemBrinde = p => (p.itens_json||[]).some(i => i && i.brinde_fidelidade);
+// Linha "PAGAMENTO DIVIDIDO: R$ X em ... + R$ Y em ..." que a Luiza grava na observação.
+function pagamentoDivididoAdmin(p){
+  const m = String((p && p.observacao) || '').match(/PAGAMENTO DIVIDIDO:[^\n|]*/i);
+  return m ? m[0].trim().replace(/[.;,\s]+$/, '') : null;
+}
 
 // Telefone para o WhatsApp: só números, tira o 55 do começo se já tiver e põe o 55
 // uma vez só. "71991234567", "5571991234567", "(71) 99123-4567" e
@@ -2812,7 +2858,7 @@ function enviarWhatsAppStatus(status, nomeCompleto, whatsappRaw, dataset){
   const gerarMsg = STATUS_WPP_MSGS[status];
   if(!gerarMsg) return;
   const numero = normalizarWhatsapp(whatsappRaw);
-  if(!numero){ showToastAdmin('⚠️ Pedido sem WhatsApp cadastrado — status atualizado, mensagem não enviada.'); return; }
+  if(!numero || !whatsappDoCliente(numero)){ showToastAdmin(`${AVISO_PEDIDO_SEM_WHATSAPP} (status atualizado, mensagem não enviada).`, 6000); return; }
   const primeiroNome = (nomeCompleto||'').trim().split(/\s+/)[0] || '';
   window.open(linkWhatsApp(numero, gerarMsg(primeiroNome, dataset || { whatsapp: whatsappRaw })), '_blank');
 }
@@ -3435,7 +3481,9 @@ ${CUPOM_TRACO}
 <strong>*** TOTAL: ${esc(ResumoPedido.brl(resumo.total))} ***</strong>
 ${CUPOM_TRACO}
 ${p.observacao ? `<strong>*** OBSERVACAO DO CLIENTE ***</strong>\n<strong>${esc(semAcentoImpressao(p.observacao))}</strong>\n${CUPOM_LINHA}\n` : ''}Pagamento: <strong>*** ${esc(pagamento)} ***</strong>
-${p.troco_para ? `<strong>Troco para ${esc(ResumoPedido.brl(p.troco_para))}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${esc(ResumoPedido.brl(Number(p.troco_para) - Number(p.total || 0)))})` : ''}</strong>\n` : ''}${CUPOM_LINHA}
+${pagamentoDivididoAdmin(p) ? `<strong>*** PAGAMENTO DIVIDIDO ***</strong>
+<strong>${esc(semAcentoImpressao(pagamentoDivididoAdmin(p).replace(/^PAGAMENTO DIVIDIDO:\s*/i, '')))}</strong>
+` : ''}${p.troco_para ? `<strong>Troco para ${esc(ResumoPedido.brl(p.troco_para))}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${esc(ResumoPedido.brl(Number(p.troco_para) - Number(p.total || 0)))})` : ''}</strong>\n` : ''}${CUPOM_LINHA}
 ${cupomCentralizar('Obrigado pela preferencia!')}
 ${cupomCentralizar('Big Bang Pizza')}
 ${cupomCentralizar('Nao e documento fiscal')}
@@ -3748,9 +3796,15 @@ function montarEstadoPedidoManual(extraido, menu){
   });
   if(!itens.length) itens.push(ITEM_PEDIDO_MANUAL_VAZIO());
 
+  // A IA às vezes lê o número da loja (cabeçalho da conversa colada) como se fosse do cliente.
+  let whatsExtraido = String(extraido.whatsapp || '').trim();
+  if(whatsExtraido && ehWhatsappDaLoja(whatsExtraido)){
+    whatsExtraido = '';
+    setTimeout(() => showToastAdmin('⚠️ O número lido pela IA é o da própria pizzaria — coloque o WhatsApp do cliente.', 7000), 0);
+  }
   window.__pedidoManualState = {
     nome: extraido.nome || '',
-    whatsapp: extraido.whatsapp || '',
+    whatsapp: whatsExtraido,
     retirada: false,
     endereco: extraido.endereco || '',
     complemento: extraido.complemento || '',
@@ -4296,6 +4350,8 @@ async function lancarPedidoManual(){
   const menu = window.__pedidoManualMenu;
 
   if(!st.nome.trim()){ showToastAdmin('⚠️ Informe o nome do cliente.'); return; }
+  const whatsCliente = validarWhatsappPedido(st.whatsapp);
+  if(!whatsCliente.ok){ showToastAdmin(whatsCliente.erro, 6000); return; }
   if(!st.pagamento){ showToastAdmin('⚠️ Selecione a forma de pagamento.'); return; }
   const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
   if(!precos.length || precos.some(p => !p)){ showToastAdmin('⚠️ Tem item incompleto — selecione tipo/sabor/tamanho de todos os itens.'); return; }
@@ -4329,7 +4385,7 @@ async function lancarPedidoManual(){
 
   const resp = await authFetch(`${SB}/rest/v1/pedidos`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({
     nome: st.nome.trim(),
-    whatsapp: st.whatsapp.trim() || null,
+    whatsapp: whatsCliente.valor,
     endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
     complemento: st.complemento.trim() || null,
     bairro: bairroNome,
@@ -4492,9 +4548,12 @@ async function gravarEdicaoPedido(){
   if (descontoManual > Number(r.total)) { showToastAdmin(`⚠️ O desconto manual (${brl(descontoManual)}) é maior que o total (${brl(r.total)}).`); return; }
 
   const o = ed.original;
+  const whatsEdicao = validarWhatsappPedido(st.whatsapp);
+  if (!whatsEdicao.ok) { showToastAdmin(whatsEdicao.erro, 6000); return; }
   const novo = {
     nome: st.nome.trim(),
-    whatsapp: st.whatsapp.trim() || null,
+    // Mesmo número só com outra formatação: mantém como estava (não vira "alteração" no histórico).
+    whatsapp: whatsEdicao.valor && normalizarWhatsapp(o.whatsapp) === whatsEdicao.valor ? o.whatsapp : whatsEdicao.valor,
     endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
     complemento: st.complemento.trim() || null,
     bairro: bairroNome,
@@ -4576,7 +4635,7 @@ function configurarBotaoEdicao(){ const btn=document.getElementById('mod-save-bt
 function mostrarPedidoAlterado(pedido){
   window.__pedidoAlterado = pedido;
   const resumo = ResumoPedido.montarResumoPedido(pedido, nomesDocesPedidos);
-  const numero = normalizarWhatsapp(pedido.whatsapp);
+  const numero = whatsappDoCliente(pedido.whatsapp);
   document.getElementById('mod-title').textContent = `✅ Pedido #${pedido.id} alterado`;
   document.getElementById('mod-body').innerHTML = `
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:14px;font-size:14px;">${ResumoPedido.html(resumo, esc)}</div>
@@ -4598,8 +4657,8 @@ function textoResumoAlteradoCliente(pedido){
 
 function enviarResumoAlteradoCliente(){
   const pedido = window.__pedidoAlterado;
-  const numero = pedido && normalizarWhatsapp(pedido.whatsapp);
-  if (!numero) return;
+  const numero = pedido && whatsappDoCliente(pedido.whatsapp);
+  if (!numero) { showToastAdmin(AVISO_PEDIDO_SEM_WHATSAPP, 6000); return; }
   const win = window.open(linkWhatsApp(numero, textoResumoAlteradoCliente(pedido)), '_blank');
   if (!win) showToastAdmin('⚠️ O navegador bloqueou a janela do WhatsApp — libere pop-ups para o admin e clique de novo.', 6000);
 }
@@ -6419,7 +6478,7 @@ async function loadClientes() {
       : '';
     const html = `<tr>
       <td data-label="Nome"><strong>${esc(p.nome)}</strong></td>
-      <td data-label="WhatsApp">${p.whatsapp ? `<a href="${linkWhatsApp(p.whatsapp)}" target="_blank" style="color:#25D366;text-decoration:none;">💬 ${esc(p.whatsapp)}</a>` : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
+      <td data-label="WhatsApp">${p.whatsapp ? linkOuAvisoWhatsApp(p.whatsapp, `💬 ${esc(p.whatsapp)}`, 'color:#25D366;text-decoration:none;') : '<span style="color:rgba(255,255,255,0.2);">Não informado</span>'}</td>
       <td data-label="Bairro" style="color:rgba(255,255,255,0.5);font-size:12px;">${esc(p.bairro||'—')}</td>
       <td data-label="Pedidos" style="text-align:center;">${pedidosCliente.length}${(() => {
         if (!p.whatsapp || telefonesExcluidos.has(chaveTelefoneAdmin(p.whatsapp))) return '';
@@ -6434,7 +6493,7 @@ async function loadClientes() {
       <td data-label="Segmento"><span style="background:${seg.cor}22;color:${seg.cor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;">${seg.label}</span></td>
       <td data-label="Ação">
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${p.whatsapp ? `<a href="${linkWhatsApp(p.whatsapp,`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
+          ${p.whatsapp && linkWhatsApp(p.whatsapp) ? `<a href="${linkWhatsApp(p.whatsapp,`Oi ${p.nome}! Temos novidades na Big Bang Pizza 🍕`)}" target="_blank" style="background:#25D366;color:white;padding:5px 10px;border-radius:5px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap;">📨 Contatar</a>` : '—'}
           ${segmento==='em_risco' && p.whatsapp ? `<button data-nome="${esc(p.nome)}" data-whatsapp="${esc(p.whatsapp)}" onclick="enviarReativacao(this)" style="background:${seg.cor};color:white;border:none;padding:5px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">🎟️ Enviar reativação</button>` : ''}
         </div>
         ${avisoReativacao}
@@ -6612,7 +6671,7 @@ async function ajustarSelos(operacao, valor){
   registrarHistorico(`Selos de ${c.nome}: ${st.selos_antes} → ${st.selos} (${motivo})`);
   fidelidadeCache.delete(chaveTelefoneAdmin(c.whatsapp));
   motivoEl.value = '';
-  const numero = normalizarWhatsapp(c.whatsapp);
+  const numero = whatsappDoCliente(c.whatsapp);
   const texto = mensagemAjusteSelos(c.nome, st.quantidade, st.saldo, operacao);
   aviso.innerHTML = `<div style="color:#4ade80;font-weight:700;margin-bottom:6px;">✅ Salvo: agora ${st.selos} de 5${st.tem_brinde ? ' (🎁 presente liberado)' : ''}.</div>
     ${numero ? `<a class="bp" style="display:inline-block;background:#25D366;color:#fff;text-decoration:none;" target="_blank" href="${linkWhatsApp(numero, texto)}">📨 Avisar o cliente pelo WhatsApp</a>

@@ -7,7 +7,8 @@ const ANTHROPIC_VERSION = '2023-06-01';
 // Limite de idas-e-voltas de tool use dentro de UMA mensagem do cliente —
 // evita loop infinito/custo descontrolado se a Claude insistir em chamar
 // ferramentas repetidamente. Na prática, criar um pedido usa 1.
-const MAX_TOOL_ITERATIONS = 5;
+// 6: anotar_pedido (rascunho) costuma vir junto de verificar_bairro/calcular_total.
+const MAX_TOOL_ITERATIONS = 6;
 
 // Prompt caching, 2º ponto de cache: o fim da conversa. A próxima chamada
 // (volta de ferramenta, ou a próxima mensagem do cliente em até 5 min) relê

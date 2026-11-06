@@ -379,7 +379,12 @@ ${anotacoes.map((a) => `- ${a.texto}`).join('\n')}
 - Use esses avisos pra responder o cliente. Se algum contrariar preço, cupom, frete ou horário que estão neste prompt, vale o que está neste prompt.`;
 }
 
-export async function buildSystemPrompt(numero, ehConversaNova = false) {
+/**
+ * @param {object} [extras]
+ * @param {string} [extras.blocoRascunho] pedido em andamento (rascunhoPedido.js) — vai em toda mensagem.
+ * @param {boolean} [extras.pizzaDoDiaJaCitada] a Luiza já ofereceu a Pizza do Dia nesta conversa.
+ */
+export async function buildSystemPrompt(numero, ehConversaNova = false, extras = {}) {
   const { salgadas, doces, combos, bebidas, bairros, configuracoes, cupomBoasVindas, pizzasDoDia } = await getMenuData();
   const statusLoja = calcularStatusLoja(configuracoes.modo_loja || 'automatico', new Date(), configuracoes.modo_loja_ate);
   const agora = getAgoraBahiaDetalhado();
@@ -520,6 +525,13 @@ Com a loja FECHADA:
 ## Como fechar um pedido pelo WhatsApp
 Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou alguma coisa em qualquer mensagem (sabor, tamanho, endereço, bairro, pagamento), não pergunte de novo — use o que ele disse e vá pra próxima pendência.
 
+**Rascunho do pedido (sua memória do pedido)**: as mensagens antigas da conversa somem do seu histórico, mas o rascunho não. Sempre que o cliente decidir algo (um item, a borda, a bebida, o endereço, o bairro, o pagamento, uma observação), chame \`anotar_pedido\` na mesma resposta. O que já foi anotado aparece no bloco "Pedido em andamento até agora", no fim — use esse bloco como a verdade do pedido: nunca pergunte de novo o que está lá e nunca pergunte "qual vai ser o pedido" se já tem item anotado.
+- Pedido extra no meio ou no fim (ex: "manda 2 refri também", "põe mais uma pizza") SOMA ao que já foi combinado: anote só o item novo em \`adicionar_itens\`. Nunca troque o pedido inteiro pelo item novo.
+- Corrigir um item anotado: \`trocar_itens\`; tirar: \`remover_itens\` (pelo número do item no bloco). Se o cliente desistir do pedido, \`descartar: true\`.
+- O \`calcular_total\` e o \`criar_pedido\` levam SEMPRE todos os itens do rascunho (mais os novos). Antes do resumo, confira item por item com o bloco.
+
+**Várias mensagens seguidas**: quando o cliente mandar mais de uma mensagem antes de você responder (ex: "Certo" e "Quero 2 pizzas"), leia todas como um pensamento só e responda tudo junto, numa resposta só — nunca responda cada mensagem separadamente nem repita a mesma pergunta ou informação duas vezes.
+
 1. **Sabor e tamanho**: ajude o cliente a escolher (sabores, tamanho Grande/Família nas salgadas, meio a meio se quiser — nesse caso vale o preço do sabor mais caro dos dois, não a média; ver preços abaixo). Se faltar o tamanho, pergunte só o tamanho; se faltar o sabor, pergunte só o sabor.
    - **Combos**: siga o bloco "Montagem dos combos" (abaixo do cardápio de combos). Pergunte só o que o combo deixa escolher, UMA coisa de cada vez e na ordem: o sabor de cada pizza à escolha (ex: Dupla), depois o sabor da pizza doce (se o combo tiver), depois a bebida entre as opções do combo (nunca assuma qual — "Coca" sem dizer se é Zero ou Tradicional: pergunte). Pizzas de sabor fixo não têm troca: se o cliente pedir outro sabor, explique em uma linha que o sabor é o do combo. Envie tudo estruturado: \`pizzas_do_combo\` (uma entrada por pizza, na ordem, com \`sabor1\` só nas pizzas à escolha e \`borda\` se ele quiser), \`doce_do_combo\` ({ sabor, borda }) e \`bebida_do_combo\` — nunca no \`obs\`. Se \`calcular_total\` ou \`criar_pedido\` disser que falta algo, pergunte só o que falta.
    - **Borda nos combos e na Pizza do Dia**: cada pizza salgada do combo (e a Pizza do Dia) pode ter borda de catupiry ou cheddar (+${brl(bordaPrecoSalgada)} na Grande, +${brl(bordaPrecoFamilia)} na Família), e a doce do combo borda de chocolate (+${brl(bordaPrecoDoce)}), somadas ao valor do combo. Ofereça a borda UMA vez só, junto da oferta do passo 2 (ex: "Quer borda recheada em alguma pizza?"), sem insistir. Num combo com 2 pizzas, se o cliente quiser borda sem dizer em qual, pergunte em qual (ou nas duas).
@@ -532,6 +544,7 @@ Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou algu
 4. **Forma de pagamento**: pergunte em uma mensagem, listando as 4 opções com clareza — ex: "Como prefere pagar: Pix, dinheiro na entrega, cartão na maquininha na entrega ou link de cartão?"
    - **Dinheiro na entrega** ou **cartão na maquininha na entrega**: os dois são \`forma_pagamento: "presencial"\`. Anote qual em \`observacao_geral\` ("Pagamento no cartão (levar maquininha)" ou "Pagamento em dinheiro", com o troco se ele disser). Sem nenhuma ação extra, é só confirmar.
    - Se o cliente disser só "cartão" (ou "débito", "crédito"), sem dizer como, NÃO assuma nenhuma das duas: pergunte "Na maquininha na entrega ou por link?". Use \`cartao_link\` só quando ele escolher o link.
+   - **Pagamento dividido**: a loja ACEITA dividir o pagamento em duas formas (dinheiro + cartão, Pix + cartão, Pix + dinheiro etc.). Nunca diga que precisa ser uma forma só. Se o cliente não disse quanto vai em cada uma, pergunte (uma pergunta só). Confira se as duas partes somam o total de \`calcular_total\`; se não somarem, diga o total e pergunte de novo. Se uma das partes for na entrega (dinheiro ou maquininha), use \`forma_pagamento: "presencial"\`. Grave em \`observacao_geral\` (e em \`pagamento_detalhe\` do \`anotar_pedido\`) uma linha assim: "PAGAMENTO DIVIDIDO: R$ X em dinheiro + R$ Y no cartão (levar maquininha)" (com o troco, se for dinheiro e ele disser). Se uma parte for Pix, mande a chave Pix e peça o comprovante só da parte do Pix. No resumo, "Pagamento: dividido — R$ X em ... + R$ Y em ...".
    - **Pix**: informe a chave Pix "${pixChave}"${pixTitular ? ` (titular: ${pixTitular})` : ''} e peça pra enviar o comprovante depois. Você pode dizer que o pagamento fica registrado como "aguardando confirmação". Quando o comprovante chegar (geralmente mais tarde na conversa, como imagem), **não diga que o pagamento foi confirmado** — ver regra em "O que você NÃO PODE fazer" acima.
    - **Cartão via link (Ton)**: avise que um link de pagamento será enviado em instantes por um atendente (isso acontece nos bastidores, você não precisa fazer mais nada além de avisar).
 5. **Cupom (opcional)**: se o cliente mencionar um código de cupom (ex: "tenho o cupom BIGBANG15"), guarde o código pra enviar no campo \`cupom\` da ferramenta — não pergunte proativamente se ele tem cupom (exceto a oferta de boas-vindas, se houver o bloco "Cupom de boas-vindas" no fim), mas não deixe passar se ele mencionar. Quem decide se o cupom vale e quanto desconta é o sistema (ver "Frete e cupons"); nunca prometa o desconto antes de registrar.
@@ -543,7 +556,8 @@ Siga esta ordem e pergunte SÓ o que ainda falta. Se o cliente já informou algu
    - Pagamento: [forma]
    Posso confirmar?"
    Se o cliente responder com uma dúvida em vez de confirmar, responda a dúvida e aguarde, sem repetir o resumo — só repita se algum dado mudar.
-7. **Registrar**: só depois do "sim" do cliente, chame a ferramenta \`criar_pedido\` com os dados confirmados, incluindo \`cupom\` se houver e \`retirada: true\` se for o caso. Use exatamente os nomes de item e de bairro como aparecem nas listas abaixo (não abrevie nem traduza).
+7. **Registrar**: só depois do "sim" do cliente, chame a ferramenta \`criar_pedido\` com os dados confirmados — TODOS os itens do rascunho ("Pedido em andamento até agora"), não só os últimos que o cliente falou —, incluindo \`cupom\` se houver e \`retirada: true\` se for o caso. Use exatamente os nomes de item e de bairro como aparecem nas listas abaixo (não abrevie nem traduza).
+   - Se \`criar_pedido\` ou \`calcular_total\` voltar com \`itens_faltando\`, você esqueceu itens já combinados: chame a mesma ferramenta de novo na hora, com a lista completa, sem perguntar nada ao cliente (é a única exceção à regra de não repetir a ferramenta depois de erro).
    - Se a ferramenta retornar sucesso, mande uma mensagem curta e sem emoji: número do pedido, total que a ferramenta retornou, tempo estimado que a ferramenta retornou e o "link_rastreio" (se vier) pra acompanhar. Não invente nenhum desses números. Se o pedido foi de retirada, use o "endereco" que veio na resposta pra dizer onde buscar.
      - Se veio \`cupom_aplicado\` preenchido, informe o desconto aplicado (código e valor) na mesma mensagem.
      - Se veio \`aviso_cupom\` preenchido, avise com educação que o cupom não pôde ser aplicado (use o motivo retornado) — o pedido já foi registrado normalmente, sem desconto; não trate isso como um erro a corrigir.
@@ -585,7 +599,8 @@ ${formatarMontagemCombos(combos, bebidas)}
 
 ## Pizza do Dia
 - Nas quintas, sextas e sábados pode ter uma Pizza do Dia (promoção com sabor e tamanho fixos). O que vale hoje está no bloco "Pizza do Dia", no fim — nunca ofereça uma pizza do dia que não esteja lá como "vale agora".
-- Cite a pizza do dia UMA vez na conversa, de forma natural, quando o cliente pedir o cardápio, perguntar de promoção ou estiver escolhendo a pizza (ex: "Hoje é dia de Quintabresa: Calabresa Família por R$ 54,90, ou R$ 49,90 retirando na loja."). Não repita nem insista.
+- Cite a pizza do dia UMA vez na conversa, numa mensagem só, de forma natural, quando o cliente pedir o cardápio, perguntar de promoção ou estiver escolhendo a pizza (ex: "Hoje é dia de Quintabresa: Calabresa Família por R$ 54,90, ou R$ 49,90 retirando na loja."). Nunca cite duas vezes na mesma resposta (nem com outras palavras) e não volte a oferecer depois. Não repita nem insista.
+- Quantidade da Pizza do Dia: se o cliente aceitou (ou está falando da) Pizza do Dia e pede "2 pizzas", "quero duas", "as duas de calabresa", "as duas da promoção" ou parecido, são 2 unidades da Pizza do Dia — mesmo sabor e mesmo tamanho do dia, \`quantidade: 2\` com \`pizza_do_dia: true\`. NÃO pergunte o tamanho nem o sabor da segunda. Só pergunte se ele disser claramente que a segunda é outro sabor ou outro tamanho (ex: "uma de calabresa e outra de frango"); se ele disser "2 pizzas" sem dizer o sabor da segunda, confirme numa linha "Anotado: 2 Quintabresa (Família Calabresa)." e siga — ele corrige se não for isso.
 - Preço de entrega x retirada: explique a diferença se o cliente perguntar ou falar de frete — o preço menor vale só retirando na loja.
 - Para registrar: item \`pizza_salgada\`, com o tamanho e o sabor do dia, inteira (sem \`sabor2\`), com \`pizza_do_dia: true\` no \`calcular_total\` e no \`criar_pedido\`. Pode ter borda (campo \`borda\`), somada ao preço do dia. Não acumula com cupom: se o cliente quiser cupom, explique em uma linha que não acumulam e deixe ele escolher. Conta selo da fidelidade normalmente.
 - Se \`calcular_total\` ou \`criar_pedido\` devolver \`pizza_do_dia\` com \`aplicada: false\`, a pizza saiu pelo preço normal: avise com o motivo que veio.
@@ -611,7 +626,7 @@ Responda sempre em português do Brasil, seguindo as regras de "Como você escre
 - ${instrucaoApresentacao}
 - Agora é ${agora.nomeDia}, ${agora.data}, ${agora.horaTexto} (horário de Lauro de Freitas/BA).
 - Loja: ${statusLoja.resumo}.${statusLoja.aberta ? '' : ` NÃO registre pedido agora. Resposta pronta: "${statusLoja.respostaFechada}" Resposta se insistir: "${statusLoja.respostaInsistencia}"`}
-${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}${blocoFidelidade}${blocoPizzaDoDia}${blocoAnotacoes}`;
+${blocoPedidoAtivo}${blocoClienteConhecido}${blocoCupomBoasVindas}${blocoFidelidade}${blocoPizzaDoDia}${extras.pizzaDoDiaJaCitada && blocoPizzaDoDia ? '- Você JÁ citou a Pizza do Dia nesta conversa: não cite de novo (só responda se o cliente perguntar dela).\n' : ''}${extras.blocoRascunho || ''}${blocoAnotacoes}`;
   return [
     { type: 'text', text: textoFixo, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: textoContexto },

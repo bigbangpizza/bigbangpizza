@@ -51,9 +51,10 @@ export const CRIAR_PEDIDO_TOOL = {
         type: 'string',
         enum: ['presencial', 'pix', 'cartao_link'],
         description:
-          '"presencial" = dinheiro ou cartão na maquininha, na entrega; "pix" = pagamento via Pix; "cartao_link" = link de pagamento (Ton) enviado depois. Se o cliente disse só "cartão", pergunte antes se é na maquininha ou por link — não escolha por ele.',
+          '"presencial" = dinheiro ou cartão na maquininha, na entrega; "pix" = pagamento via Pix; "cartao_link" = link de pagamento (Ton) enviado depois. Se o cliente disse só "cartão", pergunte antes se é na maquininha ou por link — não escolha por ele. ' +
+          'Pagamento dividido em duas formas é aceito: se uma parte for na entrega, use "presencial" e descreva a divisão em observacao_geral ("PAGAMENTO DIVIDIDO: R$ X em dinheiro + R$ Y no cartão (levar maquininha)").',
       },
-      observacao_geral: { type: 'string', description: 'Alguma observação geral do pedido (ex: sem cebola, campainha quebrada).' },
+      observacao_geral: { type: 'string', description: 'Alguma observação geral do pedido (ex: sem cebola, campainha quebrada). Pagamento dividido: comece com "PAGAMENTO DIVIDIDO: R$ X em ... + R$ Y em ...".' },
       cupom: {
         type: 'string',
         description:
@@ -709,6 +710,12 @@ export const ultimoResumoPorNumero = new Map();
 // pra mandar a confirmação com o valor de cada item (montada pelo código).
 export const ultimaConfirmacaoPorNumero = new Map();
 
+/** Linha "PAGAMENTO DIVIDIDO: ..." da observação do pedido (ou null). */
+export function pagamentoDividido(observacao) {
+  const m = String(observacao || '').match(/PAGAMENTO DIVIDIDO:[^\n|]*/i);
+  return m ? m[0].trim().replace(/[.;,\s]+$/, '') : null;
+}
+
 /**
  * Confirmação do pedido pro WhatsApp — itens com valor, adicionais, descontos,
  * subtotal, frete e total (resumoPedido.js, mesmo formato do admin e do
@@ -720,8 +727,14 @@ export function montarConfirmacaoPedido(conf, { nomesDoces, lojaAberta }) {
   const resumo = montarResumoPedido(p, nomesDoces);
   const blocos = [`${conf.tipo === 'editado' ? 'Pedido' : 'Pedido'} #${p.id ?? ''} ${conf.tipo === 'editado' ? 'atualizado' : 'registrado'}.\n${textoWhatsApp(resumo)}`.replace('# ', '')];
   if (conf.avisoCupom) blocos.push(`${conf.avisoCupom.startsWith('O cupom') ? '' : 'O cupom não foi aplicado: '}${conf.avisoCupom}`);
+  const dividido = pagamentoDividido(p.observacao);
   if (conf.tipo === 'criado') {
-    if (conf.formaPagamento === 'pix') blocos.push('Pagamento via Pix: pode enviar o comprovante por aqui.');
+    // Pro cliente: "Pagamento dividido: R$ X em dinheiro + R$ Y no cartão." (sem o lembrete interno da maquininha).
+    if (dividido) {
+      const paraCliente = dividido.replace(/^PAGAMENTO DIVIDIDO:\s*/i, 'Pagamento dividido: ').replace(/\s*\(levar maquininha\)/i, '').replace(/[.;,\s]+$/, '');
+      blocos.push(`${paraCliente}.${/pix/i.test(dividido) ? ' Pode enviar o comprovante da parte do Pix por aqui.' : ''}`);
+    }
+    else if (conf.formaPagamento === 'pix') blocos.push('Pagamento via Pix: pode enviar o comprovante por aqui.');
     else if (conf.formaPagamento === 'cartao_link') blocos.push('O link de pagamento do cartão chega em instantes.');
     else blocos.push('Pagamento na entrega.');
     if (conf.retirada) blocos.push(`Retirada na loja: ${p.endereco}.`);
