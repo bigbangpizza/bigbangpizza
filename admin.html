@@ -700,7 +700,7 @@ input:checked+.sl::before{transform:translateX(20px);}
         <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'semana')">📅 7 dias</button>
         <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'mes')">📅 Este mês</button>
         <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'personalizado')">📆 Personalizado</button>
-        <span id="apps-personalizado" class="hidden" style="display:inline-flex;gap:6px;align-items:center;">
+        <span id="apps-personalizado" style="display:none;gap:6px;align-items:center;">
           <input type="date" id="apps-de" class="bt" style="color-scheme:dark;padding:7px 10px;" onchange="loadAppsLista()">
           <span style="font-size:12px;color:var(--text-secondary);">até</span>
           <input type="date" id="apps-ate" class="bt" style="color-scheme:dark;padding:7px 10px;" onchange="loadAppsLista()">
@@ -5868,8 +5868,8 @@ async function loadApps() {
   }
   document.getElementById('apps-taxa-ifood').value = fmtPctBR(_appsTaxas.ifood);
   document.getElementById('apps-taxa-99food').value = fmtPctBR(_appsTaxas['99food']);
-  const data = document.getElementById('apps-data');
-  if (!data.value) data.value = hojeBahiaISO();
+  // Ao abrir a aba a data volta pra hoje; dentro da aba ela fica (lançar vários de um dia passado).
+  document.getElementById('apps-data').value = hojeBahiaISO();
   setAppsCanal(_appsCanal);
   loadAppsLista();
 }
@@ -5941,7 +5941,7 @@ function setAppsPeriodo(btn, periodo) {
   document.querySelectorAll('#apps-periodos .filtro-btn').forEach(b => b.className = 'bt filtro-btn');
   if (btn) btn.className = 'be filtro-btn';
   const pers = document.getElementById('apps-personalizado');
-  pers.classList.toggle('hidden', periodo !== 'personalizado');
+  pers.style.display = periodo === 'personalizado' ? 'inline-flex' : 'none';
   if (periodo === 'personalizado') {
     const de = document.getElementById('apps-de'), ate = document.getElementById('apps-ate');
     if (!ate.value) ate.value = hojeBahiaISO();
