@@ -1015,7 +1015,7 @@ input:checked+.sl::before{transform:translateX(20px);}
   </div>
 </div>
 
-<script src="resumo-pedido.js"></script>
+<script src="resumo-pedido.js?v=20261107"></script>
 <script src="ficha-tecnica.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
@@ -2653,6 +2653,7 @@ function renderPedidoCard(p){
     ${tempoPedidoHTML(p)}
     ${pedidoEstaParado(p) ? `<div style="background:rgba(255,68,68,.14);border:1px solid rgba(255,68,68,.5);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:700;color:#ff7777;">⚠️ Parado há mais de ${HORAS_PEDIDO_PARADO}h — marque como entregue ou cancelado (senão o cliente aparece como novo e o selo não conta).</div>` : ''}
     ${pagamentoDivididoAdmin(p) ? `<div style="background:rgba(255,107,0,.16);border:2px solid var(--orange);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:14px;font-weight:800;color:var(--orange);">💳💵 ${esc(pagamentoDivididoAdmin(p))}</div>` : ''}
+    ${p.cupom_forcado ? `<div style="background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:700;color:#4ade80;"${p.cupom_forcado_por ? ` title="por ${esc(p.cupom_forcado_por)}"` : ''}>🎟️ ${esc(textoDescontoForcado(p))}</div>` : ''}
     ${p.troco_para ? `<div style="font-size:13px;font-weight:700;color:#facc15;margin-bottom:10px;">💵 Troco para ${brl(p.troco_para)}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${brl(Number(p.troco_para) - Number(p.total || 0))})` : ''}</div>` : ''}
     <div style="background:var(--bg-input);border-radius:8px;padding:10px;margin-bottom:10px;">
       <div style="font-size:10px;font-weight:700;color:var(--text-faint);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🛒 PEDIDO</div>
@@ -2673,6 +2674,7 @@ function renderPedidoCard(p){
       ${motoboyCardHTML(p, bucket)}
       <button class="bp" onclick="abrirEdicaoPedido(${p.id})">✏️ Editar pedido</button>
       <button class="bp" onclick="imprimirPedido(${p.id})">🖨️ Reimprimir</button>
+      <button class="bp" onclick="abrirCupomForcadoPedido(${p.id})"${p.cupom_forcado ? ' style="background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.45);font-weight:700;"' : ''}>🎟️ ${p.cupom_forcado ? 'Desconto forçado' : 'Forçar cupom'}</button>
       ${bucket!=='aguardando'?`<button class="bp" onclick="copiarLinkRastreio(${p.id})">🔗 Copiar link de rastreio</button>`:''}
       ${bucket!=='aguardando'?`<button class="bp" onclick="enviarWhatsAppEntregador(this.closest('.pedido-card').dataset)">🛵 Entregador</button>`:''}
       <button class="bp" onclick="abrirModEditarBorda(${p.id})"${bordas.length?` style="background:rgba(255,107,0,0.18);color:var(--orange);border:1px solid rgba(255,107,0,0.45);font-weight:700;"`:''}>${bordas.length?`🧀 Borda: ${esc(bordas.join(', '))}`:'+ Borda'}</button>
@@ -3039,13 +3041,232 @@ async function atualizarStatus(id,status,cardEl,statusEsperado){
 }
 
 async function incrementarUsoCupom(id){
-  const dados = await api('pedidos', `id=eq.${id}&select=cupom`);
+  const dados = await api('pedidos', `id=eq.${id}&select=cupom,cupom_forcado`);
   const codigo = dados?.[0]?.cupom;
-  if (!codigo) return;
+  if (!codigo || dados[0].cupom_forcado) return; // desconto forçado pela equipe não gasta o limite do cupom
   const cupons = await api('cupons', `codigo=eq.${encodeURIComponent(codigo)}`);
   const cupom = cupons?.[0];
   if (!cupom) return;
   await upd('cupons', cupom.id, { usos_atuais: (cupom.usos_atuais||0) + 1 });
+}
+
+// ═══════════════════════════════════════════════════════
+// CUPOM FORÇADO — desconto da equipe ignorando as regras do cupom (vale em combo,
+// sem pedido mínimo, sem ser primeiro pedido, sem limite de uso). Vale sobre o
+// total dos produtos (subtotal, combos incluídos); o frete continua cobrado, a
+// não ser que marque "zerar frete também". Nunca deixa os produtos negativos e
+// não mexe no subtotal (os selos da fidelidade contam pelo subtotal). Grava em
+// desconto + cupom (código ou "MANUAL") + cupom_forcado*. O site e a Luiza nunca
+// gravam isso: o gatilho do banco zera esses campos nos pedidos deles.
+// ═══════════════════════════════════════════════════════
+const rd2 = v => Math.round((Number(v) || 0) * 100) / 100;
+const CAMPOS_SEM_CUPOM_FORCADO = { cupom_forcado: false, cupom_forcado_motivo: null, cupom_forcado_por: null, cupom_forcado_em: null, cupom_forcado_frete: 0, cupom_forcado_regra: null };
+
+// regra: { modo: 'cupom'|'pct'|'valor', codigo?, pct?, valor?, maximo? }
+function valorDescontoForcado(regra, subtotal, descontoManual = 0){
+  const limite = Math.max(0, rd2(subtotal) - rd2(descontoManual));
+  const usaValor = regra.modo === 'valor' || (regra.modo === 'cupom' && regra.pct == null);
+  let d = usaValor ? Number(regra.valor) || 0 : rd2(rd2(subtotal) * (Number(regra.pct) || 0) / 100);
+  if (Number(regra.maximo) > 0) d = Math.min(d, Number(regra.maximo));
+  return rd2(Math.min(Math.max(0, d), limite));
+}
+function descricaoRegraForcada(regra){
+  if (!regra) return '';
+  const pct = String(rd2(regra.pct)).replace('.', ',');
+  if (regra.modo === 'cupom') return regra.pct != null ? `cupom ${regra.codigo} (${pct}%${Number(regra.maximo) > 0 ? `, até ${brl(regra.maximo)}` : ''})` : `cupom ${regra.codigo} (${brl(regra.valor)})`;
+  return regra.modo === 'pct' ? `${pct}% livre` : `${brl(regra.valor)} livre`;
+}
+// base = { subtotal, frete (sem abono), descontoManual } → campos gravados no pedido
+function camposCupomForcado(f, base){
+  const desconto = valorDescontoForcado(f.regra, base.subtotal, base.descontoManual || 0);
+  const freteAbonado = f.zerarFrete ? rd2(base.frete) : 0;
+  const frete = rd2(rd2(base.frete) - freteAbonado);
+  const produtos = Math.max(0, rd2(base.subtotal - desconto - (base.descontoManual || 0)));
+  return {
+    cupom: f.regra.modo === 'cupom' ? f.regra.codigo : 'MANUAL',
+    desconto, frete, total: rd2(produtos + frete),
+    cupom_forcado: true, cupom_forcado_motivo: f.motivo, cupom_forcado_por: f.por, cupom_forcado_em: f.em,
+    cupom_forcado_frete: freteAbonado,
+    cupom_forcado_regra: { modo: f.regra.modo, codigo: f.regra.codigo || null, pct: f.regra.pct ?? null, valor: f.regra.valor ?? null, maximo: f.regra.maximo ?? null, zerarFrete: !!f.zerarFrete },
+  };
+}
+function cupomForcadoDoPedido(p){
+  if (!p || !p.cupom_forcado) return null;
+  const rg = p.cupom_forcado_regra || { modo: 'valor', valor: Number(p.desconto) || 0 };
+  return { regra: { modo: rg.modo, codigo: rg.codigo, pct: rg.pct, valor: rg.valor, maximo: rg.maximo },
+    motivo: p.cupom_forcado_motivo || '', zerarFrete: !!rg.zerarFrete || Number(p.cupom_forcado_frete) > 0,
+    por: p.cupom_forcado_por || '', em: p.cupom_forcado_em || null };
+}
+// "Desconto forçado: R$ X (motivo)" — card, comanda e histórico
+function textoDescontoForcado(p){
+  if (!p || !p.cupom_forcado) return '';
+  const fr = Number(p.cupom_forcado_frete) || 0;
+  return `Desconto forçado: ${brl(p.desconto)}${fr > 0 ? ` + frete grátis (${brl(fr)})` : ''}${p.cupom_forcado_motivo ? ` (${p.cupom_forcado_motivo})` : ''}`;
+}
+
+// Modal próprio (fica por cima do modal do pedido manual/edição).
+// ctx: { titulo, base: { subtotal, frete, descontoManual, totalAtual, cupomAtual: {codigo, desconto}|null, retirada },
+//        atual: desconto forçado atual|null, onConfirmar(f) → bool, onRemover(por) → bool }
+let _cfCupons = null, _cfCtx = null;
+async function abrirModalCupomForcado(ctx){
+  _cfCtx = ctx;
+  let ov = document.getElementById('modal-cupom-forcado');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'modal-cupom-forcado'; ov.className = 'mo'; ov.style.zIndex = '950';
+    ov.innerHTML = '<div class="md" style="width:min(520px,100%);"></div>';
+    ov.addEventListener('click', e => { if (e.target === ov) fecharModalCupomForcado(); });
+    document.body.appendChild(ov);
+  }
+  _cfCupons = await api('cupons', 'ativo=eq.true', 'codigo.asc');
+  const a = ctx.atual, rg = (a && a.regra) || {}, b = ctx.base;
+  let editor = ''; try { editor = localStorage.getItem('bb_admin_editor') || ''; } catch (e) {}
+  const cupomSel = rg.modo === 'cupom' ? (_cfCupons.find(c => c.codigo === rg.codigo) || {}).id : null;
+  const rotuloCupom = c => `${c.codigo} — ${c.tipo === 'percentual' ? `${String(Number(c.desconto)).replace('.', ',')}%${Number(c.desconto_maximo) > 0 ? ` (máx. ${brl(c.desconto_maximo)})` : ''}` : brl(c.desconto)}`;
+  ov.querySelector('.md').innerHTML = `
+    <h3 style="margin-bottom:6px;">🎟️ Forçar cupom — ${esc(ctx.titulo)}</h3>
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">Ignora as regras do cupom: vale em combo, sem pedido mínimo, sem ser primeiro pedido e sem limite de uso. O desconto vale sobre os produtos; o frete continua cobrado. Não mexe nos selos da fidelidade.</div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;" id="cf-modos">
+      <button type="button" class="bt" data-modo="cupom" style="padding:8px 12px;font-size:12px;" onclick="cfModo('cupom')">Cupom cadastrado</button>
+      <button type="button" class="bt" data-modo="pct" style="padding:8px 12px;font-size:12px;" onclick="cfModo('pct')">% livre</button>
+      <button type="button" class="bt" data-modo="valor" style="padding:8px 12px;font-size:12px;" onclick="cfModo('valor')">R$ livre</button>
+    </div>
+    <div class="fg" id="cf-campo-cupom"><label>Cupom</label><select id="cf-cupom" onchange="cfPrevia()">
+      ${_cfCupons.length ? _cfCupons.map(c => `<option value="${c.id}"${c.id === cupomSel ? ' selected' : ''}>${esc(rotuloCupom(c))}</option>`).join('') : '<option value="">Nenhum cupom ativo</option>'}
+    </select></div>
+    <div class="fg" id="cf-campo-pct"><label>Desconto (%)</label><input id="cf-pct" inputmode="decimal" placeholder="Ex: 15" value="${rg.modo === 'pct' ? String(rg.pct).replace('.', ',') : ''}" oninput="cfPrevia()"></div>
+    <div class="fg" id="cf-campo-valor"><label>Desconto (R$)</label><input id="cf-valor" inputmode="decimal" placeholder="Ex: 10,00" value="${rg.modo === 'valor' ? fmtNumBR(rg.valor) : ''}" oninput="cfPrevia()"></div>
+    ${!b.retirada && Number(b.frete) > 0 ? `<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="cf-zerar-frete" ${a && a.zerarFrete ? 'checked' : ''} onchange="cfPrevia()"> Zerar o frete também (${brl(b.frete)})</label>` : ''}
+    <div class="fg"><label>Motivo *</label><input id="cf-motivo" placeholder="Ex: amigo, cortesia, cliente reclamou" value="${esc(a ? a.motivo : '')}"></div>
+    <div class="fg"><label>Quem está forçando *</label><input id="cf-por" placeholder="Seu nome" value="${esc(editor)}"></div>
+    <div id="cf-previa" style="background:var(--bg-input);border-radius:8px;padding:10px 12px;font-size:13px;"></div>
+    <div class="ma" style="flex-wrap:wrap;">
+      <button type="button" class="bc" onclick="fecharModalCupomForcado()">Cancelar</button>
+      ${a ? '<button type="button" class="bd" style="padding:11px 14px;font-size:13px;" onclick="cfRemover()">Remover desconto forçado</button>' : ''}
+      <button type="button" class="bs" id="cf-confirmar" onclick="cfConfirmar()">CONFIRMAR DESCONTO</button>
+    </div>`;
+  ov.classList.add('open');
+  cfModo(rg.modo || (_cfCupons.length ? 'cupom' : 'pct'));
+}
+function fecharModalCupomForcado(){ document.getElementById('modal-cupom-forcado')?.classList.remove('open'); _cfCtx = null; }
+function cfModo(modo){
+  if (!_cfCtx) return;
+  _cfCtx.modo = modo;
+  document.querySelectorAll('#cf-modos button').forEach(b => b.className = b.dataset.modo === modo ? 'be' : 'bt');
+  ['cupom', 'pct', 'valor'].forEach(m => { document.getElementById('cf-campo-' + m).style.display = m === modo ? '' : 'none'; });
+  cfPrevia();
+}
+function cfLerRegra(){
+  const modo = _cfCtx.modo;
+  if (modo === 'cupom') {
+    const c = (_cfCupons || []).find(x => String(x.id) === document.getElementById('cf-cupom').value);
+    if (!c) return null;
+    return c.tipo === 'percentual'
+      ? { modo: 'cupom', codigo: c.codigo, pct: Number(c.desconto), maximo: Number(c.desconto_maximo) > 0 ? Number(c.desconto_maximo) : null }
+      : { modo: 'cupom', codigo: c.codigo, pct: null, valor: Number(c.desconto), maximo: null };
+  }
+  if (modo === 'pct') { const n = numBR(document.getElementById('cf-pct').value); return n > 0 && n <= 100 ? { modo: 'pct', pct: n } : null; }
+  const n = numBR(document.getElementById('cf-valor').value); return n > 0 ? { modo: 'valor', valor: rd2(n) } : null;
+}
+function cfPrevia(){
+  const el = document.getElementById('cf-previa');
+  if (!_cfCtx || !el) return null;
+  const regra = cfLerRegra(), b = _cfCtx.base;
+  if (!regra) { el.innerHTML = '<span style="color:var(--text-secondary);">Escolha o cupom ou digite o desconto.</span>'; return null; }
+  const zerar = !!document.getElementById('cf-zerar-frete')?.checked;
+  const c = camposCupomForcado({ regra, zerarFrete: zerar }, b);
+  // Desconto pedido antes do limite "nunca negativo" (já com o máximo do cupom).
+  const pedidoSemLimite = regra.modo === 'valor' || (regra.modo === 'cupom' && regra.pct == null) ? Number(regra.valor) || 0 : rd2(b.subtotal * (Number(regra.pct) || 0) / 100);
+  const bruto = Number(regra.maximo) > 0 ? Math.min(pedidoSemLimite, Number(regra.maximo)) : pedidoSemLimite;
+  const linha = (t, v, est = '') => `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;${est}"><span>${t}</span><span style="white-space:nowrap;">${v}</span></div>`;
+  el.innerHTML = `
+    ${b.cupomAtual ? `<div style="color:#facc15;margin-bottom:6px;">⚠️ Substitui o cupom ${esc(b.cupomAtual.codigo)} (−${brl(b.cupomAtual.desconto)}).</div>` : ''}
+    ${linha('Produtos', brl(b.subtotal))}
+    ${b.descontoManual > 0 ? linha('Desconto manual', '−' + brl(b.descontoManual), 'color:#4ade80;') : ''}
+    ${linha(`🎟️ Desconto forçado (${esc(descricaoRegraForcada(regra))})`, '−' + brl(c.desconto), 'color:#4ade80;')}
+    ${c.desconto < rd2(bruto) - 0.004 ? '<div style="font-size:11px;color:#facc15;">Limitado ao valor dos produtos — o total nunca fica negativo.</div>' : ''}
+    ${linha(b.retirada ? 'Retirada no local' : 'Frete', c.cupom_forcado_frete > 0 ? `<s style="opacity:.6;">${brl(c.cupom_forcado_frete)}</s> ${brl(0)}` : brl(c.frete))}
+    <div style="border-top:1px solid var(--border-color);margin:6px 0;"></div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:15px;"><span>Total</span><span><span style="color:#ff7777;text-decoration:line-through;">${brl(b.totalAtual)}</span> → <strong style="color:var(--orange);font-size:18px;">${brl(c.total)}</strong></span></div>`;
+  return c;
+}
+async function cfConfirmar(){
+  if (!_cfCtx) return;
+  const regra = cfLerRegra();
+  if (!regra) { showToastAdmin('⚠️ Escolha o cupom ou digite um desconto válido.'); return; }
+  const motivo = document.getElementById('cf-motivo').value.trim();
+  const por = document.getElementById('cf-por').value.trim();
+  if (motivo.length < 3) { showToastAdmin('⚠️ Informe o motivo do desconto.'); document.getElementById('cf-motivo').focus(); return; }
+  if (por.length < 2) { showToastAdmin('⚠️ Informe quem está forçando o desconto.'); document.getElementById('cf-por').focus(); return; }
+  const f = { regra, motivo, por, zerarFrete: !!document.getElementById('cf-zerar-frete')?.checked, em: new Date().toISOString() };
+  if (!(camposCupomForcado(f, _cfCtx.base).desconto > 0) && !f.zerarFrete) { showToastAdmin('⚠️ O desconto ficou em R$ 0,00.'); return; }
+  try { localStorage.setItem('bb_admin_editor', por); } catch (e) {}
+  const btn = document.getElementById('cf-confirmar'); btn.disabled = true;
+  try { if (await _cfCtx.onConfirmar(f)) fecharModalCupomForcado(); }
+  finally { btn.disabled = false; }
+}
+async function cfRemover(){
+  if (!_cfCtx) return;
+  const por = document.getElementById('cf-por').value.trim();
+  if (por.length < 2) { showToastAdmin('⚠️ Informe quem está removendo o desconto.'); document.getElementById('cf-por').focus(); return; }
+  if (!(await confirmCustom('Remover o desconto forçado? O total volta sem o desconto.'))) return;
+  if (await _cfCtx.onRemover(por)) fecharModalCupomForcado();
+}
+
+// Botão do card do kanban: grava direto no pedido (com histórico), em qualquer status.
+async function abrirCupomForcadoPedido(id){
+  const [p] = await api('pedidos', `id=eq.${id}`);
+  if (!p) { showToastAdmin('⚠️ Pedido não encontrado.'); return; }
+  const base = {
+    subtotal: Number(p.subtotal) || 0,
+    frete: rd2((Number(p.frete) || 0) + (Number(p.cupom_forcado_frete) || 0)),
+    descontoManual: Number(p.desconto_manual) || 0,
+    totalAtual: Number(p.total) || 0,
+    cupomAtual: !p.cupom_forcado && p.cupom && Number(p.desconto) > 0 ? { codigo: p.cupom, desconto: Number(p.desconto) } : null,
+    retirada: ehRetirada(p),
+  };
+  const antesTexto = p.cupom_forcado ? textoDescontoForcado(p) : base.cupomAtual ? `Cupom ${p.cupom}: −${brl(p.desconto)}` : null;
+  const gravar = async (campos, por, depoisTexto) => {
+    const [atual] = await api('pedidos', `id=eq.${id}&select=status,historico_edicoes`);
+    if (!atual) { showToastAdmin('⚠️ Pedido não encontrado.'); return false; }
+    const historico = [...(Array.isArray(atual.historico_edicoes) ? atual.historico_edicoes : []),
+      { em: new Date().toISOString(), por, mudancas: [{ campo: 'Cupom forçado', antes: antesTexto, depois: depoisTexto }, { campo: 'Total', antes: Number(p.total) || 0, depois: campos.total }] }];
+    const linhas = await updSeStatus('pedidos', id, statusBucket(atual.status), { ...campos, historico_edicoes: historico });
+    if (linhas === null) { showToastAdmin('⚠️ Erro ao salvar o desconto.'); return false; }
+    if (!linhas.length) { showToastAdmin('⚠️ O pedido mudou de status enquanto você salvava — nada foi alterado. Abra de novo.'); loadPedidos(); return false; }
+    registrarHistorico(`Pedido #${id}: ${depoisTexto || 'desconto forçado removido'} — por ${por}`);
+    showToastAdmin(depoisTexto ? `✅ Pedido #${id}: total ${brl(campos.total)}` : `✅ Desconto forçado removido do pedido #${id}.`);
+    loadPedidos();
+    return true;
+  };
+  abrirModalCupomForcado({
+    titulo: `pedido #${id}`, base, atual: cupomForcadoDoPedido(p),
+    onConfirmar: f => { const c = camposCupomForcado(f, base); return gravar(c, f.por, textoDescontoForcado({ ...p, ...c })); },
+    onRemover: por => gravar({ cupom: null, desconto: 0, frete: base.frete, total: rd2(Math.max(0, base.subtotal - base.descontoManual) + base.frete), ...CAMPOS_SEM_CUPOM_FORCADO }, por, null),
+  });
+}
+
+// Pedido manual, "Processar com IA" e "Editar pedido": guarda no estado da tela;
+// o total é aplicado por cima do cálculo oficial (sem o cupom) ao lançar/salvar.
+async function pmAbrirCupomForcado(){
+  const st = window.__pedidoManualState, menu = window.__pedidoManualMenu;
+  const precos = st.itens.map(it => calcPrecoItemPedidoManual(it, menu));
+  if (!precos.length || precos.some(x => !x)) { showToastAdmin('⚠️ Complete os itens antes de forçar o cupom.'); return; }
+  const bairro = st.retirada ? { nome: 'Retirada no local' } : menu.bairros.find(b => b.nome === st.bairroNome);
+  if (!bairro) { showToastAdmin('⚠️ Selecione o bairro antes de forçar o cupom.'); return; }
+  let r;
+  try { r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, null, st._edicao ? st._edicao.id : null); }
+  catch (e) { console.error('pmAbrirCupomForcado', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
+  const dm = descontoManualDe(st);
+  const calc = window.__pedidoManualCalculo;
+  const base = { subtotal: Number(r.subtotal) || 0, frete: Number(r.frete) || 0, descontoManual: dm, retirada: st.retirada,
+    cupomAtual: !st.cupomForcado && st.cupom && calc?.cupom?.valido ? { codigo: calc.cupom.codigo, desconto: Number(calc.desconto) || 0 } : null };
+  base.totalAtual = st.cupomForcado ? camposCupomForcado(st.cupomForcado, base).total : rd2((calc ? Number(calc.total) : Number(r.total)) - dm);
+  abrirModalCupomForcado({
+    titulo: st._edicao ? `pedido #${st._edicao.id}` : 'pedido manual', base, atual: st.cupomForcado || null,
+    onConfirmar: async f => { st.cupomForcado = f; st.cupom = ''; renderPedidoManualConfirmacao(); return true; },
+    onRemover: async () => { st.cupomForcado = null; renderPedidoManualConfirmacao(); return true; },
+  });
 }
 
 async function remPedido(id){ if(confirm('Deletar pedido?')){ await del('pedidos',id); loadPedidos(); } }
@@ -3467,9 +3688,11 @@ async function salvarBordaPedido(){
 
   // Mesma regra oficial do site/bot/gatilho: a borda pode levar o pedido acima
   // do frete grátis, e a oferta da pizza doce / cupom continuam valendo.
+  // Desconto forçado: recalcula sem o cupom e reaplica o desconto forçado por cima.
+  const forcado = cupomForcadoDoPedido(pedidoOriginal);
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(novoItensJson, pedidoOriginal.bairro, pedidoOriginal.whatsapp, pedidoOriginal.bairro === 'Retirada no local', pedidoOriginal.cupom, pedidoOriginal.id);
+    r = await calcularCheckoutPedidoManual(novoItensJson, pedidoOriginal.bairro, pedidoOriginal.whatsapp, pedidoOriginal.bairro === 'Retirada no local', forcado ? null : pedidoOriginal.cupom, pedidoOriginal.id);
   } catch(e) {
     console.error('salvarBordaPedido', e);
     showToastAdmin('⚠️ Não consegui recalcular o total. Tente de novo.'); return;
@@ -3477,18 +3700,22 @@ async function salvarBordaPedido(){
   const bairroNaLista = r.bairro_reconhecido !== false;
   const cupomContinua = !pedidoOriginal.cupom || r.cupom?.valido;
   const novoSubtotal = Number(r.subtotal);
-  const desconto = cupomContinua ? Number(r.desconto) || 0 : 0;
-  const frete = bairroNaLista ? Number(r.frete) || 0 : Number(pedidoOriginal.frete) || 0;
-  const novoTotal = +(novoSubtotal - desconto + frete).toFixed(2);
+  const descontoManual = Number(pedidoOriginal.desconto_manual) || 0;
+  const freteBase = bairroNaLista ? Number(r.frete) || 0 : rd2((Number(pedidoOriginal.frete) || 0) + (Number(pedidoOriginal.cupom_forcado_frete) || 0));
+  let valores;
+  if (forcado) {
+    const cf = camposCupomForcado(forcado, { subtotal: novoSubtotal, frete: freteBase, descontoManual });
+    valores = { desconto: cf.desconto, frete: cf.frete, total: cf.total, cupom_forcado_frete: cf.cupom_forcado_frete };
+  } else {
+    const desconto = cupomContinua ? Number(r.desconto) || 0 : 0;
+    valores = { desconto, frete: freteBase, total: +(Math.max(0, novoSubtotal - desconto - descontoManual) + freteBase).toFixed(2), ...(cupomContinua ? {} : { cupom: null }) };
+  }
 
   const ok = await upd('pedidos', pedidoOriginal.id, {
     itens: novoItensTexto,
     itens_json: r.itens,
     subtotal: novoSubtotal,
-    desconto,
-    frete,
-    total: novoTotal,
-    ...(cupomContinua ? {} : { cupom: null }),
+    ...valores,
   });
   if(ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Borda atualizada!'); }
   else { alert('Erro ao salvar!'); }
@@ -3569,7 +3796,7 @@ ${linhasValores}
 ${CUPOM_TRACO}
 <strong>*** TOTAL: ${esc(ResumoPedido.brl(resumo.total))} ***</strong>
 ${CUPOM_TRACO}
-${p.observacao ? `<strong>*** OBSERVACAO DO CLIENTE ***</strong>\n<strong>${esc(semAcentoImpressao(p.observacao))}</strong>\n${CUPOM_LINHA}\n` : ''}Pagamento: <strong>*** ${esc(pagamento)} ***</strong>
+${p.cupom_forcado ? `<strong>*** DESCONTO FORCADO ***</strong>\n${esc(semAcentoImpressao(textoDescontoForcado(p).replace(/^Desconto forçado:\s*/, '')))}\n${CUPOM_TRACO}\n` : ''}${p.observacao ? `<strong>*** OBSERVACAO DO CLIENTE ***</strong>\n<strong>${esc(semAcentoImpressao(p.observacao))}</strong>\n${CUPOM_LINHA}\n` : ''}Pagamento: <strong>*** ${esc(pagamento)} ***</strong>
 ${pagamentoDivididoAdmin(p) ? `<strong>*** PAGAMENTO DIVIDIDO ***</strong>
 <strong>${esc(semAcentoImpressao(pagamentoDivididoAdmin(p).replace(/^PAGAMENTO DIVIDIDO:\s*/i, '')))}</strong>
 ` : ''}${p.troco_para ? `<strong>Troco para ${esc(ResumoPedido.brl(p.troco_para))}${Number(p.troco_para) > Number(p.total || 0) ? ` (levar ${esc(ResumoPedido.brl(Number(p.troco_para) - Number(p.total || 0)))})` : ''}</strong>\n` : ''}${CUPOM_LINHA}
@@ -4025,7 +4252,12 @@ function renderPedidoManualConfirmacao(){
       </select>
     </div>
     ${ed ? `<div class="fg"><label>Troco para (R$) — vazio se não precisa</label><input id="pm-troco" type="number" min="0" step="0.01" value="${st.troco_para ?? ''}" placeholder="Ex: 100" oninput="pmAtualizarCampo('troco_para',this.value)"></div>` : ''}
-    <div class="fg"><label>Cupom (opcional)</label><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"></div>
+    ${st.cupomForcado ? `<div class="fg"><label>Cupom</label>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.45);border-radius:8px;padding:8px 10px;font-size:13px;color:#4ade80;font-weight:700;">
+        <span>🎟️ Desconto forçado: ${esc(descricaoRegraForcada(st.cupomForcado.regra))}${st.cupomForcado.zerarFrete ? ' + frete zerado' : ''} — ${esc(st.cupomForcado.motivo)}</span>
+        <button type="button" class="be" style="flex:none;" onclick="pmAbrirCupomForcado()">Alterar</button>
+      </div></div>`
+    : `<div class="fg"><label>Cupom (opcional)</label><div style="display:flex;gap:6px;align-items:stretch;"><input id="pm-cupom" value="${esc(st.cupom||'')}" placeholder="Ex: BIGBANG15" style="text-transform:uppercase;flex:1;" onchange="pmAtualizarCampo('cupom',this.value.trim().toUpperCase())"><button type="button" class="be" style="flex:none;padding:0 12px;" onclick="pmAbrirCupomForcado()" title="Desconto ignorando as regras do cupom">🎟️ Forçar cupom</button></div></div>`}
     <div class="fg"><label>Observação geral</label><textarea id="pm-obs" oninput="pmAtualizarCampo('observacao',this.value)">${esc(st.observacao)}</textarea></div>
     ${ed ? `<div class="fr">
       <div class="fg"><label>Desconto manual (R$)</label><input id="pm-desconto-manual" type="number" min="0" step="0.01" value="${st.desconto_manual || ''}" placeholder="0,00" oninput="pmAtualizarCampo('desconto_manual',this.value)"></div>
@@ -4392,7 +4624,7 @@ async function atualizarResumoPedidoManual(){
   el.innerHTML = `${avisos}<div style="color:rgba(255,255,255,.5);">Calculando total…</div>`;
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, st.cupom, st._edicao ? st._edicao.id : null);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairro.nome, st.whatsapp, st.retirada, st.cupomForcado ? null : st.cupom, st._edicao ? st._edicao.id : null);
   } catch(e) {
     console.error('calcularCheckoutPedidoManual', e);
     if(seq === _pmResumoSeq) el.innerHTML = `${avisos}<div style="color:#ff4444;">⚠️ Não consegui calcular o total agora. Tente de novo.</div>`;
@@ -4401,7 +4633,8 @@ async function atualizarResumoPedidoManual(){
   if(seq !== _pmResumoSeq) return; // o atendente mudou algo enquanto calculava
   window.__pedidoManualCalculo = r;
   const dm = descontoManualDe(st);
-  const totalFinal = Math.round((Number(r.total) - dm) * 100) / 100;
+  const cf = st.cupomForcado ? camposCupomForcado(st.cupomForcado, { subtotal: Number(r.subtotal), frete: Number(r.frete), descontoManual: dm }) : null;
+  const totalFinal = cf ? cf.total : Math.round((Number(r.total) - dm) * 100) / 100;
   const doceOferta = (r.itens||[]).find(i => i.oferta_doce);
   // Preço de cada item na tela: a oferta vai na primeira pizza doce (mesma escolha do servidor).
   const idxOferta = doceOferta ? st.itens.findIndex(it => it.tipo==='pizza_doce') : -1;
@@ -4424,7 +4657,8 @@ async function atualizarResumoPedidoManual(){
     ${doceOferta ? `<div style="color:#4ade80;font-size:13px;margin-bottom:6px;">🍫 Oferta aplicada: Doce ${esc(doceOferta.sabores?.[0]?.nome||'')} por ${brl(doceOferta.precoUnitario)} (−${brl(r.oferta_doce.economia)})</div>` : ''}
     <div>Subtotal: <strong>${brl(r.subtotal)}</strong></div>
     ${Number(r.desconto) > 0 ? `<div>Desconto: <strong>−${brl(r.desconto)}</strong></div>` : ''}
-    <div>Frete: <strong>${Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
+    ${cf ? `<div style="color:#4ade80;">🎟️ Desconto forçado (${esc(descricaoRegraForcada(st.cupomForcado.regra))}): <strong>−${brl(cf.desconto)}</strong></div>` : ''}
+    <div>Frete: <strong>${cf && cf.cupom_forcado_frete > 0 ? `<s style="opacity:.6;">${brl(r.frete)}</s> Grátis (zerado pelo desconto forçado)` : Number(r.frete)===0 && !st.retirada ? 'Grátis' : brl(r.frete)}</strong></div>
     ${Number(r.falta_para_frete_gratis) > 0 && !st.retirada ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Faltam ${brl(r.falta_para_frete_gratis)} para frete grátis</div>` : ''}
     ${dm > 0 ? `<div>Desconto manual: <strong>−${brl(dm)}</strong>${dm > Number(r.total) ? ' <span style="color:#ff4444;">(maior que o total)</span>' : ''}</div>` : ''}
     <div style="font-size:17px;margin-top:4px;">Total: <strong style="color:var(--orange);">${brl(totalFinal)}</strong></div>
@@ -4458,7 +4692,7 @@ async function lancarPedidoManual(){
   // Valores oficiais (oferta da doce + frete), calculados na hora de lançar.
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupomForcado ? null : st.cupom);
   } catch(e) {
     console.error('lancarPedidoManual', e);
     showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return;
@@ -4472,7 +4706,7 @@ async function lancarPedidoManual(){
 
   const itensTexto = st.itens.map((it,i) => `${it.qty}x ${precos[i].nomeExibicao}`).join(' | ');
 
-  const resp = await authFetch(`${SB}/rest/v1/pedidos`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({
+  const dadosPedido = {
     nome: st.nome.trim(),
     whatsapp: whatsCliente.valor,
     endereco: st.retirada ? ENDERECO_LOJA_MANUAL : st.endereco.trim(),
@@ -4489,7 +4723,13 @@ async function lancarPedidoManual(){
     desconto: Number(r.desconto) || 0,
     frete: Number(r.frete) || 0,
     total: Number(r.total),
-  }) });
+  };
+  // Desconto forçado pela equipe: por cima do cálculo oficial (sem cupom), com o histórico de quem forçou.
+  if(st.cupomForcado){
+    const cf = camposCupomForcado(st.cupomForcado, { subtotal: Number(r.subtotal), frete: Number(r.frete) || 0, descontoManual: 0 });
+    Object.assign(dadosPedido, cf, { historico_edicoes: [{ em: st.cupomForcado.em, por: st.cupomForcado.por, mudancas: [{ campo: 'Cupom forçado', antes: null, depois: textoDescontoForcado({ ...dadosPedido, ...cf }) }] }] });
+  }
+  const resp = await authFetch(`${SB}/rest/v1/pedidos`, { method: 'POST', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify(dadosPedido) });
 
   if(resp.ok){ closeMod(); loadPedidos(); showToastAdmin('✅ Pedido manual lançado!'); return; }
   // O servidor recusa o mesmo pedido repetido em poucos segundos (gatilho pedidos_bloquear_duplicado).
@@ -4504,12 +4744,13 @@ async function lancarPedidoManual(){
 // pedido atual. Total pela calcular_checkout_v2 (mesmas regras do site),
 // gravação só se o status não mudou no meio, e histórico no próprio pedido.
 // ═══════════════════════════════════════════════════════
-const CAMPOS_VALOR_EDICAO = ['subtotal', 'desconto', 'frete', 'total', 'troco_para', 'desconto_manual'];
+const CAMPOS_VALOR_EDICAO = ['subtotal', 'desconto', 'frete', 'total', 'troco_para', 'desconto_manual', 'cupom_forcado_frete'];
 const STATUS_EDITAVEIS = ['aguardando', 'aceito_preparando', 'saiu'];
 const CAMPOS_HISTORICO_EDICAO = [
   ['itens', 'Itens'], ['nome', 'Nome'], ['whatsapp', 'WhatsApp'], ['endereco', 'Endereço'], ['complemento', 'Complemento'],
   ['bairro', 'Bairro'], ['pagamento', 'Pagamento'], ['troco_para', 'Troco para'], ['observacao', 'Observação'], ['cupom', 'Cupom'],
   ['desconto_manual', 'Desconto manual'], ['desconto_manual_motivo', 'Motivo do desconto'],
+  ['cupom_forcado_motivo', 'Motivo do desconto forçado'], ['cupom_forcado_frete', 'Frete zerado (desconto forçado)'],
   ['subtotal', 'Subtotal'], ['desconto', 'Desconto'], ['frete', 'Frete'], ['total', 'Total'],
 ];
 
@@ -4574,7 +4815,8 @@ async function abrirEdicaoPedido(id){
     endereco: pedido.endereco || '', complemento: pedido.complemento || '',
     bairroNome: pedido.bairro === 'Retirada no local' ? '' : (pedido.bairro || ''),
     pagamento: pagamentoEstadoDeTexto(pedido.pagamento || ''),
-    observacao: pedido.observacao || '', cupom: (pedido.cupom || '').toUpperCase(),
+    observacao: pedido.observacao || '', cupom: pedido.cupom_forcado ? '' : (pedido.cupom || '').toUpperCase(),
+    cupomForcado: cupomForcadoDoPedido(pedido),
     troco_para: pedido.troco_para ?? '', desconto_manual: Number(pedido.desconto_manual) || '', desconto_manual_motivo: pedido.desconto_manual_motivo || '',
     itens, _editor: editor,
     _edicao: {
@@ -4629,7 +4871,7 @@ async function gravarEdicaoPedido(){
   // Valores oficiais (mesma função do site), ignorando o próprio pedido no uso do cupom e nos selos
   let r;
   try {
-    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupom, ed.id);
+    r = await calcularCheckoutPedidoManual(montarItensJsonPedidoManual(st, menu, precos), bairroNome, st.whatsapp, st.retirada, st.cupomForcado ? null : st.cupom, ed.id);
   } catch (e) { console.error('gravarEdicaoPedido', e); showToastAdmin('⚠️ Não consegui calcular o total. Tente de novo.'); return; }
   if (st.itens.some(it => it.brinde) && !r.fidelidade?.brinde_aplicado) {
     showToastAdmin(`⚠️ Presente da fidelidade não vale: ${r.fidelidade?.motivo || ''} Remova o presente ou corrija o pedido.`, 7000); return;
@@ -4659,6 +4901,9 @@ async function gravarEdicaoPedido(){
     frete: Number(r.frete) || 0,
     total: Math.round((Number(r.total) - descontoManual) * 100) / 100,
   };
+  // Desconto forçado: reaplicado sobre os valores novos (itens podem ter mudado); removido → limpa os campos.
+  if (st.cupomForcado) Object.assign(novo, camposCupomForcado(st.cupomForcado, { subtotal: Number(r.subtotal), frete: Number(r.frete) || 0, descontoManual }));
+  else if (o.cupom_forcado) Object.assign(novo, CAMPOS_SEM_CUPOM_FORCADO);
   const num = (v) => v == null ? null : Number(v);
   const mudancas = CAMPOS_HISTORICO_EDICAO.map(([campo, rotulo]) => {
     const ehValor = CAMPOS_VALOR_EDICAO.includes(campo);
@@ -6252,6 +6497,11 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
     { c:'ifood', n:resApps.ifood.n, bruto:resApps.ifood.bruto, liquido:resApps.ifood.liquido },
     { c:'99food', n:resApps['99food'].n, bruto:resApps['99food'].bruto, liquido:resApps['99food'].liquido },
   ];
+  // Descontos forçados pela equipe (cortesia) x cupons normais — só pedidos entregues.
+  const forcados=entregues.filter(p=>p.cupom_forcado);
+  const totForcado=forcados.reduce((s,p)=>s+(Number(p.desconto)||0)+(Number(p.cupom_forcado_frete)||0),0);
+  const cuponsNormais=entregues.filter(p=>!p.cupom_forcado&&Number(p.desconto)>0);
+  const totCupons=cuponsNormais.reduce((s,p)=>s+(Number(p.desconto)||0),0);
   const celulaDia=(x)=>x.n?`${brl(x.v)} <span style="font-size:11px;color:var(--text-secondary);">(${x.n})</span>`:'<span style="color:var(--text-secondary);">—</span>';
   const diasOrdenados=Object.keys(porDia).sort().reverse();
 
@@ -6293,6 +6543,14 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
         <td data-label="Líquido">${brl(fat+liquidoApps)}</td>
         <td data-label="Ticket médio">${pedidosGeral?brl(fatGeral/pedidosGeral):'—'}</td>
       </tr></tbody></table>
+      <div class="stats" style="margin:12px 0 0;">
+        <div class="stat" style="border-color:rgba(74,222,128,.5);"><div class="stat-n" style="font-size:22px;color:#4ade80;">${brl(totForcado)}</div><div class="stat-l">🎟️ Descontos forçados (${forcados.length} pedido${forcados.length===1?'':'s'}) — cortesia, frete zerado incluído</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(totCupons)}</div><div class="stat-l">Cupons normais (${cuponsNormais.length} pedido${cuponsNormais.length===1?'':'s'})</div></div>
+      </div>
+      ${forcados.length?`<details style="margin-top:8px;font-size:12px;"><summary style="cursor:pointer;color:var(--text-secondary);">Ver os descontos forçados</summary>
+        <table style="margin-top:6px;"><thead><tr><th>#</th><th>Dia</th><th>Cliente</th><th>Desconto</th><th>Motivo</th><th>Por</th></tr></thead><tbody>
+        ${forcados.map(p=>`<tr><td data-label="#">${p.id}</td><td data-label="Dia">${diaBahia(p.created_at).split('-').reverse().join('/')}</td><td data-label="Cliente">${esc(p.nome||'')}</td><td data-label="Desconto">${brl((Number(p.desconto)||0)+(Number(p.cupom_forcado_frete)||0))}${Number(p.cupom_forcado_frete)>0?' <span style="font-size:11px;color:var(--text-secondary);">(com frete)</span>':''}</td><td data-label="Motivo">${esc(p.cupom_forcado_motivo||'')}</td><td data-label="Por">${esc(p.cupom_forcado_por||'')}</td></tr>`).join('')}
+        </tbody></table></details>`:''}
       ${!ehDiaUnico&&diasOrdenados.length?`<h4 style="margin:16px 0 6px;font-size:13px;">Por dia <span style="font-weight:400;font-size:11px;color:var(--text-secondary);">— valor bruto (nº de pedidos)</span></h4>
       <table><thead><tr><th>Dia</th><th>Site/WhatsApp</th><th>iFood</th><th>99Food</th><th>Total</th></tr></thead><tbody>
       ${diasOrdenados.map(d=>{const x=porDia[d];const tn=x.site.n+x.ifood.n+x['99food'].n;return `<tr><td data-label="Dia">${d.split('-').reverse().join('/')}</td><td data-label="Site/WhatsApp">${celulaDia(x.site)}</td><td data-label="iFood">${celulaDia(x.ifood)}</td><td data-label="99Food">${celulaDia(x['99food'])}</td><td data-label="Total" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(x.site.v+x.ifood.v+x['99food'].v)} <span style="font-family:Inter,sans-serif;font-size:11px;color:var(--text-secondary);">(${tn})</span></td></tr>`;}).join('')}
