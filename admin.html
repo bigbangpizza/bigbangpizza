@@ -446,6 +446,7 @@ input:checked+.sl::before{transform:translateX(20px);}
         <div class="tw-head"><h3>📈 Vendas — Últimos 7 dias</h3></div>
         <div style="padding:18px;">
           <canvas id="sales-chart" width="900" height="260" style="width:100%;height:260px;"></canvas>
+          <div id="sales-chart-legenda" style="margin-top:8px;display:flex;flex-wrap:wrap;row-gap:4px;"></div>
         </div>
       </div>
 
@@ -1653,6 +1654,7 @@ function show(page) {
   closeSidebar();
   fecharMaisMenu();
   fecharBuscaGlobal();
+  removeChartTooltip();
   if (page !== 'pedidos' && _pedidoTimer) { clearTimeout(_pedidoTimer); _pedidoTimer = null; }
   if (page !== 'cozinha' && _cozinhaTimer) { clearInterval(_cozinhaTimer); _cozinhaTimer = null; }
   if (page !== 'analytics' && _analyticsTimer) { clearInterval(_analyticsTimer); _analyticsTimer = null; }
@@ -1780,8 +1782,10 @@ async function loadDash() {
     <div class="stat"><div class="stat-n">${b.filter(x=>x.ativo).length}</div><div class="stat-l">Bebidas Ativas</div></div>
     <div class="stat"><div class="stat-n">${br.filter(x=>x.ativo).length}</div><div class="stat-l">Bairros Ativos</div></div>`;
   document.getElementById('stats').innerHTML = html;
-  const [av, ct, pedidos, est] = await Promise.all([
-    api('avaliacoes'), api('contatos'), api('pedidos','','created_at.desc'), api('estoque','ativo=eq.true')
+  const [av, ct, pedidos, est, vendasApps7d] = await Promise.all([
+    api('avaliacoes'), api('contatos'), api('pedidos','','created_at.desc'), api('estoque','ativo=eq.true'),
+    // iFood/99Food dos últimos 7 dias (dia da Bahia) — gráfico e card financeiro
+    api('vendas_apps', `data=gte.${somarDiasISO(hojeBahiaISO(), -6)}&select=data,canal,valor_bruto,valor_liquido`, 'data.asc')
   ]);
   const ag = pedidos.filter(p=>p.status==='aguardando').length;
   const ap = pedidos.filter(p=>statusBucket(p.status)==='aceito_preparando').length;
@@ -1801,8 +1805,8 @@ async function loadDash() {
       <div class="stat-n" style="color:#4ade80">${ct.filter(x=>!x.lido).length}</div><div class="stat-l">💬 Msgs Novas</div></div>`;
 
   atualizarBadgePedidos(ag);
-  renderDashExtraCards(pedidos);
-  renderSalesChart(pedidos);
+  renderDashExtraCards(pedidos, vendasApps7d);
+  renderSalesChart(pedidos, vendasApps7d);
   renderHistorico();
   carregarConfigAlerta();
 }
@@ -1835,7 +1839,7 @@ function contarItens(pedidosLista){
   return cont;
 }
 
-function renderDashExtraCards(pedidos){
+function renderDashExtraCards(pedidos, vendasApps = []){
   const entregues = pedidos.filter(p=>p.status==='entregue');
 
   // Horário de pico
@@ -1880,7 +1884,8 @@ function renderDashExtraCards(pedidos){
     <div class="dash-card-line"><span>💰 Faturamento</span><strong>${brl(fatHoje)}</strong></div>
     <div class="dash-card-line"><span>📦 Pedidos entregues</span><strong>${entHoje.length}</strong></div>
     <div class="dash-card-line"><span>🎯 Ticket médio</span><strong>${brl(ticketHoje)}</strong></div>
-    <div class="dash-card-line" style="font-size:12px;">${compHtml}</div>`;
+    <div class="dash-card-line" style="font-size:12px;">${compHtml}</div>
+    ${resumoAppsHojeHTML(fatHoje, vendasApps)}`;
 
   document.getElementById('dash-extra-cards').innerHTML = `
     <div class="dash-card">${picoHtml}</div>
@@ -1888,32 +1893,56 @@ function renderDashExtraCards(pedidos){
     <div class="dash-card">${financeiroHtml}</div>`;
 }
 
+// iFood/99Food de hoje no card financeiro + total do dia em todos os canais
+// (líquido = site inteiro + repasse dos apps depois das taxas).
+function resumoAppsHojeHTML(fatSiteHoje, vendasApps){
+  const hoje = hojeBahiaISO();
+  const res = resumoVendasApps((vendasApps || []).filter(v => v.data === hoje));
+  const totalBruto = fatSiteHoje + res.ifood.bruto + res['99food'].bruto;
+  const totalLiq = fatSiteHoje + res.ifood.liquido + res['99food'].liquido;
+  const linha = (c) => `<div class="dash-card-line"><span><span style="color:${CANAL_COR[c]};">●</span> ${APPS_CANAIS[c]}</span><strong>${brl(res[c].bruto)} <span style="font-weight:500;color:var(--text-secondary);font-size:12px;">(${res[c].n} pedido${res[c].n === 1 ? '' : 's'})</span></strong></div>`;
+  return `<div style="border-top:1px solid var(--border-color);margin-top:8px;padding-top:8px;">
+    ${linha('ifood')}${linha('99food')}
+    <div style="background:rgba(255,107,0,.1);border:1px solid rgba(255,107,0,.35);border-radius:8px;padding:8px 10px;margin-top:8px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;"><span style="font-size:12px;font-weight:700;">Total do dia (todos os canais)</span><strong style="color:var(--orange);font-size:16px;">${brl(totalBruto)}</strong></div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">Líquido depois das taxas dos apps: ${brl(totalLiq)}</div>
+    </div></div>`;
+}
+
 // ═══════════════════════════════════════════════════════
 // GRÁFICO DE VENDAS — Canvas API, sem lib externa
 // ═══════════════════════════════════════════════════════
 let _salesChartData = null;
-function renderSalesChart(pedidos){
+// Séries por dia-calendário da Bahia (created_at é UTC sem "Z"; vendas_apps.data já é o dia da Bahia).
+const SERIES_GRAFICO = [
+  { chave: 'site', nome: 'Site/WhatsApp', cor: '#ff6600', largura: 2.5, area: true },
+  { chave: 'ifood', nome: 'iFood', cor: '#ea1d2c', largura: 2.5 },
+  { chave: '99food', nome: '99Food', cor: '#ffb800', largura: 2.5 },
+  { chave: 'total', nome: 'Total', cor: 'rgba(150,150,150,.9)', largura: 1.5, tracejada: true },
+];
+function renderSalesChart(pedidos, vendasApps = []){
   const entregues = pedidos.filter(p=>p.status==='entregue');
-  const dias = [];
-  for(let i=6;i>=0;i--){
-    const d = new Date(); d.setDate(d.getDate()-i); d.setHours(0,0,0,0);
-    dias.push(d);
-  }
-  // Agrupa por dia-calendário em Bahia (não no fuso do navegador) — mesmo
-  // motivo do parseUTC/dataBahiaISO abaixo: created_at é UTC sem sufixo "Z".
-  const totais = dias.map(dia=>{
-    const diaISO = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(dia);
-    return entregues.filter(p => dataBahiaISO(p.created_at)===diaISO).reduce((s,p)=>s+(p.total||0),0);
+  const hoje = hojeBahiaISO();
+  const diasISO = [];
+  for(let i=6;i>=0;i--) diasISO.push(somarDiasISO(hoje, -i));
+  const series = { site: [], ifood: [], '99food': [], total: [] };
+  diasISO.forEach(diaISO => {
+    const site = entregues.filter(p => dataBahiaISO(p.created_at)===diaISO).reduce((s,p)=>s+(Number(p.total)||0),0);
+    const app = (c) => vendasApps.filter(v => v.data===diaISO && v.canal===c).reduce((s,v)=>s+(Number(v.valor_bruto)||0),0);
+    const ifood = app('ifood'), n99 = app('99food');
+    series.site.push(site); series.ifood.push(ifood); series['99food'].push(n99); series.total.push(site+ifood+n99);
   });
-  const labels = dias.map(d=>d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','').slice(0,3));
-  _salesChartData = { dias, totais, labels };
+  const labels = diasISO.map(d=>new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{weekday:'short',timeZone:'UTC'}).replace('.','').slice(0,3));
+  _salesChartData = { diasISO, series, labels };
+  const leg = document.getElementById('sales-chart-legenda');
+  if (leg) leg.innerHTML = SERIES_GRAFICO.map(sr => `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:18px;height:0;border-top:${sr.tracejada?'2px dashed':'3px solid'} ${sr.cor};"></span>${sr.nome}</span>`).join('');
   desenharSalesChart();
 }
 
 function desenharSalesChart(){
   const canvas = document.getElementById('sales-chart');
   if(!canvas || !_salesChartData) return;
-  const { totais, labels } = _salesChartData;
+  const { series, labels } = _salesChartData;
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   const w = Math.max(rect.width, 300), h = 260;
@@ -1924,7 +1953,7 @@ function desenharSalesChart(){
 
   const padL=54, padR=16, padT=16, padB=28;
   const plotW = w-padL-padR, plotH = h-padT-padB;
-  const max = Math.max(...totais, 1);
+  const max = Math.max(...series.total, 1);
 
   // grid sutil
   ctx.strokeStyle = 'rgba(255,255,255,0.06)';
@@ -1938,42 +1967,43 @@ function desenharSalesChart(){
     ctx.fillText(brl(max*i/4).replace('R$ ',''), padL-8, y+4);
   }
 
-  const pontos = totais.map((v,i)=>({
-    x: padL + (plotW * i/(totais.length-1||1)),
-    y: padT + plotH - (plotH * v/max),
-    v
-  }));
+  const n = labels.length;
+  const xDe = (i) => padL + (plotW * i/(n-1||1));
+  const yDe = (v) => padT + plotH - (plotH * v/max);
 
-  // linha
-  ctx.strokeStyle = '#ff6600';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  pontos.forEach((p,i)=> i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
-  ctx.stroke();
-
-  // área sob a linha
-  ctx.lineTo(pontos[pontos.length-1].x, padT+plotH);
-  ctx.lineTo(pontos[0].x, padT+plotH);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(255,102,0,0.12)';
-  ctx.fill();
-
-  // pontos + labels do eixo X
-  ctx.textAlign = 'center';
-  pontos.forEach((p,i)=>{
-    ctx.beginPath(); ctx.arc(p.x,p.y,3.5,0,Math.PI*2);
-    ctx.fillStyle = '#ff6600'; ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(labels[i], p.x, h-8);
+  // Total primeiro (por baixo), tracejado e fino; depois os apps; Site/WhatsApp por cima com área.
+  [SERIES_GRAFICO[3], SERIES_GRAFICO[1], SERIES_GRAFICO[2], SERIES_GRAFICO[0]].forEach(sr => {
+    const pts = series[sr.chave].map((v,i)=>({ x: xDe(i), y: yDe(v) }));
+    ctx.save();
+    ctx.strokeStyle = sr.cor; ctx.lineWidth = sr.largura;
+    ctx.setLineDash(sr.tracejada ? [6,5] : []);
+    ctx.beginPath();
+    pts.forEach((p,i)=> i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+    ctx.stroke();
+    if (sr.area) {
+      ctx.lineTo(pts[pts.length-1].x, padT+plotH);
+      ctx.lineTo(pts[0].x, padT+plotH);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,102,0,0.12)';
+      ctx.fill();
+    }
+    ctx.setLineDash([]);
+    if (!sr.tracejada) pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fillStyle = sr.cor; ctx.fill(); });
+    ctx.restore();
   });
 
-  canvas._pontos = pontos;
+  // labels do eixo X
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  labels.forEach((l,i)=> ctx.fillText(l, xDe(i), h-8));
+
+  canvas._pontos = labels.map((_,i)=>({ x: xDe(i), i }));
 }
 
 (function initSalesChartHover(){
   document.addEventListener('mousemove', (e)=>{
     const canvas = document.getElementById('sales-chart');
-    if(!canvas || !canvas._pontos || document.getElementById('pg-dashboard').classList.contains('hidden')) return;
+    if(!canvas || !canvas._pontos || document.getElementById('pg-dashboard').classList.contains('hidden')) { removeChartTooltip(); return; }
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left, y = e.clientY - rect.top;
     if(x<0||y<0||x>rect.width||y>rect.height){ removeChartTooltip(); return; }
@@ -1991,10 +2021,14 @@ function showChartTooltip(canvas, ponto, clientX, clientY){
     tip.style.cssText = 'position:fixed;background:#000;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.4);';
     document.body.appendChild(tip);
   }
-  tip.textContent = brl(ponto.v);
-  tip.style.left = (clientX+12)+'px';
-  tip.style.top = (clientY-28)+'px';
+  const sd = _salesChartData, i = ponto.i;
+  tip.innerHTML = `<div style="margin-bottom:3px;">${esc(sd.diasISO[i].split('-').reverse().slice(0,2).join('/'))} (${esc(sd.labels[i])})</div>` +
+    SERIES_GRAFICO.map(sr => `<div style="font-weight:${sr.chave==='total'?800:600};"><span style="color:${sr.cor};">●</span> ${sr.nome}: ${brl(sd.series[sr.chave][i])}</div>`).join('');
+  tip.style.whiteSpace = 'nowrap';
   tip.style.display = 'block';
+  const larg = tip.offsetWidth, alt = tip.offsetHeight;
+  tip.style.left = (clientX + 12 + larg > window.innerWidth - 8 ? clientX - 12 - larg : clientX + 12) + 'px';
+  tip.style.top = Math.max(8, Math.min(clientY - 28, window.innerHeight - alt - 8)) + 'px';
 }
 function removeChartTooltip(){
   const tip = document.getElementById('chart-tooltip');
@@ -5837,6 +5871,9 @@ async function salvarTextosSecoes(){
 // ═══════════════════════════════════════════════════════
 const APPS_CANAIS = { ifood: 'iFood', '99food': '99Food' };
 const APPS_CHAVE_TAXA = { ifood: 'taxa_ifood_pct', '99food': 'taxa_99_pct' };
+const CANAL_COR = { site: '#ff6600', ifood: '#ea1d2c', '99food': '#ffb800' };
+const CANAL_NOME = { site: 'Site/WhatsApp', ifood: 'iFood', '99food': '99Food' };
+const etiquetaCanal = (c) => `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;color:${CANAL_COR[c] || 'inherit'};background:${CANAL_COR[c] || '#888'}22;border:1px solid ${CANAL_COR[c] || '#888'}66;">${CANAL_NOME[c] || esc(c)}</span>`;
 const APPS_TAXA_PADRAO = { ifood: 12, '99food': 14.1 };
 let _appsTaxas = { ...APPS_TAXA_PADRAO };
 let _appsCanal = 'ifood';
@@ -6186,7 +6223,7 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
     api('pizzas_doces'),
     api('combos'),
     // Vendas do iFood/99Food: só entram no faturamento (nunca em sabores, fidelidade, CRM ou kanban).
-    api('vendas_apps', diasApps?`data=gte.${diasApps.de}&data=lte.${diasApps.ate}&select=data,canal,valor_bruto,valor_liquido`:'select=data,canal,valor_bruto,valor_liquido', 'data.asc'),
+    api('vendas_apps', diasApps?`data=gte.${diasApps.de}&data=lte.${diasApps.ate}`:'', 'data.asc,id.asc'),
   ]);
   const nomesDoces=new Set(doces.map(d=>d.nome));
   const nomesCombos=new Set(combos.map(c=>c.nome));
@@ -6206,9 +6243,16 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
   // Faturamento por dia (Bahia) e canal — só em períodos de mais de um dia.
   const diaBahia=(ts)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(parseUTC(ts)||new Date());
   const porDia={};
-  const linhaDia=(d)=>porDia[d]||(porDia[d]={site:0,ifood:0,'99food':0});
-  entregues.forEach(p=>{ linhaDia(diaBahia(p.created_at)).site+=Number(p.total)||0; });
-  vendasApps.forEach(v=>{ if(v.canal in APPS_CANAIS) linhaDia(v.data)[v.canal]+=Number(v.valor_bruto)||0; });
+  const linhaDia=(d)=>porDia[d]||(porDia[d]={site:{n:0,v:0},ifood:{n:0,v:0},'99food':{n:0,v:0}});
+  entregues.forEach(p=>{ const x=linhaDia(diaBahia(p.created_at)).site; x.n++; x.v+=Number(p.total)||0; });
+  vendasApps.forEach(v=>{ if(v.canal in APPS_CANAIS){ const x=linhaDia(v.data)[v.canal]; x.n++; x.v+=Number(v.valor_bruto)||0; } });
+  // Por canal no período: pedidos, bruto, taxas, líquido e ticket médio.
+  const canaisRel=[
+    { c:'site', n:entregues.length, bruto:fat, liquido:fat },
+    { c:'ifood', n:resApps.ifood.n, bruto:resApps.ifood.bruto, liquido:resApps.ifood.liquido },
+    { c:'99food', n:resApps['99food'].n, bruto:resApps['99food'].bruto, liquido:resApps['99food'].liquido },
+  ];
+  const celulaDia=(x)=>x.n?`${brl(x.v)} <span style="font-size:11px;color:var(--text-secondary);">(${x.n})</span>`:'<span style="color:var(--text-secondary);">—</span>';
   const diasOrdenados=Object.keys(porDia).sort().reverse();
 
   const { porSabor, unidadesSemSaborDefinido }=contarPizzasPorSabor(entregues, nomesDoces, nomesCombos);
@@ -6229,14 +6273,29 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
       <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">Site/WhatsApp: só pedidos com status "entregue" — cancelados nunca entram. iFood/99Food: vendas lançadas na aba "iFood / 99".</div>
       <div class="stats">
         <div class="stat" style="border-color:var(--orange);"><div class="stat-n" style="font-size:22px;">${brl(fatGeral)}</div><div class="stat-l">Total geral bruto (${pedidosGeral} pedidos)</div></div>
-        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat)}</div><div class="stat-l">Site/WhatsApp (${entregues.length})</div></div>
-        <div class="stat"><div class="stat-n" style="font-size:22px;color:#ff5a66;">${brl(resApps.ifood.bruto)}</div><div class="stat-l">iFood (${resApps.ifood.n}) · líquido ${brl(resApps.ifood.liquido)}</div></div>
-        <div class="stat"><div class="stat-n" style="font-size:22px;color:#ffc93d;">${brl(resApps['99food'].bruto)}</div><div class="stat-l">99Food (${resApps['99food'].n}) · líquido ${brl(resApps['99food'].liquido)}</div></div>
         <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat+liquidoApps)}</div><div class="stat-l">Total líquido (site + repasse dos apps)</div></div>
-        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(ticket)}</div><div class="stat-l">Ticket Médio Site/WhatsApp</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${pedidosGeral?brl(fatGeral/pedidosGeral):'—'}</div><div class="stat-l">Ticket médio geral</div></div>
       </div>
-      ${!ehDiaUnico&&diasOrdenados.length?`<table style="margin-top:12px;"><thead><tr><th>Dia</th><th>Site/WhatsApp</th><th>iFood</th><th>99Food</th><th>Total</th></tr></thead><tbody>
-      ${diasOrdenados.map(d=>{const x=porDia[d];return `<tr><td data-label="Dia">${d.split('-').reverse().join('/')}</td><td data-label="Site/WhatsApp">${brl(x.site)}</td><td data-label="iFood">${brl(x.ifood)}</td><td data-label="99Food">${brl(x['99food'])}</td><td data-label="Total" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(x.site+x.ifood+x['99food'])}</td></tr>`;}).join('')}
+      <table><thead><tr><th>Canal</th><th>Pedidos</th><th>Faturamento bruto</th><th>Taxas dos apps</th><th>Líquido</th><th>Ticket médio</th></tr></thead><tbody>
+      ${canaisRel.map(r=>`<tr>
+        <td data-label="Canal">${etiquetaCanal(r.c)}</td>
+        <td data-label="Pedidos">${r.n}</td>
+        <td data-label="Faturamento bruto" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(r.bruto)}</td>
+        <td data-label="Taxas dos apps">${r.c==='site'?'—':brl(r.bruto-r.liquido)}</td>
+        <td data-label="Líquido">${brl(r.liquido)}</td>
+        <td data-label="Ticket médio">${r.n?brl(r.bruto/r.n):'—'}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;">
+        <td data-label="Canal">Total geral</td>
+        <td data-label="Pedidos">${pedidosGeral}</td>
+        <td data-label="Faturamento bruto" style="font-family:'Bebas Neue',sans-serif;font-size:17px;color:var(--orange);">${brl(fatGeral)}</td>
+        <td data-label="Taxas dos apps">${brl(brutoApps-liquidoApps)}</td>
+        <td data-label="Líquido">${brl(fat+liquidoApps)}</td>
+        <td data-label="Ticket médio">${pedidosGeral?brl(fatGeral/pedidosGeral):'—'}</td>
+      </tr></tbody></table>
+      ${!ehDiaUnico&&diasOrdenados.length?`<h4 style="margin:16px 0 6px;font-size:13px;">Por dia <span style="font-weight:400;font-size:11px;color:var(--text-secondary);">— valor bruto (nº de pedidos)</span></h4>
+      <table><thead><tr><th>Dia</th><th>Site/WhatsApp</th><th>iFood</th><th>99Food</th><th>Total</th></tr></thead><tbody>
+      ${diasOrdenados.map(d=>{const x=porDia[d];const tn=x.site.n+x.ifood.n+x['99food'].n;return `<tr><td data-label="Dia">${d.split('-').reverse().join('/')}</td><td data-label="Site/WhatsApp">${celulaDia(x.site)}</td><td data-label="iFood">${celulaDia(x.ifood)}</td><td data-label="99Food">${celulaDia(x['99food'])}</td><td data-label="Total" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(x.site.v+x.ifood.v+x['99food'].v)} <span style="font-family:Inter,sans-serif;font-size:11px;color:var(--text-secondary);">(${tn})</span></td></tr>`;}).join('')}
       </tbody></table>`:''}
     </div>
 
@@ -6261,16 +6320,27 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
       ${unidadesSemSaborDefinido>0?`<div style="margin-top:10px;font-size:11px;color:rgba(255,255,255,.35);">+ ${unidadesSemSaborDefinido} unidade(s) de pizza dentro de combos, cujo sabor exato não fica gravado separadamente no sistema (confira o pedido individual na lista abaixo, campo "Itens", pra ver qual foi escolhido).</div>`:''}
     </div>
 
-    ${ehDiaUnico?`<div class="tw"><div class="tw-head"><h3>📄 Pedidos de ${esc(label)}</h3></div>
-    ${pedidos.length?`<table><thead><tr><th>#</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Status</th><th>Tempo</th></tr></thead><tbody>
+    ${ehDiaUnico?`<div class="tw"><div class="tw-head"><h3>📄 Pedidos de ${esc(label)} (${pedidos.length+vendasApps.length})</h3></div>
+    ${pedidos.length||vendasApps.length?`<table><thead><tr><th>#</th><th>Canal</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Valor</th><th>Status</th><th>Tempo</th></tr></thead><tbody>
     ${pedidos.map(p=>`<tr>
       <td data-label="#">${p.id}</td>
+      <td data-label="Canal">${etiquetaCanal('site')}</td>
       <td data-label="Hora">${(parseUTC(p.created_at)||new Date()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Bahia'})}</td>
       <td data-label="Cliente">${esc(p.nome)}</td>
       <td data-label="Itens" style="max-width:320px;font-size:12px;color:rgba(255,255,255,.6);">${esc(p.itens||'')}</td>
       <td data-label="Valor" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(p.total||0)}</td>
       <td data-label="Status">${REL_STATUS_LABEL[p.status]||esc(p.status)}</td>
       <td data-label="Tempo" class="tempo-rel">${tempoPedidoHTML(p)}</td>
+    </tr>`).join('')}
+    ${vendasApps.map(v=>`<tr>
+      <td data-label="#">${esc(v.codigo_pedido||'—')}</td>
+      <td data-label="Canal">${etiquetaCanal(v.canal)}</td>
+      <td data-label="Hora">—</td>
+      <td data-label="Cliente">—</td>
+      <td data-label="Itens" style="max-width:320px;font-size:12px;color:rgba(255,255,255,.6);">${esc(v.observacao||'Venda do app (sem itens)')}</td>
+      <td data-label="Valor" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(v.valor_bruto)} <span style="font-family:Inter,sans-serif;font-size:11px;color:var(--text-secondary);">líq. ${brl(v.valor_liquido)}</span></td>
+      <td data-label="Status">✅ Lançado</td>
+      <td data-label="Tempo">—</td>
     </tr>`).join('')}
     </tbody></table>`:'<div class="loading">Nenhum pedido nesse dia.</div>'}</div>`
     :`<div style="font-size:12px;color:rgba(255,255,255,.35);">Selecione "Hoje", "Ontem" ou uma data específica (calendário acima) pra ver a lista detalhada de pedidos.</div>`}
