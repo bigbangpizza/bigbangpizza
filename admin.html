@@ -79,6 +79,9 @@ td img{width:40px;height:40px;object-fit:cover;border-radius:5px;background:#333
 tr.dragging{opacity:0.4;}
 tr.drag-placeholder{background:transparent!important;border:none!important;margin:6px 0!important;padding:0!important;}
 tr.drag-placeholder td{padding:0!important;height:4px;background:var(--red);border-radius:2px;border:none!important;}
+.apps-canal-btn{padding:14px;border-radius:9px;border:2px solid var(--border-color);background:var(--bg-subtle);color:var(--text-secondary);font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:1px;cursor:pointer;}
+.apps-canal-btn.on#apps-canal-ifood{border-color:#ea1d2c;background:rgba(234,29,44,.14);color:#ff5a66;}
+.apps-canal-btn.on#apps-canal-99food{border-color:#ffb800;background:rgba(255,184,0,.14);color:#ffc93d;}
 .btn-new{background:var(--red);color:white;border:none;padding:9px 16px;border-radius:7px;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;cursor:pointer;}
 .btn-csv{background:rgba(74,222,128,0.15);color:#4ade80;border:1px solid rgba(74,222,128,0.3);padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
 .filtro-btn{padding:8px 14px !important;font-size:13px !important;}
@@ -342,6 +345,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('estoque')"   id="nav-estoque">  <span class="ic">📦</span> Estoque</div>
       <div class="nav-item" onclick="show('cmv')"       id="nav-cmv">      <span class="ic">🧮</span> CMV</div>
       <div class="nav-item" onclick="show('relatorio')" id="nav-relatorio"><span class="ic">📈</span> Relatório</div>
+      <div class="nav-item" onclick="show('apps')"      id="nav-apps">     <span class="ic">🛍️</span> iFood / 99</div>
       <div class="nav-item" onclick="show('analytics')" id="nav-analytics"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia')" id="nav-aparencia"><span class="ic">🎨</span> Aparência</div>
       <div class="nav-item" onclick="show('bot')" id="nav-bot"><span class="ic">🤖</span> Configurações do Bot</div>
@@ -659,6 +663,55 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div id="rel-content"><div class="loading">Carregando...</div></div>
     </div>
 
+    <!-- IFOOD / 99FOOD — vendas dos apps só para controle financeiro (sem itens, cozinha nem kanban) -->
+    <div id="pg-apps" class="hidden">
+      <div class="page-title">IFOOD / 99FOOD</div>
+      <div class="page-sub">Vendas dos apps só para o financeiro — não entram na cozinha, no kanban, no ranking de sabores, na fidelidade nem no CRM</div>
+
+      <div class="tw" style="padding:18px;margin-bottom:16px;">
+        <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:12px;">⚡ Lançar venda</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <button type="button" id="apps-canal-ifood" class="apps-canal-btn" onclick="setAppsCanal('ifood')">iFood</button>
+          <button type="button" id="apps-canal-99food" class="apps-canal-btn" onclick="setAppsCanal('99food')">99Food</button>
+        </div>
+        <div class="fr">
+          <div class="fg"><label>Valor do pedido (R$)</label><input id="apps-valor" inputmode="decimal" placeholder="0,00" autocomplete="off" oninput="atualizarAppsLiquido()" onkeydown="if(event.key==='Enter')lancarVendaApp()"></div>
+          <div class="fg"><label>Líquido (R$) <span id="apps-liq-info" style="text-transform:none;font-weight:500;"></span></label><input id="apps-liquido" inputmode="decimal" placeholder="calculado sozinho" autocomplete="off" oninput="this.dataset.manual=this.value.trim()?'1':''"></div>
+        </div>
+        <div class="fr">
+          <div class="fg"><label>Data</label><input id="apps-data" type="date" style="color-scheme:dark;"></div>
+          <div class="fg"><label>Nº do pedido (opcional)</label><input id="apps-codigo" autocomplete="off" placeholder="Ex: 4821"></div>
+        </div>
+        <div class="fg"><label>Observação (opcional)</label><input id="apps-obs" autocomplete="off"></div>
+        <button class="btn-new" id="apps-btn-lancar" style="width:100%;padding:13px;font-size:18px;" onclick="lancarVendaApp()">LANÇAR</button>
+        <details style="margin-top:14px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--text-secondary);font-weight:600;">⚙️ Taxa padrão por canal</summary>
+          <div class="fr" style="margin-top:10px;">
+            <div class="fg"><label>Taxa iFood (%)</label><input id="apps-taxa-ifood" inputmode="decimal"></div>
+            <div class="fg"><label>Taxa 99Food (%)</label><input id="apps-taxa-99food" inputmode="decimal"></div>
+          </div>
+          <button class="be" style="padding:8px 14px;font-size:12px;" onclick="salvarTaxasApps()">💾 Salvar taxas</button>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:6px;">Vale para os próximos lançamentos. Se o repasse vier diferente, edite o líquido na mão.</div>
+        </details>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="apps-periodos">
+        <button class="be filtro-btn" onclick="setAppsPeriodo(this,'hoje')">📅 Hoje</button>
+        <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'semana')">📅 7 dias</button>
+        <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'mes')">📅 Este mês</button>
+        <button class="bt filtro-btn" onclick="setAppsPeriodo(this,'personalizado')">📆 Personalizado</button>
+        <span id="apps-personalizado" class="hidden" style="display:inline-flex;gap:6px;align-items:center;">
+          <input type="date" id="apps-de" class="bt" style="color-scheme:dark;padding:7px 10px;" onchange="loadAppsLista()">
+          <span style="font-size:12px;color:var(--text-secondary);">até</span>
+          <input type="date" id="apps-ate" class="bt" style="color-scheme:dark;padding:7px 10px;" onchange="loadAppsLista()">
+        </span>
+        <select id="apps-filtro-canal" class="bt" style="padding:8px 10px;" onchange="loadAppsLista()">
+          <option value="">Todos os canais</option><option value="ifood">iFood</option><option value="99food">99Food</option>
+        </select>
+      </div>
+      <div id="apps-content"><div class="loading">Carregando...</div></div>
+    </div>
+
     <!-- ANALYTICS -->
     <div id="pg-analytics" class="hidden">
       <div class="page-title">ANALYTICS</div>
@@ -907,6 +960,7 @@ input:checked+.sl::before{transform:translateX(20px);}
       <div class="nav-item" onclick="show('contatos');fecharMaisMenu()"><span class="ic">💬</span> Contatos</div>
       <div class="nav-item" onclick="show('cupons');fecharMaisMenu()"><span class="ic">🎟️</span> Cupons</div>
       <div class="nav-item" onclick="show('cmv');fecharMaisMenu()"><span class="ic">🧮</span> CMV</div>
+      <div class="nav-item" onclick="show('apps');fecharMaisMenu()"><span class="ic">🛍️</span> iFood / 99</div>
       <div class="nav-item" onclick="show('analytics');fecharMaisMenu()"><span class="ic">📊</span> Analytics</div>
       <div class="nav-item" onclick="show('aparencia');fecharMaisMenu()"><span class="ic">🎨</span> Aparência</div>
       <div class="nav-item" onclick="show('bot');fecharMaisMenu()"><span class="ic">🤖</span> Configurações do Bot</div>
@@ -1618,6 +1672,7 @@ function show(page) {
     fichas: loadFichasTecnicas,
     estoque: loadEstoque,
     cmv: () => { loadIngredientes('tudo'); loadReceitas('tudo'); },
+    apps: loadApps,
     relatorio: () => { const b = document.querySelector('#pg-relatorio .be.filtro-btn'); setRelFiltro(b, 'hoje'); },
     avaliacoes: loadAvaliacoes,
     contatos: loadContatos,
@@ -5777,6 +5832,253 @@ async function salvarTextosSecoes(){
 }
 
 // ═══════════════════════════════════════════════════════
+// IFOOD / 99FOOD — vendas dos apps (tabela vendas_apps), só financeiro.
+// Não entram em pedidos, cozinha, kanban, ranking de sabores, fidelidade nem CRM.
+// ═══════════════════════════════════════════════════════
+const APPS_CANAIS = { ifood: 'iFood', '99food': '99Food' };
+const APPS_CHAVE_TAXA = { ifood: 'taxa_ifood_pct', '99food': 'taxa_99_pct' };
+const APPS_TAXA_PADRAO = { ifood: 12, '99food': 14.1 };
+let _appsTaxas = { ...APPS_TAXA_PADRAO };
+let _appsCanal = 'ifood';
+let _appsPeriodo = 'hoje';
+let _appsLista = [];
+
+// "45,90", "1.234,56", "45.9" → número (NaN se inválido)
+function numBR(v) {
+  let s = String(v ?? '').trim().replace(/[R$\s]/g, '');
+  if (!s) return NaN;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+const fmtNumBR = (n) => Number(n).toFixed(2).replace('.', ',');
+const fmtPctBR = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',');
+const liquidoApp = (bruto, pct) => Math.round(bruto * (1 - (Number(pct) || 0) / 100) * 100) / 100;
+
+function somarDiasISO(iso, dias) {
+  const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+async function loadApps() {
+  const cfg = await api('configuracoes', 'chave=in.(taxa_ifood_pct,taxa_99_pct)');
+  for (const c of cfg) {
+    const canal = Object.keys(APPS_CHAVE_TAXA).find(k => APPS_CHAVE_TAXA[k] === c.chave);
+    const n = numBR(c.valor);
+    if (canal && Number.isFinite(n)) _appsTaxas[canal] = n;
+  }
+  document.getElementById('apps-taxa-ifood').value = fmtPctBR(_appsTaxas.ifood);
+  document.getElementById('apps-taxa-99food').value = fmtPctBR(_appsTaxas['99food']);
+  const data = document.getElementById('apps-data');
+  if (!data.value) data.value = hojeBahiaISO();
+  setAppsCanal(_appsCanal);
+  loadAppsLista();
+}
+
+function setAppsCanal(canal) {
+  _appsCanal = canal;
+  document.querySelectorAll('.apps-canal-btn').forEach(b => b.classList.toggle('on', b.id === 'apps-canal-' + canal));
+  atualizarAppsLiquido();
+}
+
+function atualizarAppsLiquido() {
+  const pct = _appsTaxas[_appsCanal];
+  const bruto = numBR(document.getElementById('apps-valor').value);
+  const liq = document.getElementById('apps-liquido');
+  document.getElementById('apps-liq-info').textContent = `(taxa ${fmtPctBR(pct)}%)`;
+  if (liq.dataset.manual) return; // digitado na mão: não sobrescreve
+  liq.value = bruto > 0 ? fmtNumBR(liquidoApp(bruto, pct)) : '';
+}
+
+let _appsLancando = false;
+async function lancarVendaApp() {
+  if (_appsLancando) return;
+  const bruto = numBR(document.getElementById('apps-valor').value);
+  if (!(bruto > 0)) { showToastAdmin('⚠️ Digite o valor do pedido.'); document.getElementById('apps-valor').focus(); return; }
+  const pct = _appsTaxas[_appsCanal];
+  const liqTxt = document.getElementById('apps-liquido').value;
+  const liq = liqTxt.trim() ? numBR(liqTxt) : liquidoApp(bruto, pct);
+  if (!(liq >= 0)) { showToastAdmin('⚠️ Valor líquido inválido.'); return; }
+  const dados = {
+    canal: _appsCanal,
+    valor_bruto: bruto,
+    taxa_percentual: pct,
+    valor_liquido: liq,
+    data: document.getElementById('apps-data').value || hojeBahiaISO(),
+    codigo_pedido: document.getElementById('apps-codigo').value.trim() || null,
+    observacao: document.getElementById('apps-obs').value.trim() || null,
+  };
+  _appsLancando = true;
+  const btn = document.getElementById('apps-btn-lancar'); btn.disabled = true;
+  try {
+    const ok = await ins('vendas_apps', dados);
+    if (!ok) { showToastAdmin('⚠️ Não foi possível lançar. Tente de novo.'); return; }
+    showToastAdmin(`✅ ${APPS_CANAIS[dados.canal]} ${brl(bruto)} lançado!`);
+    registrarHistorico(`Venda ${APPS_CANAIS[dados.canal]} lançada: ${brl(bruto)} (líquido ${brl(liq)})`);
+    ['apps-valor', 'apps-liquido', 'apps-codigo', 'apps-obs'].forEach(id => { const el = document.getElementById(id); el.value = ''; delete el.dataset.manual; });
+    atualizarAppsLiquido();
+    document.getElementById('apps-valor').focus();
+    loadAppsLista();
+  } finally { _appsLancando = false; btn.disabled = false; }
+}
+
+async function salvarTaxasApps() {
+  const novas = {};
+  for (const canal of Object.keys(APPS_CANAIS)) {
+    const n = numBR(document.getElementById('apps-taxa-' + canal).value);
+    if (!(n >= 0 && n <= 100)) { showToastAdmin(`⚠️ Taxa do ${APPS_CANAIS[canal]} inválida (0 a 100).`); return; }
+    novas[canal] = n;
+  }
+  const ok = await salvarConfigs({ taxa_ifood_pct: novas.ifood, taxa_99_pct: novas['99food'] });
+  if (!ok) { showToastAdmin('⚠️ Erro ao salvar as taxas.'); return; }
+  _appsTaxas = novas;
+  atualizarAppsLiquido();
+  showToastAdmin('✅ Taxas salvas!');
+  registrarHistorico(`Taxas dos apps: iFood ${fmtPctBR(novas.ifood)}%, 99Food ${fmtPctBR(novas['99food'])}%`);
+}
+
+function setAppsPeriodo(btn, periodo) {
+  _appsPeriodo = periodo;
+  document.querySelectorAll('#apps-periodos .filtro-btn').forEach(b => b.className = 'bt filtro-btn');
+  if (btn) btn.className = 'be filtro-btn';
+  const pers = document.getElementById('apps-personalizado');
+  pers.classList.toggle('hidden', periodo !== 'personalizado');
+  if (periodo === 'personalizado') {
+    const de = document.getElementById('apps-de'), ate = document.getElementById('apps-ate');
+    if (!ate.value) ate.value = hojeBahiaISO();
+    if (!de.value) de.value = ate.value.slice(0, 8) + '01';
+  }
+  loadAppsLista();
+}
+
+// Intervalo de datas [de, ate] (inclusivo, AAAA-MM-DD no dia da Bahia) — mesmas
+// regras do Relatório: 7 dias = hoje + 6 anteriores; mês = do dia 1 até hoje.
+function diasPeriodo(period, dataEspecifica) {
+  const hoje = hojeBahiaISO();
+  if (period === 'hoje') return { de: hoje, ate: hoje };
+  if (period === 'ontem') { const o = somarDiasISO(hoje, -1); return { de: o, ate: o }; }
+  if (period === 'data') return { de: dataEspecifica, ate: dataEspecifica };
+  if (period === 'semana') return { de: somarDiasISO(hoje, -6), ate: hoje };
+  if (period === 'mes') return { de: hoje.slice(0, 8) + '01', ate: hoje };
+  return null; // tudo
+}
+
+function resumoVendasApps(lista) {
+  const r = {};
+  for (const canal of Object.keys(APPS_CANAIS)) r[canal] = { n: 0, bruto: 0, liquido: 0 };
+  for (const v of lista) {
+    const x = r[v.canal]; if (!x) continue;
+    x.n++; x.bruto += Number(v.valor_bruto) || 0; x.liquido += Number(v.valor_liquido) || 0;
+  }
+  return r;
+}
+
+async function loadAppsLista() {
+  const el = document.getElementById('apps-content');
+  let lim = diasPeriodo(_appsPeriodo);
+  if (_appsPeriodo === 'personalizado') {
+    const de = document.getElementById('apps-de').value, ate = document.getElementById('apps-ate').value;
+    if (!de || !ate) { el.innerHTML = '<div class="loading">Escolha as duas datas.</div>'; return; }
+    lim = de <= ate ? { de, ate } : { de: ate, ate: de };
+  }
+  const canal = document.getElementById('apps-filtro-canal').value;
+  el.innerHTML = '<div class="loading">Carregando...</div>';
+  const q = [`data=gte.${lim.de}`, `data=lte.${lim.ate}`, canal ? `canal=eq.${canal}` : ''].filter(Boolean).join('&');
+  _appsLista = await api('vendas_apps', q, 'data.desc,id.desc');
+  const res = resumoVendasApps(_appsLista);
+  const fmtDia = (iso) => iso.split('-').reverse().join('/');
+  const label = lim.de === lim.ate ? fmtDia(lim.de) : `${fmtDia(lim.de)} a ${fmtDia(lim.ate)}`;
+  const cor = { ifood: '#ff5a66', '99food': '#ffc93d' };
+  const blocoCanal = (c) => {
+    const x = res[c];
+    return `<div class="tw" style="padding:16px;margin-bottom:12px;border-left:4px solid ${cor[c]};">
+      <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:10px;color:${cor[c]};">${APPS_CANAIS[c]}</h3>
+      <div class="stats" style="margin-bottom:0;">
+        <div class="stat"><div class="stat-n">${x.n}</div><div class="stat-l">Pedidos</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:20px;">${brl(x.bruto)}</div><div class="stat-l">Faturamento bruto</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:20px;color:#ff7777;">${brl(x.bruto - x.liquido)}</div><div class="stat-l">Taxas pagas</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:20px;color:#4ade80;">${brl(x.liquido)}</div><div class="stat-l">Líquido</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:20px;">${x.n ? brl(x.bruto / x.n) : '—'}</div><div class="stat-l">Ticket médio</div></div>
+      </div></div>`;
+  };
+  const canaisVisiveis = canal ? [canal] : Object.keys(APPS_CANAIS);
+  el.innerHTML = `
+    <div style="margin-bottom:10px;color:var(--text-secondary);font-size:12px;">Período: <strong>${esc(label)}</strong></div>
+    ${canaisVisiveis.map(blocoCanal).join('')}
+    <div class="tw"><div class="tw-head"><h3>📄 Lançamentos (${_appsLista.length})</h3></div>
+    ${_appsLista.length ? `<table><thead><tr><th>Data</th><th>Canal</th><th>Nº pedido</th><th>Bruto</th><th>Taxa</th><th>Líquido</th><th>Observação</th><th></th></tr></thead><tbody>
+    ${_appsLista.map(v => `<tr>
+      <td data-label="Data">${fmtDia(v.data)}</td>
+      <td data-label="Canal" style="font-weight:700;color:${cor[v.canal] || 'inherit'};">${esc(APPS_CANAIS[v.canal] || v.canal)}</td>
+      <td data-label="Nº pedido">${esc(v.codigo_pedido || '—')}</td>
+      <td data-label="Bruto" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(v.valor_bruto)}</td>
+      <td data-label="Taxa">${brl((Number(v.valor_bruto) || 0) - (Number(v.valor_liquido) || 0))}${v.taxa_percentual != null ? ` <span style="font-size:11px;color:var(--text-secondary);">(${fmtPctBR(v.taxa_percentual)}%)</span>` : ''}</td>
+      <td data-label="Líquido">${brl(v.valor_liquido)}</td>
+      <td data-label="Observação" style="font-size:12px;color:var(--text-secondary);">${esc(v.observacao || '')}</td>
+      <td data-label=""><div class="acts"><button class="be" onclick="editarVendaApp(${v.id})">✏️</button><button class="bd" onclick="apagarVendaApp(${v.id})">🗑️</button></div></td>
+    </tr>`).join('')}
+    </tbody></table>` : '<div class="loading">Nenhuma venda dos apps nesse período.</div>'}</div>`;
+}
+
+function editarVendaApp(id) {
+  const v = _appsLista.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('mod-title').textContent = `Editar venda ${APPS_CANAIS[v.canal] || ''}`;
+  document.getElementById('mod-body').innerHTML = `
+    <div class="fr">
+      <div class="fg"><label>Canal</label><select id="ea-canal">${Object.entries(APPS_CANAIS).map(([k, n]) => `<option value="${k}"${k === v.canal ? ' selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="fg"><label>Data</label><input id="ea-data" type="date" style="color-scheme:dark;" value="${esc(v.data)}"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label>Valor do pedido (R$)</label><input id="ea-bruto" inputmode="decimal" value="${fmtNumBR(v.valor_bruto)}" oninput="eaRecalcular()"></div>
+      <div class="fg"><label>Taxa (%)</label><input id="ea-taxa" inputmode="decimal" value="${v.taxa_percentual != null ? fmtPctBR(v.taxa_percentual) : ''}" oninput="eaRecalcular()"></div>
+    </div>
+    <div class="fg"><label>Líquido (R$) — recalcula pela taxa; pode editar na mão</label><input id="ea-liquido" inputmode="decimal" value="${fmtNumBR(v.valor_liquido)}"></div>
+    <div class="fr">
+      <div class="fg"><label>Nº do pedido</label><input id="ea-codigo" value="${esc(v.codigo_pedido || '')}"></div>
+      <div class="fg"><label>Observação</label><input id="ea-obs" value="${esc(v.observacao || '')}"></div>
+    </div>`;
+  document.getElementById('mod-save-btn').onclick = () => salvarEdicaoVendaApp(id);
+  document.getElementById('modal').classList.add('open');
+}
+function eaRecalcular() {
+  const bruto = numBR(document.getElementById('ea-bruto').value);
+  const pct = numBR(document.getElementById('ea-taxa').value);
+  if (bruto > 0) document.getElementById('ea-liquido').value = fmtNumBR(liquidoApp(bruto, Number.isFinite(pct) ? pct : 0));
+}
+async function salvarEdicaoVendaApp(id) {
+  const bruto = numBR(document.getElementById('ea-bruto').value);
+  const taxaTxt = document.getElementById('ea-taxa').value.trim();
+  const pct = taxaTxt ? numBR(taxaTxt) : null;
+  const liqTxt = document.getElementById('ea-liquido').value.trim();
+  const liq = liqTxt ? numBR(liqTxt) : liquidoApp(bruto, pct || 0);
+  if (!(bruto > 0)) { showToastAdmin('⚠️ Valor do pedido inválido.'); return; }
+  if (pct !== null && !(pct >= 0 && pct <= 100)) { showToastAdmin('⚠️ Taxa inválida (0 a 100).'); return; }
+  if (!(liq >= 0)) { showToastAdmin('⚠️ Valor líquido inválido.'); return; }
+  const dados = {
+    canal: document.getElementById('ea-canal').value,
+    data: document.getElementById('ea-data').value || hojeBahiaISO(),
+    valor_bruto: bruto, taxa_percentual: pct, valor_liquido: liq,
+    codigo_pedido: document.getElementById('ea-codigo').value.trim() || null,
+    observacao: document.getElementById('ea-obs').value.trim() || null,
+  };
+  const ok = await upd('vendas_apps', id, dados);
+  if (!ok) { showToastAdmin('⚠️ Erro ao salvar.'); return; }
+  closeMod(); showToastAdmin('✅ Venda atualizada!');
+  registrarHistorico(`Venda ${APPS_CANAIS[dados.canal]} #${id} editada: ${brl(bruto)} (líquido ${brl(liq)})`);
+  loadAppsLista();
+}
+async function apagarVendaApp(id) {
+  const v = _appsLista.find(x => x.id === id);
+  const desc = v ? `${APPS_CANAIS[v.canal]} de ${brl(v.valor_bruto)} (${v.data.split('-').reverse().join('/')})` : `#${id}`;
+  if (!(await confirmCustom(`Apagar a venda ${desc}? Essa ação não pode ser desfeita.`))) return;
+  const ok = await del('vendas_apps', id);
+  if (!ok) { showToastAdmin('⚠️ Erro ao apagar.'); return; }
+  showToastAdmin('🗑️ Venda apagada!');
+  registrarHistorico(`Venda dos apps apagada: ${desc}`);
+  loadAppsLista();
+}
+
+// ═══════════════════════════════════════════════════════
 // RELATÓRIO + EXPORTAR CSV
 // ═══════════════════════════════════════════════════════
 // "Pedidos" e "pizzas (unidades)" são métricas DIFERENTES e não devem se
@@ -5878,10 +6180,13 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
   document.getElementById('rel-content').innerHTML='<div class="loading">Carregando...</div>';
   const limites=limitesRelatorio(period, dataEspecifica);
   const q=limites?`created_at=gte.${limites.inicio.toISOString()}&created_at=lt.${limites.fim.toISOString()}`:'';
-  const [pedidos, doces, combos]=await Promise.all([
+  const diasApps=diasPeriodo(period, dataEspecifica);
+  const [pedidos, doces, combos, vendasApps]=await Promise.all([
     api('pedidos', q, 'created_at.desc'),
     api('pizzas_doces'),
     api('combos'),
+    // Vendas do iFood/99Food: só entram no faturamento (nunca em sabores, fidelidade, CRM ou kanban).
+    api('vendas_apps', diasApps?`data=gte.${diasApps.de}&data=lte.${diasApps.ate}&select=data,canal,valor_bruto,valor_liquido`:'select=data,canal,valor_bruto,valor_liquido', 'data.asc'),
   ]);
   const nomesDoces=new Set(doces.map(d=>d.nome));
   const nomesCombos=new Set(combos.map(c=>c.nome));
@@ -5893,6 +6198,18 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
   // Faturamento só conta pedido ENTREGUE — cancelado nunca entra aqui.
   const fat=entregues.reduce((s,p)=>s+(p.total||0),0);
   const ticket=entregues.length?fat/entregues.length:0;
+  const resApps=resumoVendasApps(vendasApps);
+  const brutoApps=resApps.ifood.bruto+resApps['99food'].bruto;
+  const liquidoApps=resApps.ifood.liquido+resApps['99food'].liquido;
+  const fatGeral=fat+brutoApps;
+  const pedidosGeral=entregues.length+resApps.ifood.n+resApps['99food'].n;
+  // Faturamento por dia (Bahia) e canal — só em períodos de mais de um dia.
+  const diaBahia=(ts)=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Bahia'}).format(parseUTC(ts)||new Date());
+  const porDia={};
+  const linhaDia=(d)=>porDia[d]||(porDia[d]={site:0,ifood:0,'99food':0});
+  entregues.forEach(p=>{ linhaDia(diaBahia(p.created_at)).site+=Number(p.total)||0; });
+  vendasApps.forEach(v=>{ if(v.canal in APPS_CANAIS) linhaDia(v.data)[v.canal]+=Number(v.valor_bruto)||0; });
+  const diasOrdenados=Object.keys(porDia).sort().reverse();
 
   const { porSabor, unidadesSemSaborDefinido }=contarPizzasPorSabor(entregues, nomesDoces, nomesCombos);
   const rankingSabores=Object.entries(porSabor).sort((a,b)=>b[1]-a[1]);
@@ -5909,11 +6226,18 @@ async function loadRelatorio(period='hoje', dataEspecifica=null){
 
     <div class="tw" style="padding:18px;margin-bottom:16px;">
       <h3 style="font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1px;margin-bottom:4px;">💰 Faturamento</h3>
-      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">Só pedidos com status "entregue" contam pro faturamento — cancelados nunca entram nessa conta.</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:12px;">Site/WhatsApp: só pedidos com status "entregue" — cancelados nunca entram. iFood/99Food: vendas lançadas na aba "iFood / 99".</div>
       <div class="stats">
-        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat)}</div><div class="stat-l">Faturamento Bruto</div></div>
-        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(ticket)}</div><div class="stat-l">Ticket Médio</div></div>
+        <div class="stat" style="border-color:var(--orange);"><div class="stat-n" style="font-size:22px;">${brl(fatGeral)}</div><div class="stat-l">Total geral bruto (${pedidosGeral} pedidos)</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat)}</div><div class="stat-l">Site/WhatsApp (${entregues.length})</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;color:#ff5a66;">${brl(resApps.ifood.bruto)}</div><div class="stat-l">iFood (${resApps.ifood.n}) · líquido ${brl(resApps.ifood.liquido)}</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;color:#ffc93d;">${brl(resApps['99food'].bruto)}</div><div class="stat-l">99Food (${resApps['99food'].n}) · líquido ${brl(resApps['99food'].liquido)}</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(fat+liquidoApps)}</div><div class="stat-l">Total líquido (site + repasse dos apps)</div></div>
+        <div class="stat"><div class="stat-n" style="font-size:22px;">${brl(ticket)}</div><div class="stat-l">Ticket Médio Site/WhatsApp</div></div>
       </div>
+      ${!ehDiaUnico&&diasOrdenados.length?`<table style="margin-top:12px;"><thead><tr><th>Dia</th><th>Site/WhatsApp</th><th>iFood</th><th>99Food</th><th>Total</th></tr></thead><tbody>
+      ${diasOrdenados.map(d=>{const x=porDia[d];return `<tr><td data-label="Dia">${d.split('-').reverse().join('/')}</td><td data-label="Site/WhatsApp">${brl(x.site)}</td><td data-label="iFood">${brl(x.ifood)}</td><td data-label="99Food">${brl(x['99food'])}</td><td data-label="Total" style="font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--orange);">${brl(x.site+x.ifood+x['99food'])}</td></tr>`;}).join('')}
+      </tbody></table>`:''}
     </div>
 
     <div class="tw" style="padding:18px;margin-bottom:16px;">
