@@ -447,6 +447,7 @@ input:checked+.sl::before{transform:translateX(20px);}
         <div style="padding:18px;">
           <canvas id="sales-chart" width="900" height="260" style="width:100%;height:260px;"></canvas>
           <div id="sales-chart-legenda" style="margin-top:8px;display:flex;flex-wrap:wrap;row-gap:4px;"></div>
+          <div id="sales-chart-totais" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color);display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--text-secondary);"></div>
         </div>
       </div>
 
@@ -1806,7 +1807,7 @@ async function loadDash() {
 
   atualizarBadgePedidos(ag);
   renderDashExtraCards(pedidos, vendasApps7d);
-  renderSalesChart(pedidos, vendasApps7d);
+  renderSalesChart(pedidos, vendasApps7d, { combos: c, salgadas: s, doces: d, bebidas: b });
   renderHistorico();
   carregarConfigAlerta();
 }
@@ -1920,22 +1921,103 @@ const SERIES_GRAFICO = [
   { chave: '99food', nome: '99Food', cor: '#ffb800', largura: 2.5 },
   { chave: 'total', nome: 'Total', cor: 'rgba(150,150,150,.9)', largura: 1.5, tracejada: true },
 ];
-function renderSalesChart(pedidos, vendasApps = []){
-  const entregues = pedidos.filter(p=>p.status==='entregue');
+// ── Contagem de produtos por pedido (balão do gráfico) ──
+// Unidades (qty), combos desmontados, meio a meio = 1 pizza, Pizza do Dia = salgada.
+const normNomeProduto = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const RE_REFRI_PRODUTO = /refri|coca|guarana|bebida|suco|fanta|sprite|soda|agua|kuat|pepsi|schweppes|cerveja/;
+function catalogoContagem(menu = {}){
+  const nomes = (l) => new Set((l || []).map(x => normNomeProduto(x.nome)));
+  const combos = new Map((menu.combos || []).map(cb => [normNomeProduto(cb.nome), cb]));
+  return { combos, salgadas: nomes(menu.salgadas), doces: nomes(menu.doces), bebidas: nomes(menu.bebidas) };
+}
+// Combo antigo sem montagem: lê a descrição ("Pizza Família meio a meio (½ A + ½ B) + Pizza Doce + Refri 1L").
+function contarDescricaoCombo(texto, cat){
+  const r = { salgadas: 0, doces: 0, refri: 0 };
+  if (!texto) return r;
+  let meioAMeio = false, metadesDoce = 0, metadesSalg = 0;
+  String(texto).split(/[+,()]/).map(normNomeProduto).filter(Boolean).forEach(parte => {
+    if (/\bborda\b|^sem\b/.test(parte)) return;
+    const qtd = Number((parte.match(/^(\d+)\s/) || [])[1]) || 1;
+    const metade = parte.match(/^(?:½|1\/2|meia|meio)\s+(.+)$/);
+    if (metade && !/pizza/.test(parte)) {
+      if (meioAMeio) return; // as metades já estão na pizza "meio a meio" anterior
+      const sabor = metade[1].replace(/\s*\d+\s*cm.*$/, '').trim();
+      if (cat.doces.has(sabor)) metadesDoce++; else metadesSalg++;
+      return;
+    }
+    if (/doce|chocolate/.test(parte)) r.doces += qtd;
+    else if (RE_REFRI_PRODUTO.test(parte)) r.refri += qtd;
+    else if (/pizza/.test(parte)) { r.salgadas += qtd; if (/\bmeio\b/.test(parte)) meioAMeio = true; }
+  });
+  r.doces += Math.ceil(metadesDoce / 2); r.salgadas += Math.ceil(metadesSalg / 2);
+  return r;
+}
+function contarProdutosPedido(p, cat){
+  const r = { salgadas: 0, doces: 0, refri: 0 };
+  const itens = Array.isArray(p.itens_json) ? p.itens_json : [];
+  itens.forEach(it => {
+    if (!it) return;
+    const qty = Math.max(Number(it.qty) || 1, 0);
+    const nome = normNomeProduto(it.sabores?.[0]?.nome || it.nome);
+    const comboCad = cat.combos.get(nome);
+    const ehCombo = it.combo_pizzas || it.combo_doce || it.combo_bebida || comboCad || /^(combo|dupla)\b/.test(nome);
+    if (it.tipo === 'pizza' && !ehCombo) {
+      const doce = it.tabela === 'pizzas_doces' || (it.tabela !== 'pizzas_salgadas' && !it.tamanho);
+      r[doce ? 'doces' : 'salgadas'] += qty; // meio a meio = 1 pizza
+      return;
+    }
+    if (ehCombo) {
+      const m = comboCad && comboCad.montagem;
+      const desc = (!m) ? contarDescricaoCombo((comboCad && comboCad.descricao) || it.obs, cat) : null;
+      const salg = Array.isArray(it.combo_pizzas) && it.combo_pizzas.length ? it.combo_pizzas.length
+        : (m && Array.isArray(m.pizzas)) ? m.pizzas.length : desc.salgadas;
+      const doces = it.combo_doce ? 1 : m ? (m.doce ? 1 : 0) : desc.doces;
+      const refri = it.combo_bebida ? 1 : m ? ((m.bebidas === 'todas' || (Array.isArray(m.bebidas) && m.bebidas.length)) ? 1 : 0) : desc.refri;
+      r.salgadas += salg * qty; r.doces += doces * qty; r.refri += refri * qty;
+      return;
+    }
+    if (cat.bebidas.has(nome) || RE_REFRI_PRODUTO.test(nome)) r.refri += qty;
+    else if (cat.doces.has(nome) || cat.doces.has(nome.replace(/^doce\s+/, '')) || /^doce\s/.test(nome)) r.doces += qty;
+    else if (cat.salgadas.has(nome) || /pizza/.test(nome)) r.salgadas += qty;
+  });
+  return r;
+}
+function diaSemanaCurtoBR(diaISO){
+  const s = new Date(diaISO + 'T12:00:00Z').toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '').slice(0, 3);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function renderSalesChart(pedidos, vendasApps = [], menu = {}){
+  // Cancelados não contam; o resto conta no dia em que foi feito (Bahia).
+  const validos = pedidos.filter(p=>p.status!=='cancelado');
+  const cat = catalogoContagem(menu);
   const hoje = hojeBahiaISO();
   const diasISO = [];
   for(let i=6;i>=0;i--) diasISO.push(somarDiasISO(hoje, -i));
   const series = { site: [], ifood: [], '99food': [], total: [] };
+  const resumo = [];
   diasISO.forEach(diaISO => {
-    const site = entregues.filter(p => dataBahiaISO(p.created_at)===diaISO).reduce((s,p)=>s+(Number(p.total)||0),0);
-    const app = (c) => vendasApps.filter(v => v.data===diaISO && v.canal===c).reduce((s,v)=>s+(Number(v.valor_bruto)||0),0);
+    const doDia = validos.filter(p => dataBahiaISO(p.created_at)===diaISO);
+    const site = doDia.reduce((s,p)=>s+(Number(p.total)||0),0);
+    const appsDia = vendasApps.filter(v => v.data===diaISO);
+    const app = (c) => appsDia.filter(v => v.canal===c).reduce((s,v)=>s+(Number(v.valor_bruto)||0),0);
     const ifood = app('ifood'), n99 = app('99food');
     series.site.push(site); series.ifood.push(ifood); series['99food'].push(n99); series.total.push(site+ifood+n99);
+    const prod = { salgadas: 0, doces: 0, refri: 0 };
+    doDia.forEach(p => { const c = contarProdutosPedido(p, cat); prod.salgadas += c.salgadas; prod.doces += c.doces; prod.refri += c.refri; });
+    resumo.push({ pedidos: doDia.length + appsDia.length, apps: appsDia.length, ...prod, faturamento: site + ifood + n99 });
   });
-  const labels = diasISO.map(d=>new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{weekday:'short',timeZone:'UTC'}).replace('.','').slice(0,3));
-  _salesChartData = { diasISO, series, labels };
+  const labels = diasISO.map(d=>diaSemanaCurtoBR(d).toLowerCase());
+  _salesChartData = { diasISO, series, labels, resumo };
   const leg = document.getElementById('sales-chart-legenda');
   if (leg) leg.innerHTML = SERIES_GRAFICO.map(sr => `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:12px;color:var(--text-secondary);"><span style="display:inline-block;width:18px;height:0;border-top:${sr.tracejada?'2px dashed':'3px solid'} ${sr.cor};"></span>${sr.nome}</span>`).join('');
+  const tot = resumo.reduce((a, r) => ({ pedidos: a.pedidos + r.pedidos, apps: a.apps + r.apps, salgadas: a.salgadas + r.salgadas, doces: a.doces + r.doces, refri: a.refri + r.refri }), { pedidos: 0, apps: 0, salgadas: 0, doces: 0, refri: 0 });
+  const totEl = document.getElementById('sales-chart-totais');
+  if (totEl) totEl.innerHTML = `<span style="width:100%;font-size:11px;text-transform:uppercase;letter-spacing:.04em;">Totais do período (${esc(diasISO[0].split('-').reverse().slice(0,2).join('/'))} a ${esc(diasISO[6].split('-').reverse().slice(0,2).join('/'))})</span>
+    <span>🧾 Pedidos: <strong style="color:var(--text-primary,#fff);">${tot.pedidos}</strong>${tot.apps ? ` <span style="font-size:11px;">(inclui ${tot.apps} do iFood/99)</span>` : ''}</span>
+    <span>🍕 Salgadas: <strong style="color:var(--text-primary,#fff);">${tot.salgadas}</strong></span>
+    <span>🍫 Doces: <strong style="color:var(--text-primary,#fff);">${tot.doces}</strong></span>
+    <span>🥤 Refrigerantes: <strong style="color:var(--text-primary,#fff);">${tot.refri}</strong></span>`;
   desenharSalesChart();
 }
 
@@ -2012,6 +2094,18 @@ function desenharSalesChart(){
     if(minDist > 40){ removeChartTooltip(); return; }
     showChartTooltip(canvas, closest, e.clientX, e.clientY);
   });
+  // Celular: o balão abre com toque na bolinha e fecha ao tocar fora.
+  document.addEventListener('click', (e)=>{
+    const canvas = document.getElementById('sales-chart');
+    if(!canvas || !canvas._pontos) return;
+    if(e.target !== canvas){ if(!e.target.closest || !e.target.closest('#chart-tooltip')) removeChartTooltip(); return; }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    let closest = canvas._pontos[0], minDist = Infinity;
+    canvas._pontos.forEach(p=>{ const dist = Math.abs(p.x-x); if(dist<minDist){ minDist=dist; closest=p; } });
+    if(minDist > 40){ removeChartTooltip(); return; }
+    showChartTooltip(canvas, closest, e.clientX, e.clientY);
+  });
 })();
 function showChartTooltip(canvas, ponto, clientX, clientY){
   let tip = document.getElementById('chart-tooltip');
@@ -2021,13 +2115,20 @@ function showChartTooltip(canvas, ponto, clientX, clientY){
     tip.style.cssText = 'position:fixed;background:#000;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;font-weight:700;pointer-events:none;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.4);';
     document.body.appendChild(tip);
   }
-  const sd = _salesChartData, i = ponto.i;
-  tip.innerHTML = `<div style="margin-bottom:3px;">${esc(sd.diasISO[i].split('-').reverse().slice(0,2).join('/'))} (${esc(sd.labels[i])})</div>` +
-    SERIES_GRAFICO.map(sr => `<div style="font-weight:${sr.chave==='total'?800:600};"><span style="color:${sr.cor};">●</span> ${sr.nome}: ${brl(sd.series[sr.chave][i])}</div>`).join('');
+  const sd = _salesChartData, i = ponto.i, r = sd.resumo[i];
+  const apps = sd.series.ifood[i] + sd.series['99food'][i];
+  tip.innerHTML = `<div style="margin-bottom:5px;font-size:13px;">📅 ${esc(diaSemanaCurtoBR(sd.diasISO[i]))}, ${esc(sd.diasISO[i].split('-').reverse().slice(0,2).join('/'))}</div>` +
+    `<div style="font-weight:600;">🧾 Pedidos: ${r.pedidos}</div>` +
+    (r.apps ? `<div style="font-weight:500;font-size:11px;color:#bbb;margin:-1px 0 2px 18px;">(inclui ${r.apps} do iFood/99)</div>` : '') +
+    `<div style="font-weight:600;">🍕 Pizzas salgadas: ${r.salgadas}</div>` +
+    `<div style="font-weight:600;">🍫 Pizzas doces: ${r.doces}</div>` +
+    `<div style="font-weight:600;">🥤 Refrigerantes: ${r.refri}</div>` +
+    `<div style="font-weight:800;margin-top:3px;">💰 Faturamento: ${brl(r.faturamento)}</div>` +
+    (apps ? `<div style="font-weight:500;font-size:11px;color:#bbb;margin-left:18px;">Site ${brl(sd.series.site[i])} · iFood ${brl(sd.series.ifood[i])} · 99Food ${brl(sd.series['99food'][i])}</div>` : '');
   tip.style.whiteSpace = 'nowrap';
   tip.style.display = 'block';
   const larg = tip.offsetWidth, alt = tip.offsetHeight;
-  tip.style.left = (clientX + 12 + larg > window.innerWidth - 8 ? clientX - 12 - larg : clientX + 12) + 'px';
+  tip.style.left = Math.max(8, clientX + 12 + larg > window.innerWidth - 8 ? clientX - 12 - larg : clientX + 12) + 'px';
   tip.style.top = Math.max(8, Math.min(clientY - 28, window.innerHeight - alt - 8)) + 'px';
 }
 function removeChartTooltip(){
